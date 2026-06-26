@@ -1,9 +1,9 @@
-# RFC-0002 — Kern Logical Architecture
+﻿# RFC-0002 — Kern Logical Architecture
 
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Tipo:** Architecture / Foundational
 - **Dominio:** Arquitectura lógica de plataforma
 - **Depends on:** RFC-0000, RFC-0001
@@ -19,10 +19,10 @@ La arquitectura debe permitir que una empresa cambie modelos, runtimes, hardware
 
 Kern separa:
 
-- el plano de control, que define identidad, organización, políticas, configuración, capacidades y registro;
-- el plano de ejecución, que procesa conversaciones, agentes, workflows, herramientas y acciones;
-- las extensiones, que implementan integraciones, proveedores, runtimes y canales mediante contratos;
-- la infraestructura subyacente, que proporciona cómputo, almacenamiento, red y persistencia.
+- el plano de experiencia, que entra por canales;
+- el plano de orquestación, que prepara, coordina y resuelve capacidades;
+- el plano de ejecución, que interactúa con modelos, herramientas, conocimiento y sistemas externos;
+- el Control Plane transversal, que define identidad, tenancy, políticas, capacidades, registro, configuración, auditoría y ciclo de vida de extensiones.
 
 Ningún modelo de IA ni extensión debe obtener acceso directo e ilimitado a sistemas empresariales.
 
@@ -92,34 +92,42 @@ Estas decisiones requerirán RFCs posteriores.
 
 ## 5. Modelo arquitectónico
 
-Kern se organiza en cuatro planos lógicos:
+Kern se organiza en tres planos de flujo y un Control Plane transversal:
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│                    Experience Plane                           │
-│  Web · Telegram · Email · API · CLI · Otros canales          │
-└──────────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         Experience Plane                                      │
+│  Web · Telegram · Email · API · CLI · Otros canales                          │
+└──────────────────────────────┬───────────────────────────────────────────────┘
                                │
-┌──────────────────────────────▼───────────────────────────────┐
-│                  Orchestration Plane                         │
-│  Agent Engine · Workflow Engine · Context Assembly           │
-│  Execution Coordination · Session Lifecycle                  │
-└──────────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────▼───────────────────────────────────────────────┐
+│                       Orchestration Plane                                    │
+│  Agent Engine · Workflow Engine · Context Assembly                            │
+│  Capability Resolution · Session / Execution Coordination                    │
+└──────────────────────────────┬───────────────────────────────────────────────┘
                                │
-┌──────────────────────────────▼───────────────────────────────┐
-│                    Control Plane                              │
-│  Identity · Organizations · Policy · Capability · Registry    │
-│  Configuration · Audit · Observability · Extension Lifecycle  │
-└──────────────────────────────┬───────────────────────────────┘
-                               │
-┌──────────────────────────────▼───────────────────────────────┐
-│                    Execution Plane                            │
-│  AI Provider · Runtime · Tool · Knowledge · Storage Adapters │
-│  External Systems · Client Integrations                       │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────▼───────────────────────────────────────────────┐
+│                          Execution Plane                                      │
+│  Tool Execution · Knowledge Access · AI Providers · Runtimes                 │
+│  Storage Adapters · Client Integrations                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      Transversal Control Plane                               ║
+║ Identity & Organization · Tenancy · Policy · Registry                       ║
+║ Configuration · Audit · Observability · Extension Lifecycle                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 ```
 
 Estos planos son fronteras lógicas. Una implementación inicial puede ejecutarse en un único proceso o servidor, pero no debe mezclar sus responsabilidades.
+
+Reglas explícitas:
+
+- El Control Plane no es un salto obligatorio de red ni una capa vertical de datos.
+- Todos los planos consumen contratos del Control Plane.
+- El Control Plane no depende de implementaciones de Experience, Orchestration o Execution.
+- Una primera implementación puede ser un monolito modular con llamadas en memoria.
+- Las fronteras lógicas no implican microservicios.
 
 ---
 
@@ -127,16 +135,16 @@ Estos planos son fronteras lógicas. Una implementación inicial puede ejecutars
 
 Las dependencias deben seguir estas reglas:
 
-1. Los canales no conocen proveedores, modelos, runtimes ni integraciones de cliente.
-2. Los agentes no acceden directamente a sistemas externos.
-3. Las tools no deciden permisos por sí mismas.
-4. Los providers y runtimes no conocen reglas de negocio de clientes.
-5. Las extensiones dependen de contratos del Core; el Core no depende de implementaciones de extensiones.
-6. Las políticas pueden bloquear, transformar, requerir aprobación o permitir una acción antes de su ejecución.
-7. La auditoría no es opcional para acciones relevantes.
-8. Los componentes externos deben declararse mediante capacidades y límites explícitos.
-9. La persistencia de estado no debe quedar implícitamente ligada a un proveedor de IA.
-10. Las decisiones específicas de cliente deben vivir en configuración, plugins o repositorios de entrega, no en el Core.
+1. Los canales aportan credenciales y metadatos; Identity and Organization Engine resuelve identidad, organización y tenancy.
+2. Toda operación ejecutable o lectura de conocimiento debe tener contexto organizativo obligatorio.
+3. Ninguna salida de modelo, workflow, plugin o channel puede ejecutar una acción externa fuera de Tool Engine + Policy Engine.
+4. Toda lectura de Knowledge Engine pasa por Policy Engine y segregación organizativa.
+5. Workflow Engine utiliza exactamente el mismo camino de ejecución mediada que Agent Engine.
+6. Registry es un catálogo; Capability Resolution vive en Orchestration y selecciona componentes mediante requisitos y resultados de evaluación.
+7. Audit y Observability son responsabilidades distintas.
+8. Las extensiones solo solicitan permisos; nunca se los conceden a sí mismas.
+9. Los componentes externos declaran capabilities, límites y compatibilidad, pero esas declaraciones no sustituyen validación o evaluación.
+10. Todo motor debe propagar el organization context y los atributos de procedencia y confianza que apliquen.
 
 ---
 
@@ -152,7 +160,8 @@ Gestiona:
 * membresías;
 * roles;
 * límites organizativos;
-* pertenencia de recursos.
+* pertenencia de recursos;
+* tenancy.
 
 Este motor define a qué organización pertenece cualquier conversación, agente, tool, workflow, dato, ejecución o registro.
 
@@ -173,15 +182,16 @@ Puede:
 * limitar alcance;
 * aplicar restricciones de datos;
 * imponer límites de coste, frecuencia o capacidad;
-* registrar decisiones de política.
+* registrar decisiones de política;
+* transformar una operación antes de permitirla.
 
 El Policy Engine no ejecuta directamente acciones empresariales. Decide las condiciones bajo las que otros motores pueden ejecutarlas.
 
 ---
 
-### 7.3 Registry and Capability Engine
+### 7.3 Registry Engine
 
-Mantiene el registro de componentes disponibles y sus contratos.
+Mantiene el catálogo de componentes disponibles y sus contratos.
 
 Registra, como mínimo:
 
@@ -197,28 +207,50 @@ Registra, como mínimo:
 * capacidades;
 * versiones;
 * estados de disponibilidad;
-* límites declarados.
+* límites declarados;
+* ownership.
 
-El sistema debe seleccionar componentes por capacidades requeridas, no solo por nombres comerciales.
+El Registry solo cataloga componentes, versiones, contratos, disponibilidad declarada, compatibilidad y ownership.
 
-Ejemplos de capacidades:
-
-* tool calling;
-* salida estructurada;
-* entrada de imagen;
-* contexto largo;
-* streaming;
-* embeddings;
-* reranking;
-* ejecución asíncrona;
-* aislamiento;
-* aprobación humana.
-
-La definición formal de capabilities se decidirá en un RFC posterior.
+No debe seleccionar componentes ni tomar decisiones de routing.
 
 ---
 
-### 7.4 Agent Engine
+### Capability Resolution
+
+Capability Resolution vive en Orchestration.
+
+Recibe requisitos funcionales, políticas y contexto de ejecución, y usa capacidades declaradas junto con resultados de evaluación y compatibilidad.
+
+Puede:
+
+* elegir componentes;
+* degradar capacidades;
+* solicitar aprobación;
+* bloquear una operación.
+
+No promete equivalencia conductual.
+
+“Aprobación humana”, “aislamiento” y “tenancy” no son capabilities de modelo; son atributos de política o seguridad.
+
+---
+
+### 7.4 Context Assembly and Provenance Engine
+
+Construye el contexto entregado a un agente o a un provider.
+
+Sus responsabilidades incluyen:
+
+* conservar referencias a procedencia, organización, clasificación y nivel de confianza;
+* tratar correo, documentos, web, contenido conectado y outputs de terceros como no confiables por defecto;
+* no convertir instrucciones contenidas en datos externos en autoridad para ejecutar acciones;
+* permitir que Policy Engine aplique controles reforzados, confirmación humana o bloqueo cuando una acción derive de contenido no confiable;
+* no prometer eliminar toda prompt injection; establecer trazabilidad y controles de procedencia;
+* minimizar y referenciar datos sensibles según políticas de retención y acceso.
+
+---
+
+### 7.5 Agent Engine
 
 Gestiona el ciclo de vida lógico de un agente:
 
@@ -238,9 +270,11 @@ Un agente puede proponer acciones, pero no obtiene autoridad inherente para ejec
 
 El Agent Engine debe solicitar ejecución a través de herramientas mediadas por políticas.
 
+El Agent Engine comparte un sustrato lógico de ejecución, estado, políticas, aprobaciones y auditoría con el Workflow Engine.
+
 ---
 
-### 7.5 Workflow Engine
+### 7.6 Workflow Engine
 
 Gestiona procesos explícitos y repetibles que pueden incluir:
 
@@ -258,9 +292,17 @@ Los workflows son distintos de una conversación o razonamiento puntual de un ag
 
 Un workflow debe poder ejecutarse con control, estado, observabilidad y políticas explícitas.
 
+El Workflow Engine comparte un sustrato lógico de ejecución, estado, políticas, aprobaciones y auditoría con el Agent Engine.
+
+Un workflow no puede ejecutar acciones directamente.
+
+Toda acción de workflow se transforma en una solicitud mediada por Tool Engine y Policy Engine.
+
+No hay segundo camino de ejecución.
+
 ---
 
-### 7.6 Tool Engine
+### 7.7 Tool Engine
 
 Es la única frontera estándar para que agentes y workflows consulten o actúen sobre sistemas externos.
 
@@ -278,13 +320,23 @@ Gestiona:
 * auditoría;
 * aislamiento proporcional al riesgo.
 
+El nivel de riesgo y aislamiento no puede ser autoasignado por la tool.
+
+Los permisos declarados por una tool o extensión son solicitudes.
+
+El operador y las políticas determinan la concesión final.
+
+La ejecución física puede ocurrir en un entorno aislado proporcional al riesgo.
+
+Tool Engine distingue validación de schema, autorización, ejecución y auditoría.
+
 Una tool no puede ampliar sus propios permisos.
 
 Una tool no debe recibir acceso global a secretos, datos o sistemas si no es necesario para la operación autorizada.
 
 ---
 
-### 7.7 Knowledge Engine
+### 7.8 Knowledge Engine
 
 Gestiona el acceso gobernado a conocimiento empresarial.
 
@@ -301,13 +353,23 @@ Incluye, de forma lógica:
 * eliminación;
 * evaluación de relevancia.
 
+Retrieval es una operación gobernada.
+
+Cada consulta debe llevar organization context.
+
+Se aplican políticas de lectura, clasificación, retención y segregación antes de devolver resultados.
+
+Las referencias de conocimiento deben preservar procedencia y clasificación.
+
+El Knowledge Engine puede empezar como módulo opcional o extensión sobre contratos del Core; no implica un RAG completo en Core v1.
+
 El Knowledge Engine no prescribe un vector store, embedding model, chunking strategy ni pipeline RAG concreto.
 
 El acceso al conocimiento debe respetar las mismas políticas organizativas que el acceso a una tool.
 
 ---
 
-### 7.8 AI Provider Engine
+### 7.9 AI Provider Engine
 
 Normaliza la interacción con modelos de IA y servicios de inferencia desde la perspectiva de Kern.
 
@@ -325,13 +387,15 @@ Sus responsabilidades lógicas incluyen:
 * coste;
 * trazabilidad de versión y configuración.
 
+Provider es el contrato lógico para interaccionar con modelos: inferencia, capacidades declaradas, structured outputs, tool calling, streaming, versión, uso y coste.
+
 El AI Provider Engine no promete equivalencia conductual entre modelos.
 
 Debe exponer capacidades y restricciones para que los motores superiores puedan decidir, degradar o bloquear de forma segura.
 
 ---
 
-### 7.9 Runtime Engine
+### 7.10 Runtime Engine
 
 Abstrae el entorno que ejecuta modelos o servicios de inferencia.
 
@@ -345,13 +409,21 @@ Puede representar:
 * una ejecución CPU;
 * una ejecución GPU.
 
+Runtime es el sustrato físico o de servicio que ofrece disponibilidad, salud, capacidad y límites de ejecución.
+
+En un proveedor hosted, Runtime puede ser opaco o no estar bajo control directo de Kern.
+
+Runtime no gestiona pesos, cuantización, compilación de kernels ni optimización de GPU de bajo nivel.
+
+Provider y Runtime pueden estar representados por una misma extensión, pero los contratos lógicos siguen separados.
+
 El Runtime Engine informa de disponibilidad, capacidad, salud, límites y compatibilidad.
 
 No contiene reglas de negocio ni gestión de permisos empresariales.
 
 ---
 
-### 7.10 Channel Engine
+### 7.11 Channel Engine
 
 Conecta Kern con los canales mediante los que interactúan usuarios o sistemas.
 
@@ -371,9 +443,11 @@ No decide políticas, no ejecuta tools directamente y no queda atado a un modelo
 
 ---
 
-### 7.11 Audit and Observability Engine
+### 7.12 Audit Engine
 
 Registra y expone evidencia operativa de Kern.
+
+Debe cubrir evidencia de operaciones, decisiones, integridad, acceso restringido, retención, minimización y trazabilidad.
 
 Debe permitir observar, con minimización y políticas de retención adecuadas:
 
@@ -396,47 +470,52 @@ La auditoría no debe implicar guardar indiscriminadamente contenido sensible co
 
 ---
 
-### 7.12 Extension Lifecycle Engine
+### 7.13 Observability Engine
 
-Gestiona el ciclo de vida lógico de extensiones.
+Registra telemetría operativa de Kern.
 
-Incluye:
+Debe cubrir métricas, trazas, salud, rendimiento, errores, consumo y degradaciones.
 
-* descubrimiento;
-* instalación;
-* versionado;
-* habilitación;
-* configuración;
-* permisos;
-* compatibilidad;
-* actualización;
-* deshabilitación;
-* retirada.
+Puede ser agregada, muestreada o con retención distinta de Audit.
 
-Una extensión puede implementar un provider, runtime, tool, plugin, channel, workflow template o integración.
+---
 
-La extensión debe declarar sus capacidades, permisos y compatibilidad antes de activarse.
+## Tenancy and organization invariants
+
+Toda solicitud, recurso, cache, resultado, sesión, memoria, ejecución y registro tiene organization context explícito o está declarado como recurso de plataforma.
+
+Ningún motor puede devolver datos de otra organización salvo una política explícita de compartición.
+
+Providers, runtimes y modelos compartidos no pueden reutilizar contexto, cache o memoria entre organizaciones sin aislamiento y política explícita.
+
+Knowledge access debe filtrar o particionar por organización antes de la recuperación.
+
+Las extensiones se habilitan y autorizan por organización o como recurso de plataforma con límites explícitos.
+
+No se diseña todavía jerarquía de departamentos o filiales; eso queda para una decisión futura.
 
 ---
 
 ## 8. Flujo de ejecución gobernado
 
+Una acción relevante es cualquier operación que cambie estado fuera de Kern, mueva datos fuera de un límite organizativo, acceda a datos clasificados, gaste presupuesto o capacidad significativa, cambie configuración, active una integración, o tenga efecto operativo sobre una persona o sistema. Ante duda, la operación se tratará como relevante.
+
 Una interacción típica debe seguir este recorrido lógico:
 
-```text
-1. Usuario o sistema entra por un Channel
-2. Channel identifica organización, identidad y sesión
-3. Agent Engine o Workflow Engine recibe la solicitud
-4. Registry and Capability Engine resuelve componentes compatibles
-5. Policy Engine evalúa permisos, límites y condiciones
-6. AI Provider Engine solicita inferencia mediante un Runtime compatible
-7. El agente propone una consulta o acción
-8. Tool Engine valida schema, permisos y políticas
-9. Policy Engine permite, limita, exige aprobación o deniega
-10. Tool ejecuta la operación autorizada
-11. Audit and Observability Engine registra la evidencia permitida
-12. El resultado vuelve al agente, workflow o canal
-```
+1. Channel entrega credenciales y entrada.
+2. Identity and Organization resuelve identidad, organización y tenancy.
+3. Context Assembly clasifica procedencia y confianza.
+4. Agent o Workflow recibe la solicitud.
+5. Capability Resolution usa Registry, políticas y evaluación.
+6. Policy evalúa acceso, límites y condiciones.
+7. Provider/Runtime realiza inferencia compatible.
+8. Agente o workflow propone lectura o acción.
+9. Knowledge Engine o Tool Engine valida organización, schema, permisos y políticas.
+10. Policy permite, limita, requiere aprobación, transforma o deniega.
+11. La ejecución autorizada ocurre.
+12. Audit registra evidencia según retención y minimización.
+13. Observability registra telemetría operativa.
+14. El resultado vuelve al orquestador y al canal.
 
 Ningún paso debe permitir que una salida de modelo se convierta automáticamente en una acción empresarial sin pasar por Tool Engine y Policy Engine.
 
@@ -468,6 +547,16 @@ Las fronteras de confianza deben aplicar:
 * auditoría;
 * aislamiento proporcional al riesgo.
 
+Los datos externos pueden transportar instrucciones no confiables.
+
+La procedencia y la clasificación deben propagarse al contexto.
+
+Los permisos declarados por extensiones no son autoridad.
+
+La identidad afirmada por un canal no se considera identidad validada.
+
+No existe camino alternativo de workflows, knowledge o plugins para ejecutar acciones fuera de las fronteras gobernadas.
+
 La implementación concreta de sandboxing y aislamiento se definirá en RFCs posteriores.
 
 ---
@@ -479,6 +568,14 @@ El estado de agentes, memoria, sesiones, configuraciones y registros operativos 
 Kern debe permitir que estos elementos puedan persistirse, migrarse, restaurarse o retirarse bajo políticas de la empresa.
 
 Los modelos y proveedores pueden procesar contexto autorizado, pero no deben convertirse en la fuente única de verdad del estado empresarial.
+
+El estado transferible requiere contratos versionados y migrables.
+
+Los proveedores externos nunca son la fuente única de verdad.
+
+Los cambios de esquema deben tener migración explícita.
+
+La representación concreta de estado se decidirá en un RFC posterior.
 
 ---
 
@@ -498,6 +595,31 @@ La implementación inicial debe priorizar simplicidad operativa, siempre que no 
 
 ---
 
+## Core v1 boundaries
+
+Responsabilidades candidatas a Core v1:
+
+* contratos de identidad, organización y tenancy;
+* evaluación de políticas;
+* registry y contratos de extensión;
+* mediación de tools;
+* auditoría;
+* context/provenance contracts;
+* orquestación base de agente y ejecución mediada.
+
+Módulos que pueden comenzar opcionales o fuera de Core v1:
+
+* workflows avanzados;
+* Knowledge Engine / RAG completo;
+* channels concretos;
+* providers y runtimes concretos;
+* UI de administración;
+* extensiones de cliente.
+
+Esta delimitación no es una lista de procesos ni microservicios; es una decisión de pertenencia lógica.
+
+---
+
 ## 12. Consecuencias
 
 Aceptar esta arquitectura implica:
@@ -513,14 +635,15 @@ Aceptar esta arquitectura implica:
 
 ## 13. Preguntas abiertas
 
-1. ¿Qué contratos concretos deben existir entre Agent Engine, Tool Engine y Policy Engine?
+1. ¿Qué contratos concretos deben existir entre Policy Engine, Tool Engine, Knowledge Engine y Context Assembly?
 2. ¿Cómo se modelarán formalmente las capabilities y su negociación?
-3. ¿Qué acciones deben requerir aprobación humana por defecto?
+3. ¿Qué modelo de aprobación humana y representación de decisiones debe usarse?
 4. ¿Cómo se aislarán tools y plugins según nivel de riesgo?
 5. ¿Qué modelo de permisos combinará roles, políticas y restricciones de datos?
-6. ¿Cómo se representará el estado transferible de un agente?
-7. ¿Qué interfaces públicas deben estabilizarse primero?
-8. ¿Qué motores forman el Core de la primera implementación y cuáles pueden empezar como extensiones?
+6. ¿Cómo se representará y migrará el estado transferible de un agente?
+7. ¿Qué contratos públicos iniciales deben estabilizarse y qué política de compatibilidad y deprecación seguirá Kern?
+8. ¿Qué criterios usarán los módulos para salir del monolito modular?
+9. ¿Qué modelo de jerarquía organizativa y compartición explícita entre unidades se adoptará más adelante?
 
 ---
 
@@ -536,3 +659,7 @@ Aceptar esta arquitectura implica:
 ### 0.1 — 2026-06-26
 
 Borrador inicial de la arquitectura lógica de Kern.
+
+### 0.2 — 2026-06-26
+
+Rediseño parcial tras revisión externa. Convierte el Control Plane en transversal, elimina bypasses de identidad, knowledge y workflows, define Context Assembly con procedencia, separa Registry de Capability Resolution y Audit de Observability, introduce invariantes de tenancy y fija límites de Core v1.
