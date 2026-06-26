@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Product / Foundational
 - **Dominio:** Identidad y dirección estratégica de Kern
 - **Depends on:** RFC-0000
@@ -40,7 +40,7 @@ Una empresa necesita que su IA pueda trabajar con sus documentos, correo, ERP, C
 - qué datos ha usado;
 - qué acciones ha realizado;
 - qué permisos tenía;
-- qué modelo tomó una decisión;
+- qué modelo, configuración y herramientas intervinieron en una ejecución;
 - cómo reemplazar una tecnología sin reconstruir todo;
 - cómo mantener control sobre sus procesos críticos.
 
@@ -143,6 +143,8 @@ Kern prioriza contratos explícitos y protocolos abiertos o ampliamente adoptado
 
 La independencia tecnológica tiene un coste de complejidad. Kern no intentará ocultar todas las diferencias de cada proveedor; expondrá capacidades y límites mediante contratos explícitos, evitando tanto el acoplamiento como una abstracción de mínimo común denominador que elimine valor.
 
+Los siguientes valores orientan decisiones cuando existen alternativas válidas. No sustituyen requisitos verificables de seguridad, compatibilidad o arquitectura.
+
 ### 6.3 Valor rector: La estabilidad es más valiosa que la novedad
 
 Kern adoptará tecnologías nuevas cuando aporten valor real, pero no sacrificará compatibilidad, seguridad o mantenibilidad por seguir una moda.
@@ -185,11 +187,9 @@ No basta con registrar acciones después de ejecutarlas.
 
 Kern debe permitir aplicar políticas y controles antes de ejecutar acciones o revelar datos.
 
-Toda acción relevante debe poder asociarse a una identidad, una versión de modelo, una configuración, el contexto referenciado, las tool calls, los resultados y las decisiones de política cuando aplique.
+Toda acción relevante debe poder asociarse a una identidad, una versión de modelo, una configuración, referencias o huellas del contexto utilizado, las tool calls, los resultados y las decisiones de política cuando aplique. La trazabilidad debe respetar las políticas de minimización, retención y acceso de la empresa.
 
 Kern no debe afirmar explicabilidad interna ni acceso al razonamiento privado del modelo.
-
-Los siguientes valores orientan decisiones cuando existen alternativas válidas. No sustituyen requisitos verificables de seguridad, compatibilidad o arquitectura.
 
 ### 6.7.1 Compatibilidad y evolución de contratos
 
@@ -327,3 +327,7 @@ Borrador inicial del manifiesto fundacional de Kern.
 ### 0.2 — 2026-06-26
 
 Revisión del manifiesto tras crítica de arquitectura y análisis estratégico externo. Elimina promesas absolutas de equivalencia entre modelos; define la ejecución gobernada como primera capacidad estratégica; añade principios de evolución de contratos, amenazas de IA, evaluación, degradación, economía operativa y responsabilidad humana.
+
+### 0.2.1 — 2026-06-26
+
+Aclaraciones editoriales sobre trazabilidad de ejecuciones, minimización de datos de auditoría y distinción entre valores rectores y principios verificables.
