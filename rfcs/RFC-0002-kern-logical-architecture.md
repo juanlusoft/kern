@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Architecture / Foundational
 - **Dominio:** Arquitectura lógica de plataforma
 - **Depends on:** RFC-0000, RFC-0001
@@ -173,6 +173,10 @@ No define todavía un modelo concreto de autenticación ni autorización.
 
 Evalúa si una operación puede realizarse bajo las políticas de una organización.
 
+A efectos de este RFC, una política puede cubrir autorización, restricciones de datos, límites operativos, presupuestos, frecuencia, condiciones de aprobación y transformaciones permitidas de una solicitud.
+
+Cuando varias políticas aplicables entren en conflicto, una denegación prevalece sobre una transformación o permiso hasta que un RFC posterior defina un modelo formal de composición, prioridad y resolución de conflictos.
+
 Puede:
 
 * permitir;
@@ -216,7 +220,7 @@ No debe seleccionar componentes ni tomar decisiones de routing.
 
 ---
 
-### Capability Resolution
+### 7.4 Capability Resolution
 
 Capability Resolution vive en Orchestration.
 
@@ -235,7 +239,7 @@ No promete equivalencia conductual.
 
 ---
 
-### 7.4 Context Assembly and Provenance Engine
+### 7.5 Context Assembly and Provenance Engine
 
 Construye el contexto entregado a un agente o a un provider.
 
@@ -250,7 +254,7 @@ Sus responsabilidades incluyen:
 
 ---
 
-### 7.5 Agent Engine
+### 7.6 Agent Engine
 
 Gestiona el ciclo de vida lógico de un agente:
 
@@ -274,7 +278,7 @@ El Agent Engine comparte un sustrato lógico de ejecución, estado, políticas, 
 
 ---
 
-### 7.6 Workflow Engine
+### 7.7 Workflow Engine
 
 Gestiona procesos explícitos y repetibles que pueden incluir:
 
@@ -302,9 +306,9 @@ No hay segundo camino de ejecución.
 
 ---
 
-### 7.7 Tool Engine
+### 7.8 Tool Engine
 
-Es la única frontera estándar para que agentes y workflows consulten o actúen sobre sistemas externos.
+Es la frontera estándar para que agentes y workflows soliciten acciones o integraciones operativas sobre sistemas externos.
 
 Gestiona:
 
@@ -336,7 +340,7 @@ Una tool no debe recibir acceso global a secretos, datos o sistemas si no es nec
 
 ---
 
-### 7.8 Knowledge Engine
+### 7.9 Knowledge Engine
 
 Gestiona el acceso gobernado a conocimiento empresarial.
 
@@ -369,7 +373,7 @@ El acceso al conocimiento debe respetar las mismas políticas organizativas que 
 
 ---
 
-### 7.9 AI Provider Engine
+### 7.10 AI Provider Engine
 
 Normaliza la interacción con modelos de IA y servicios de inferencia desde la perspectiva de Kern.
 
@@ -395,7 +399,7 @@ Debe exponer capacidades y restricciones para que los motores superiores puedan 
 
 ---
 
-### 7.10 Runtime Engine
+### 7.11 Runtime Engine
 
 Abstrae el entorno que ejecuta modelos o servicios de inferencia.
 
@@ -423,7 +427,7 @@ No contiene reglas de negocio ni gestión de permisos empresariales.
 
 ---
 
-### 7.11 Channel Engine
+### 7.12 Channel Engine
 
 Conecta Kern con los canales mediante los que interactúan usuarios o sistemas.
 
@@ -443,7 +447,7 @@ No decide políticas, no ejecuta tools directamente y no queda atado a un modelo
 
 ---
 
-### 7.12 Audit Engine
+### 7.13 Audit Engine
 
 Registra y expone evidencia operativa de Kern.
 
@@ -470,13 +474,37 @@ La auditoría no debe implicar guardar indiscriminadamente contenido sensible co
 
 ---
 
-### 7.13 Observability Engine
+### 7.14 Observability Engine
 
 Registra telemetría operativa de Kern.
 
 Debe cubrir métricas, trazas, salud, rendimiento, errores, consumo y degradaciones.
 
 Puede ser agregada, muestreada o con retención distinta de Audit.
+
+---
+
+### 7.15 Configuration and Extension Lifecycle Engine
+
+Gestiona la configuración gobernada y el ciclo de vida de extensiones de Kern.
+
+Incluye, de forma lógica:
+
+- configuración por plataforma y organización;
+- instalación, registro, habilitación y deshabilitación de extensiones;
+- solicitudes de permisos y capacidades declaradas;
+- evaluación de compatibilidad;
+- actualización, retirada y revocación;
+- trazabilidad de versión y ownership;
+- aplicación de límites organizativos y políticas de activación.
+
+Una extensión puede implementar un provider, runtime, tool, channel, workflow template o integración.
+
+La declaración de permisos, riesgo o capabilities por parte de una extensión es una solicitud de configuración, no una concesión de autoridad.
+
+La activación de una extensión requiere decisión de operador y políticas aplicables.
+
+Este motor no ejecuta la extensión ni sustituye las fronteras de Tool Engine, Knowledge Engine, Policy Engine o Audit Engine.
 
 ---
 
@@ -663,3 +691,7 @@ Borrador inicial de la arquitectura lógica de Kern.
 ### 0.2 — 2026-06-26
 
 Rediseño parcial tras revisión externa. Convierte el Control Plane en transversal, elimina bypasses de identidad, knowledge y workflows, define Context Assembly con procedencia, separa Registry de Capability Resolution y Audit de Observability, introduce invariantes de tenancy y fija límites de Core v1.
+
+### 0.2.1 — 2026-06-26
+
+Correcciones de consistencia tras la revisión final: numeración completa de motores, definición de configuración y ciclo de vida de extensiones, separación explícita entre acciones operativas y acceso gobernado a conocimiento, y regla provisional de conflicto de políticas.
