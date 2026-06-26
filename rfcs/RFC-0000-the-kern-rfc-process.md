@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Governance / Architecture Process
 - **Dominio:** Gobernanza técnica de Kern
 - **Decisión requerida:** Aprobación del proceso de decisiones técnicas de Kern
@@ -187,7 +187,7 @@ La propuesta fue evaluada y descartada. Se conserva para evitar reabrir el mismo
 
 ### Withdrawn
 
-El autor retiró el RFC antes de una decisión final. No debe considerarse una alternativa formalmente descartada.
+El autor retiró el RFC antes de una decisión final. Conserva su historial y no puede reabrirse sin información materialmente nueva.
 
 ---
 
@@ -314,12 +314,14 @@ Revisión de compatibilidad y seguridad
 ↓
 Decisión Technical Owner
 ↓
-Accepted / Rejected / Withdrawn / Changes requested
+Accepted / Rejected / Withdrawn
 ↓
 Implementación
 ↓
 Implemented
 ```
+
+`Changes requested` no es un estado de RFC: es una acción del Technical Owner que devuelve el documento a `Draft` para revisión del autor.
 
 Objetivo de revisión inicial: 7 días naturales.
 
@@ -531,10 +533,9 @@ Adoptar este proceso de decisiones como mecanismo obligatorio de gobierno técni
 ## 19. Preguntas abiertas
 
 1. ¿El consejo de arquitectura tendrá roles formales o solo proceso de revisión?
-2. ¿Qué nivel de cambio requiere aprobación explícita del fundador además del Technical Owner?
-3. ¿Los RFC de producto y los RFC técnicos vivirán en el mismo repositorio?
-4. ¿Cómo se vincularán RFCs Accepted con tareas, pull requests y releases?
-5. ¿Habrá RFCs privados por cliente o solo RFCs de plataforma?
+2. ¿Los RFC de producto y los RFC técnicos vivirán en el mismo repositorio?
+3. ¿Cómo se vincularán RFCs Accepted con tareas, pull requests y releases?
+4. ¿Habrá RFCs privados por cliente o solo RFCs de plataforma?
 
 ---
 
@@ -547,3 +548,7 @@ Borrador inicial.
 ### 0.2 — 2026-06-26
 
 Revisión del proceso tras análisis externo de arquitectura e investigación comparativa. Añade glosario, niveles ADR/RFC-Lite/RFC, gobierno fundacional, trazabilidad, reglas de conflicto, manejo de spikes y medidas anti-burocracia.
+
+### 0.2.1 — 2026-06-26
+
+Corrección de renderizado Markdown y aclaraciones menores sobre el flujo de revisión, `Withdrawn` y autoridad fundacional.
