@@ -1,9 +1,9 @@
 # RFC-0001 — Kern Manifesto
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Product / Foundational
 - **Dominio:** Identidad y dirección estratégica de Kern
 - **Depends on:** RFC-0000
@@ -331,3 +331,7 @@ Revisión del manifiesto tras crítica de arquitectura y análisis estratégico 
 ### 0.2.1 — 2026-06-26
 
 Aclaraciones editoriales sobre trazabilidad de ejecuciones, minimización de datos de auditoría y distinción entre valores rectores y principios verificables.
+
+### 0.2.2 — 2026-06-26
+
+RFC Accepted por el Technical Owner tras revisión independiente de arquitectura e investigación estratégica externa. El manifiesto pasa a ser la dirección fundacional de Kern para arquitectura, producto y evolución de plataforma.
