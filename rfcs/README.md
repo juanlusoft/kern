@@ -18,3 +18,4 @@ This directory contains Kern RFCs.
 | RFC | Title | State | Date | Summary |
 | --- | --- | --- | --- | --- |
 | [RFC-0000](RFC-0000-the-kern-rfc-process.md) | The Kern RFC Process | Accepted | 2026-06-26 | Defines the RFC process plus ADR, RFC-Lite, governance, review, and traceability for relevant Kern decisions. |
+| [RFC-0001](RFC-0001-kern-manifesto.md) | Kern Manifesto | Draft | 2026-06-26 | Define por qué existe Kern, qué problema resuelve y los principios que deben guiar su evolución. |
