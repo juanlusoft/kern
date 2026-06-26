@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Tipo:** Product / Foundational
 - **Dominio:** Identidad y dirección estratégica de Kern
 - **Depends on:** RFC-0000
@@ -67,6 +67,16 @@ Proporciona una capa estable para conectar y gobernar:
 
 Kern permite que una empresa use la inteligencia adecuada para cada tarea sin convertir una marca, un modelo, una GPU o un proveedor en una dependencia estructural del negocio.
 
+## 3.1 La primera batalla de Kern
+
+Kern no se diferencia por ofrecer otro chat ni por ocultar modelos detrás de una API.
+
+La primera capacidad estratégica de Kern es la ejecución gobernada de acciones de IA sobre sistemas empresariales privados.
+
+Un agente puede consultar o actuar sobre ERP, CRM, correo, documentos, calendarios u otros sistemas internos únicamente mediante herramientas sometidas a identidad, permisos, políticas, límites, auditoría y mecanismos de reversibilidad proporcionados por la plataforma.
+
+El valor de Kern no es que un modelo pueda sugerir una acción. El valor es que una empresa pueda permitir, limitar, revisar y evolucionar esa acción sin depender del modelo, runtime o proveedor que la haya originado.
+
 ---
 
 ## 4. Qué no es Kern
@@ -80,6 +90,8 @@ Kern no es:
 - un conjunto desordenado de automatizaciones para un único cliente;
 - una plataforma que obligue a las empresas a entregar sus datos a terceros;
 - un producto construido alrededor de una GPU, un formato de modelo o un runtime temporal;
+- una capa de compilación, cuantización u optimización de silicio;
+- un sistema de entrenamiento, preentrenamiento, post-entrenamiento o fine-tuning de modelos fundacionales;
 - una promesa de autonomía sin controles, permisos ni auditoría.
 
 Kern puede ofrecer interfaces conversacionales, agentes, workflows o conectores, pero ninguno de ellos define por sí solo qué es Kern.
@@ -92,14 +104,22 @@ Kern promete a cada empresa que su inteligencia operativa podrá evolucionar sin
 
 Eso significa que una empresa debe poder:
 
-- cambiar de modelo sin rehacer sus integraciones;
-- cambiar de runtime sin rehacer sus agentes;
-- cambiar de hardware sin rehacer su plataforma;
+- cambiar de modelo manteniendo la continuidad de los contratos e integraciones compatibles;
+- aislar las diferencias sintácticas y operativas entre proveedores;
+- ver con claridad qué capacidades ofrece o no ofrece cada componente;
+- evaluar antes de migrar;
+- aplicar degradación controlada o bloqueo seguro cuando falten capacidades;
 - añadir herramientas sin modificar el Core;
 - adaptar reglas y procesos sin contaminar el producto base;
 - mantener sus datos y políticas bajo su control;
 - auditar las acciones relevantes realizadas por la IA;
 - empezar localmente y crecer sin quedar bloqueada por la arquitectura inicial.
+
+Kern no promete que dos modelos o runtimes produzcan el mismo comportamiento. Cambiar un componente puede requerir reevaluar calidad, prompts, límites y flujos. Kern debe hacer visibles esas diferencias y preservar, cuando sea posible, los contratos e integraciones compatibles.
+
+La primera etapa puede ejecutarse sobre hardware local limitado. Esa limitación no debe convertirse en una decisión arquitectónica permanente.
+
+Kern abstrae la plataforma mediante runtimes y contratos, pero no garantiza que cualquier capacidad esté disponible en cualquier entorno físico.
 
 ---
 
@@ -107,9 +127,11 @@ Eso significa que una empresa debe poder:
 
 ### 6.1 La empresa conserva el control
 
-Los datos, permisos, políticas, integraciones y decisiones operativas pertenecen a la empresa que usa Kern.
+Los datos, permisos, políticas, integraciones, estado de los agentes, memoria de corto y largo plazo, historial operativo, configuraciones relevantes de comportamiento y decisiones operativas pertenecen a la empresa que usa Kern.
 
-Kern debe poder funcionar en infraestructura propia, privada o bajo control explícito del cliente.
+Kern debe poder funcionar en infraestructura propia, privada o bajo control explícito del cliente, según la topología de despliegue que la empresa decida.
+
+Kern no promete privacidad absoluta; promete control, topología de despliegue y políticas bajo decisión de la empresa.
 
 ### 6.2 Ninguna tecnología concreta define el producto
 
@@ -117,7 +139,11 @@ Kern no debe depender estructuralmente de un modelo, proveedor, runtime, hardwar
 
 Las tecnologías externas entran mediante contratos explícitos y reemplazables.
 
-### 6.3 La estabilidad es más valiosa que la novedad
+Kern prioriza contratos explícitos y protocolos abiertos o ampliamente adoptados cuando aporten interoperabilidad real.
+
+La independencia tecnológica tiene un coste de complejidad. Kern no intentará ocultar todas las diferencias de cada proveedor; expondrá capacidades y límites mediante contratos explícitos, evitando tanto el acoplamiento como una abstracción de mínimo común denominador que elimine valor.
+
+### 6.3 Valor rector: La estabilidad es más valiosa que la novedad
 
 Kern adoptará tecnologías nuevas cuando aporten valor real, pero no sacrificará compatibilidad, seguridad o mantenibilidad por seguir una moda.
 
@@ -129,31 +155,73 @@ Kern debe razonar sobre necesidades funcionales —por ejemplo, razonamiento, vi
 
 El Core contiene únicamente responsabilidades comunes, duraderas y necesarias para toda instalación.
 
+Una capacidad solo puede entrar en el Core cuando cumpla simultáneamente:
+
+1. Es transversal a organizaciones, distribuciones e instalaciones.
+2. Es necesaria para gobernar, asegurar o interoperar la plataforma.
+3. No puede resolverse razonablemente como plugin, tool, provider, runtime o extensión.
+4. Su ausencia obligaría a la mayoría de instalaciones a reinventar el mismo mecanismo.
+5. Tiene un contrato estable que justifica soporte y evolución a largo plazo.
+
+Este test guía decisiones, pero no sustituye futuros RFCs de arquitectura.
+
 Las integraciones, reglas de negocio, personalizaciones de cliente y extensiones deben vivir fuera del Core siempre que sea posible.
 
 ### 6.6 Extensibilidad con límites
 
-Kern debe ser extensible mediante plugins, herramientas, proveedores, runtimes y canales.
+Herramientas, plugins y contenido externo son no confiables por defecto.
 
-Esa extensibilidad no puede comprometer seguridad, permisos, aislamiento, auditoría ni compatibilidad.
+Correo, documentos, páginas web y datos conectados pueden contener instrucciones maliciosas o indirectas.
+
+Las extensiones deben operar con permisos mínimos, fronteras explícitas y aislamiento proporcional al riesgo.
+
+Ninguna extensión puede ampliar sus propios privilegios ni comprometer datos de otra organización.
+
+El mecanismo técnico concreto de aislamiento se definirá en RFCs posteriores.
 
 ### 6.7 La IA debe ser gobernable
 
-Toda acción relevante debe poder asociarse a una identidad, una política, un permiso, una herramienta y un registro auditable.
+No basta con registrar acciones después de ejecutarlas.
 
-La inteligencia sin control no es infraestructura empresarial.
+Kern debe permitir aplicar políticas y controles antes de ejecutar acciones o revelar datos.
+
+Toda acción relevante debe poder asociarse a una identidad, una versión de modelo, una configuración, el contexto referenciado, las tool calls, los resultados y las decisiones de política cuando aplique.
+
+Kern no debe afirmar explicabilidad interna ni acceso al razonamiento privado del modelo.
+
+Los siguientes valores orientan decisiones cuando existen alternativas válidas. No sustituyen requisitos verificables de seguridad, compatibilidad o arquitectura.
+
+### 6.7.1 Compatibilidad y evolución de contratos
+
+Las interfaces públicas de Kern deben versionarse, deprecarse y migrarse de forma explícita. La estabilidad no significa inmovilidad: significa que los cambios tienen ruta de transición, periodo de soporte y consecuencias documentadas.
+
+### 6.7.2 Evaluación antes de sustituir inteligencia
+
+Cambiar un modelo, runtime o proveedor debe poder evaluarse frente a tareas, políticas y flujos relevantes antes de convertirse en configuración de producción. Kern debe permitir detectar regresiones de capacidad, calidad, coste o seguridad.
+
+### 6.7.3 Degradación y disponibilidad
+
+Cuando una capacidad requerida no esté disponible, un proveedor falle o un componente sea retirado, Kern debe degradar de forma explícita, aplicar fallback cuando exista o bloquear la ejecución de forma segura. Nunca debe asumir equivalencia silenciosa entre capacidades distintas.
+
+### 6.7.4 Economía operativa
+
+La IA empresarial debe ser operable dentro de límites de coste y capacidad. Kern debe poder aplicar presupuestos, cuotas, límites y observabilidad de consumo por organización, agente, workflow o integración.
+
+### 6.7.5 Responsabilidad humana
+
+Las acciones de alto impacto deben poder requerir confirmación, aprobación o supervisión humana según políticas de la empresa. Kern no sustituye la responsabilidad operativa de la organización.
 
 ### 6.8 La automatización debe ser reversible
 
 Las acciones críticas deben diseñarse con confirmación, límites, observabilidad y rollback cuando sea razonable.
 
-### 6.9 La simplicidad precede a la plataforma
+### 6.9 Valor rector: La simplicidad precede a la plataforma
 
 Kern no debe anticipar todas las necesidades futuras mediante abstracciones vacías.
 
 Una extensión solo debe convertirse en contrato de plataforma cuando exista una necesidad real, repetible y verificable.
 
-### 6.10 Kern debe sobrevivir a sus primeras decisiones
+### 6.10 Valor rector: Kern debe sobrevivir a sus primeras decisiones
 
 Toda decisión importante debe evaluarse considerando si permite reemplazar componentes, migrar clientes y mantener compatibilidad dentro de varios años.
 
@@ -181,7 +249,7 @@ Construye plugins, herramientas, proveedores, runtimes, canales o soluciones esp
 
 Kern debe poder empezar en una instalación local pequeña y evolucionar hacia despliegues más potentes sin cambiar su identidad.
 
-La primera etapa puede ejecutarse sobre hardware local limitado. Esa limitación no debe convertirse en una decisión arquitectónica permanente.
+La topología de despliegue es una decisión explícita de capacidad, coste, privacidad y disponibilidad; no debe esconderse detrás de una promesa genérica de “local” o “enterprise”.
 
 El objetivo no es que Kern sea compatible con todo desde el primer día.
 
@@ -205,7 +273,11 @@ Este RFC no decide:
 - el diseño de memoria;
 - el sistema RAG;
 - el producto comercial, precios o licencias;
-- el orden de implementación.
+- el orden de implementación;
+- el entrenamiento, preentrenamiento, post-entrenamiento o fine-tuning de modelos fundacionales;
+- la optimización de bajo nivel de GPU, compilación de kernels o cuantización de modelos;
+- prometer equivalencia conductual entre modelos distintos;
+- reemplazar los controles y responsabilidades humanas de una empresa.
 
 Estas decisiones se tratarán en RFCs posteriores.
 
@@ -215,12 +287,13 @@ Estas decisiones se tratarán en RFCs posteriores.
 
 Aceptar este manifiesto implica que cualquier propuesta futura debe responder, como mínimo:
 
-1. ¿Refuerza o debilita la independencia tecnológica de Kern?
-2. ¿Pertenece al Core o puede resolverse como extensión?
-3. ¿Preserva el control de datos, permisos y operación de la empresa?
-4. ¿Introduce una dependencia difícil de reemplazar?
-5. ¿Hace a Kern más gobernable, auditable y mantenible?
-6. ¿Sigue siendo válida si cambia el modelo, runtime o hardware subyacente?
+1. ¿Refuerza o debilita la independencia tecnológica sin ocultar diferencias reales de capacidad?
+2. ¿Pertenece al Core según el test de entrada o debe ser una extensión?
+3. ¿Preserva el control de datos, memoria, permisos y operación?
+4. ¿Introduce dependencia difícil de reemplazar, deuda de compatibilidad o coste operativo no controlado?
+5. ¿Se puede evaluar antes de migrar a producción?
+6. ¿Qué ocurre si falta una capacidad, cae un proveedor o una extensión resulta no confiable?
+7. ¿Permite auditoría y aplicación preventiva de políticas cuando sea necesario?
 
 Una propuesta que contradiga estos principios requiere un RFC explícito que justifique la excepción.
 
@@ -228,24 +301,14 @@ Una propuesta que contradiga estos principios requiere un RFC explícito que jus
 
 ## 11. Métrica de éxito
 
-Este manifiesto habrá tenido éxito si, dentro de varios años, Kern puede adoptar una nueva generación de modelos o infraestructura sin obligar a sus clientes a rehacer:
-
-- sus datos;
-- sus herramientas;
-- sus permisos;
-- sus integraciones;
-- sus workflows;
-- sus agentes;
-- sus procesos operativos.
+Este manifiesto habrá tenido éxito si, dentro de varios años, Kern puede adoptar nuevos componentes sin reconstruir toda la plataforma, conservando datos, contratos, integraciones y control operacional cuando sean compatibles, y pudiendo identificar claramente qué debe reevaluarse o migrarse cuando no lo sean.
 
 ---
 
 ## 12. Preguntas abiertas
 
-1. ¿Qué parte de esta promesa debe ser obligatoria en todas las distribuciones de Kern?
-2. ¿Cómo se diferenciarán formalmente Kern Core, Kern Enterprise y futuras distribuciones?
-3. ¿Qué garantías de despliegue local y privacidad se podrán afirmar comercialmente en cada fase?
-4. ¿Qué nivel de compatibilidad se prometerá a desarrolladores de plugins y herramientas?
+1. ¿Qué suite mínima de evaluación se usará para validar cambios de modelo, runtime o proveedor?
+2. ¿Qué mecanismos deberán existir para registrar, migrar y restaurar el estado de agentes y memoria entre topologías de despliegue?
 
 ---
 
@@ -260,3 +323,7 @@ Este manifiesto habrá tenido éxito si, dentro de varios años, Kern puede adop
 ### 0.1 — 2026-06-26
 
 Borrador inicial del manifiesto fundacional de Kern.
+
+### 0.2 — 2026-06-26
+
+Revisión del manifiesto tras crítica de arquitectura y análisis estratégico externo. Elimina promesas absolutas de equivalencia entre modelos; define la ejecución gobernada como primera capacidad estratégica; añade principios de evolución de contratos, amenazas de IA, evaluación, degradación, economía operativa y responsabilidad humana.
