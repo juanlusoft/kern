@@ -1,0 +1,20 @@
+# RFCs
+
+This directory contains Kern RFCs.
+
+## States
+
+- Draft: proposed and still being written.
+- Review: ready for structured review.
+- Accepted: approved as architecture direction.
+- Implemented: reflected in the repository or product.
+- Superseded: replaced by a newer RFC.
+- Deprecated: no longer recommended, but retained for history.
+- Rejected: reviewed and not accepted.
+- Withdrawn: removed from consideration by its author.
+
+## Index
+
+| RFC | Title | State |
+| --- | --- | --- |
+| [RFC-0000](RFC-0000-the-kern-rfc-process.md) | The Kern RFC Process | Draft |
