@@ -3,9 +3,10 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Tipo:** Governance / Architecture Process
-- **Decisión requerida:** Aprobación del proceso de RFC de Kern
+- **Dominio:** Gobernanza técnica de Kern
+- **Decisión requerida:** Aprobación del proceso de decisiones técnicas de Kern
 
 ---
 
@@ -13,9 +14,9 @@
 
 Kern se construirá como una plataforma de infraestructura para IA privada empresarial, diseñada para sobrevivir a cambios de modelos, hardware, runtimes, proveedores y protocolos.
 
-Para evitar decisiones improvisadas, dependencias accidentales y deuda arquitectónica, toda decisión relevante se documentará mediante un RFC: _Request for Comments_.
+Para evitar decisiones improvisadas, dependencias accidentales y deuda arquitectónica, las decisiones relevantes se documentarán en el nivel proporcional a su riesgo: ADR, RFC-Lite o RFC.
 
-Un RFC no es documentación decorativa. Es el registro oficial de:
+Un documento de decisión no es decoración. Es el registro oficial de:
 
 - qué problema existía;
 - qué alternativas se evaluaron;
@@ -24,7 +25,7 @@ Un RFC no es documentación decorativa. Es el registro oficial de:
 - qué consecuencias tiene;
 - cómo puede evolucionar o sustituirse en el futuro.
 
-Este documento define el ciclo de vida, estructura, numeración, revisión y gobierno de los RFC de Kern.
+Este documento define el proceso oficial de RFC de Kern, el uso de ADR y RFC-Lite, el gobierno fundacional, la revisión y la trazabilidad con implementación.
 
 ---
 
@@ -41,7 +42,7 @@ Los modelos de IA, aceleradores, runtimes, protocolos y proveedores evolucionar�
 - permitir cambios que rompan extensibilidad o compatibilidad;
 - hacer imposible que un nuevo desarrollador entienda el sistema.
 
-El proceso RFC existe para que Kern pueda evolucionar durante años sin depender de la memoria de una persona, una conversación o un modelo de IA.
+El proceso de decisiones existe para que Kern pueda evolucionar durante años sin depender de la memoria de una persona, una conversación o un modelo de IA.
 
 ---
 
@@ -72,15 +73,46 @@ No regula:
 - correcciones de bugs sin cambio de comportamiento público;
 - refactors internos sin impacto de contrato;
 - decisiones de estilo locales ya cubiertas por convenciones de código;
-- experimentos aislados que no lleguen al producto.
+- spikes aislados que no prometen compatibilidad ni llegan a producción.
 
 ---
 
-## 4. Principio rector
+## Glosario normativo
 
-> Ninguna decisión relevante debe depender únicamente de una conversación, una persona, un modelo de IA o una implementación concreta.
+- **Core:** responsabilidades de plataforma declaradas como tales por RFCs Accepted. RFC-0000 no define todavía qué componentes lo forman; esa definición llegará en RFC-0002.
+- **Interfaz pública:** contrato consumible por un plugin, SDK, proveedor, runtime, canal, instalación de cliente o servicio externo. Incluye APIs, eventos, schemas, CLI, archivos de configuración documentados y contratos de extensión.
+- **Módulo:** unidad lógica con responsabilidad propia y frontera explícita, aunque todavía no corresponda a un paquete de código.
+- **Cambio reversible:** cambio que puede retirarse sin migración de datos, ruptura de contrato ni impacto permanente en clientes.
+- **Cambio difícil de revertir:** cambio que afecta contratos públicos, datos persistidos, seguridad, compatibilidad, SDKs o despliegues de clientes.
+- **Spike:** prototipo temporal y desechable utilizado para aprender o validar una hipótesis. No puede convertirse en producción ni definir un contrato público sin el documento de decisión correspondiente.
+- **Technical Owner:** persona con autoridad final de aceptación técnica y de producto. Durante la fase fundacional de Kern, este rol corresponde a Juan Luis, salvo delegación explícita por escrito.
+- **Independent review:** revisión realizada por una persona o agente distinto del autor principal del documento.
 
-Toda decisión que afecte a la arquitectura futura debe poder entenderse leyendo el RFC correspondiente.
+---
+
+## 4. Niveles de decisión
+
+Toda decisión relevante debe documentarse en el nivel proporcional a su riesgo: ADR, RFC-Lite o RFC.
+
+### ADR — Architecture Decision Record
+
+Para decisiones locales, reversibles o de bajo impacto.
+
+- Se guarda en `decisions/`.
+- Debe incluir: contexto, decisión, consecuencias y fecha.
+- No requiere revisión externa obligatoria.
+
+### RFC-Lite
+
+Para integraciones, adaptadores, plugins, conectores, cambios entre módulos o decisiones de alcance medio.
+
+- No puede cambiar contratos centrales, seguridad global, modelo de permisos, persistencia fundamental ni compatibilidad pública sin escalar a RFC completo.
+- Debe incluir: problema, propuesta, alternativas, impacto, compatibilidad, validación y responsable.
+- Puede vivir temporalmente en `rfcs/` con tipo `RFC-Lite`.
+
+### RFC
+
+Obligatorio para decisiones de arquitectura, interfaces públicas, SDKs, seguridad, permisos, persistencia, compatibilidad, capacidades, proveedores, runtimes, plugins base y cambios costosos de revertir.
 
 ---
 
@@ -172,6 +204,20 @@ RFC-0002
 
 La numeración nunca se reutiliza.
 
+El número RFC se reserva al abrir el PR de propuesta y se registra en `rfcs/README.md`.
+
+Si dos ramas intentan usar el mismo número, el PR que se fusione después renumera su RFC antes de merge.
+
+Un RFC Accepted solo puede recibir correcciones editoriales que no cambien significado técnico, normativo ni de compatibilidad.
+
+Toda edición posterior debe quedar registrada en `Historial de cambios`.
+
+Si el significado cambia, se crea un nuevo RFC que amplía, sustituye o depreca el anterior.
+
+Un cambio ambiguo se considera sustancial por defecto.
+
+La numeración nunca se reutiliza aunque un RFC sea Rejected o Withdrawn.
+
 Formato de archivo:
 
 ```text
@@ -183,7 +229,6 @@ rfcs/RFC-0002-kern-architecture.md
 Reglas:
 
 * El número identifica la decisión, no su versión.
-* Un RFC Accepted no se reescribe silenciosamente.
 * Cambios sustanciales requieren un RFC nuevo que lo amplíe, sustituya o depreque.
 * Correcciones editoriales menores pueden hacerse manteniendo historial de cambios.
 
@@ -191,7 +236,9 @@ Reglas:
 
 ## 8. Estructura obligatoria
 
-Todo RFC debe incluir, como mínimo, las siguientes secciones:
+Un RFC no debe rellenar secciones que no aplican. Debe indicar “No aplica” solo cuando sea necesario para evitar ambigüedad.
+
+Campos mínimos obligatorios para un RFC completo:
 
 ```text
 Título
@@ -200,37 +247,34 @@ Autor
 Fecha
 Versión
 Tipo
+Dominio
 Resumen ejecutivo
-Motivación
-Problema
-Objetivos
-No objetivos
+Problema y motivación
+Objetivos y no objetivos
 Diseño propuesto
-Contratos e interfaces afectados
 Alternativas consideradas
-Consecuencias
+Consecuencias y riesgos
 Compatibilidad
-Seguridad y privacidad
-Observabilidad y operación
-Migración
-Plan de pruebas y validación
+Seguridad y privacidad, si aplica
+Migración y rollback, si aplica
+Validación
 Preguntas abiertas
 Referencias
 Historial de cambios
 ```
 
-Secciones opcionales cuando aplique:
+Secciones condicionales:
 
 ```text
+Contratos e interfaces afectados
 Modelo de datos
+Observabilidad y operación
 Rendimiento y costes
 Impacto en SDK
 Impacto en plugins
 Impacto en clientes existentes
-Rollout
-Plan de rollback
-Riesgos conocidos
-Decisiones diferidas
+Plan de rollout
+Trigger de revisión
 ```
 
 ---
@@ -249,6 +293,8 @@ Un RFC no puede entrar en Review si:
 * depende de una tecnología concreta sin justificar por qué es inevitable;
 * propone código antes de definir el contrato.
 
+Los spikes están permitidos antes o durante un RFC, pero deben marcarse como experimentales y no deben crear compatibilidad prometida.
+
 ---
 
 ## 10. Proceso de revisión
@@ -266,14 +312,20 @@ Investigación externa, si aplica
 ↓
 Revisión de compatibilidad y seguridad
 ↓
-Decisión CTO
+Decisión Technical Owner
 ↓
-Accepted / Rejected / Withdrawn
+Accepted / Rejected / Withdrawn / Changes requested
 ↓
 Implementación
 ↓
 Implemented
 ```
+
+Objetivo de revisión inicial: 7 días naturales.
+
+Si un RFC lleva 14 días naturales sin decisión, el Technical Owner debe elegir entre: pedir cambios, aceptar, rechazar, retirar o dejarlo explícitamente en espera con motivo.
+
+No se bloquean hotfixes de seguridad o incidentes operativos: se permite un ADR posterior documentado dentro de los 3 días siguientes.
 
 Cada RFC relevante será revisado desde cuatro perspectivas:
 
@@ -295,9 +347,21 @@ Evalúa impacto comercial, soporte, despliegue, observabilidad, costes y migraci
 
 ---
 
-## 11. Autoridad de decisión
+## 11. Autoridad y gobierno
 
-La autoridad final para aceptar o rechazar un RFC corresponde al CTO de Kern.
+El autor puede proponer un RFC, pero no puede ser el único aprobador.
+
+Un RFC completo necesita al menos una independent review antes de poder pasar a Accepted.
+
+El Technical Owner tiene la decisión final de aceptar, rechazar, retirar o solicitar cambios.
+
+Durante la fase fundacional, Juan Luis es el Technical Owner.
+
+El Architecture Lead propone, integra revisiones y recomienda decisiones, pero no sustituye la aprobación del Technical Owner.
+
+En caso de ausencia o bloqueo del Technical Owner, el RFC permanece en Review o se rechaza/retira; no se acepta automáticamente.
+
+La futura creación de un Architecture Council requerirá un RFC posterior.
 
 La aceptación no significa que la implementación sea inmediata. Significa que la dirección arquitectónica ha sido aprobada.
 
@@ -324,6 +388,14 @@ Supersedes: RFC-0005
 Depends on: RFC-0004
 Related: RFC-0012
 ```
+
+Si dos RFC Accepted entran en conflicto, prevalece el RFC más reciente solo cuando declare explícitamente `Supersedes`.
+
+Si no hay sustitución explícita, el conflicto requiere un ADR o RFC de resolución aprobado por el Technical Owner.
+
+Un RFC Withdrawn conserva su historial. No puede reabrirse sin información materialmente nueva.
+
+RFC-0000 solo puede modificarse mediante un RFC posterior de tipo `Governance`, con revisión independiente y aceptación explícita del Technical Owner.
 
 ---
 
@@ -372,6 +444,12 @@ Todo RFC de arquitectura debe respetar estas reglas:
 
 La fuente de verdad de los RFC será el repositorio de Kern.
 
+Los RFC de plataforma comunes viven en el repositorio principal de Kern.
+
+Las decisiones específicas de un cliente que contengan datos, reglas o integraciones confidenciales deben vivir en un repositorio privado de entrega o cliente.
+
+Un RFC de plataforma puede referenciar una decisión privada mediante identificador, sin copiar información confidencial.
+
 Estructura inicial:
 
 ```text
@@ -392,6 +470,16 @@ El archivo `rfcs/README.md` contendrá un índice con:
 * RFCs relacionados;
 * resumen de una línea.
 
+Todo PR que implemente un RFC Accepted debe incluir en su descripción:
+
+```text
+Implements: RFC-XXXX
+```
+
+Todo RFC Accepted que tenga implementación debe enlazar, cuando exista, su issue, PR principal, release o migración.
+
+No hace falta crear todavía automatización CI para esto; la regla se aplicará manualmente hasta que un RFC posterior introduzca tooling.
+
 No se considerará oficial una decisión que exista únicamente en:
 
 * un chat;
@@ -403,7 +491,23 @@ No se considerará oficial una decisión que exista únicamente en:
 
 ---
 
-## 16. Métrica de éxito
+## 16. Trigger de revisión
+
+Los RFC que dependan de estándares externos, modelos, proveedores, runtimes, hardware o protocolos deben definir cuándo volver a revisarse.
+
+Ejemplos:
+
+* cambio incompatible de un protocolo;
+* retirada de un proveedor;
+* nueva versión mayor del Runtime SDK;
+* hallazgo de seguridad;
+* cambio de soporte de hardware.
+
+No se introduce caducidad automática para todos los RFC.
+
+---
+
+## 17. Métrica de éxito
 
 El proceso funciona si, dentro de varios años, un desarrollador puede responder leyendo RFCs:
 
@@ -418,24 +522,28 @@ El proceso funciona si, dentro de varios años, un desarrollador puede responder
 
 ---
 
-## 17. Decisión propuesta
+## 18. Decisión propuesta
 
-Adoptar este proceso RFC como mecanismo obligatorio de gobierno técnico para Kern a partir de RFC-0000.
+Adoptar este proceso de decisiones como mecanismo obligatorio de gobierno técnico para Kern a partir de RFC-0000.
 
 ---
 
-## 18. Preguntas abiertas
+## 19. Preguntas abiertas
 
 1. ¿El consejo de arquitectura tendrá roles formales o solo proceso de revisión?
-2. ¿Qué nivel de cambio requiere aprobación explícita del fundador además del CTO?
+2. ¿Qué nivel de cambio requiere aprobación explícita del fundador además del Technical Owner?
 3. ¿Los RFC de producto y los RFC técnicos vivirán en el mismo repositorio?
 4. ¿Cómo se vincularán RFCs Accepted con tareas, pull requests y releases?
 5. ¿Habrá RFCs privados por cliente o solo RFCs de plataforma?
 
 ---
 
-## 19. Historial de cambios
+## 20. Historial de cambios
 
 ### 0.1 — 2026-06-26
 
 Borrador inicial.
+
+### 0.2 — 2026-06-26
+
+Revisión del proceso tras análisis externo de arquitectura e investigación comparativa. Añade glosario, niveles ADR/RFC-Lite/RFC, gobierno fundacional, trazabilidad, reglas de conflicto, manejo de spikes y medidas anti-burocracia.
