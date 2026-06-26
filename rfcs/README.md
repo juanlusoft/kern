@@ -17,4 +17,4 @@ This directory contains Kern RFCs.
 
 | RFC | Title | State | Date | Summary |
 | --- | --- | --- | --- | --- |
-| [RFC-0000](RFC-0000-the-kern-rfc-process.md) | The Kern RFC Process | Draft | 2026-06-26 | Defines the RFC process plus ADR, RFC-Lite, governance, review, and traceability for relevant Kern decisions. |
+| [RFC-0000](RFC-0000-the-kern-rfc-process.md) | The Kern RFC Process | Accepted | 2026-06-26 | Defines the RFC process plus ADR, RFC-Lite, governance, review, and traceability for relevant Kern decisions. |

@@ -1,9 +1,9 @@
 # RFC-0000 — The Kern RFC Process
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Governance / Architecture Process
 - **Dominio:** Gobernanza técnica de Kern
 - **Decisión requerida:** Aprobación del proceso de decisiones técnicas de Kern
@@ -552,3 +552,7 @@ Revisión del proceso tras análisis externo de arquitectura e investigación co
 ### 0.2.1 — 2026-06-26
 
 Corrección de renderizado Markdown y aclaraciones menores sobre el flujo de revisión, `Withdrawn` y autoridad fundacional.
+
+### 0.2.2 — 2026-06-26
+
+RFC Accepted por el Technical Owner tras revisión independiente de arquitectura e investigación externa. El proceso de ADR, RFC-Lite y RFC pasa a ser obligatorio para las decisiones relevantes de Kern.
