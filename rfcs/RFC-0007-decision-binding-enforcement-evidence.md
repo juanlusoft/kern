@@ -1,7 +1,7 @@
 # RFC-0007 — Decision Binding, Enforcement Evidence and Runtime Verification
 
 - **Estado:** Draft
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Fecha:** 2026-06-27
 
 ## 1. Resumen ejecutivo
