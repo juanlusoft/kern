@@ -1,21 +1,21 @@
-# RFC-0003 — Governed Execution Contract
+﻿# RFC-0003 â€” Governed Execution Contract
 
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Architecture / Security / Foundational
-- **Dominio:** Ejecución gobernada y contratos de control
+- **Dominio:** EjecuciÃ³n gobernada y contratos de control
 - **Depends on:** RFC-0000, RFC-0001, RFC-0002
-- **Decisión requerida:** Aprobación del contrato lógico mínimo para lecturas gobernadas y acciones operativas en Kern
+- **DecisiÃ³n requerida:** AprobaciÃ³n del contrato lÃ³gico mÃ­nimo para lecturas gobernadas y acciones operativas en Kern
 
 ---
 
 ## 1. Resumen ejecutivo
 
-Kern necesita un contrato común que impida que una salida de modelo, workflow, canal, plugin o contenido externo se convierta directamente en acceso a datos o acción empresarial.
+Kern necesita un contrato comÃºn que impida que una salida de modelo, workflow, canal, plugin o contenido externo se convierta directamente en acceso a datos o acciÃ³n empresarial.
 
-Este RFC define el contrato lógico mínimo para solicitar, evaluar, autorizar, ejecutar y auditar:
+Este RFC define el contrato lÃ³gico mÃ­nimo para solicitar, evaluar, autorizar, ejecutar y auditar:
 
 - acciones operativas sobre sistemas externos;
 - lecturas gobernadas de conocimiento empresarial;
@@ -23,26 +23,26 @@ Este RFC define el contrato lógico mínimo para solicitar, evaluar, autorizar, 
 - restricciones de datos, alcance, coste y frecuencia;
 - operaciones derivadas de contenido no confiable.
 
-El objetivo no es decidir la implementación técnica de Policy Engine, Tool Engine o Knowledge Engine.
+El objetivo no es decidir la implementaciÃ³n tÃ©cnica de Policy Engine, Tool Engine o Knowledge Engine.
 
 El objetivo es asegurar que todos comparten una misma frontera gobernada.
 
-El contrato no solo describe el camino correcto. Debe exigir que una decisión de política verificable quede ligada a la solicitud final, a las identidades aplicables, a la organización, al alcance y al efecto autorizado antes de que una tool pueda ejecutar una operación. El mecanismo técnico concreto de ese binding se decidirá después, pero el requisito lógico es normativo.
+El contrato no solo describe el camino correcto. Debe exigir que una decisiÃ³n de polÃ­tica verificable quede ligada a la solicitud final, a las identidades aplicables, a la organizaciÃ³n, al alcance y al efecto autorizado antes de que una tool pueda ejecutar una operaciÃ³n. El mecanismo tÃ©cnico concreto de ese binding se decidirÃ¡ despuÃ©s, pero el requisito lÃ³gico es normativo.
 
 ---
 
 ## 2. Problema
 
-Sin un contrato explícito, cada integración puede inventar su propio camino:
+Sin un contrato explÃ­cito, cada integraciÃ³n puede inventar su propio camino:
 
 - un agente llama directamente a una API;
-- un workflow ejecuta una acción sin pasar por política;
-- una lectura de conocimiento evita controles de organización;
-- un plugin interpreta una instrucción externa como autorización;
-- una aprobación humana no queda asociada a la operación concreta;
-- una acción queda auditada sin saber quién la solicitó, qué la originó o qué política la permitió.
+- un workflow ejecuta una acciÃ³n sin pasar por polÃ­tica;
+- una lectura de conocimiento evita controles de organizaciÃ³n;
+- un plugin interpreta una instrucciÃ³n externa como autorizaciÃ³n;
+- una aprobaciÃ³n humana no queda asociada a la operaciÃ³n concreta;
+- una acciÃ³n queda auditada sin saber quiÃ©n la solicitÃ³, quÃ© la originÃ³ o quÃ© polÃ­tica la permitiÃ³.
 
-Esto rompe la promesa central de Kern: permitir inteligencia empresarial útil sin perder control operativo.
+Esto rompe la promesa central de Kern: permitir inteligencia empresarial Ãºtil sin perder control operativo.
 
 ---
 
@@ -50,14 +50,14 @@ Esto rompe la promesa central de Kern: permitir inteligencia empresarial útil s
 
 Este contrato debe:
 
-1. Exigir identidad, organización y tenancy antes de cualquier lectura o acción.
-2. Distinguir entre una solicitud, una decisión de política, una aprobación y una ejecución.
+1. Exigir identidad, organizaciÃ³n y tenancy antes de cualquier lectura o acciÃ³n.
+2. Distinguir entre una solicitud, una decisiÃ³n de polÃ­tica, una aprobaciÃ³n y una ejecuciÃ³n.
 3. Tratar la procedencia y confianza del contenido como contexto de seguridad.
-4. Permitir que Policy Engine permita, deniegue, limite, transforme o requiera aprobación.
+4. Permitir que Policy Engine permita, deniegue, limite, transforme o requiera aprobaciÃ³n.
 5. Aplicar controles tanto a lecturas de conocimiento como a acciones operativas.
 6. Asegurar que workflows, agentes, plugins y canales usan la misma frontera gobernada.
-7. Permitir auditoría suficiente sin guardar indiscriminadamente contenido sensible.
-8. Mantener contratos tecnológicos neutrales y extensibles.
+7. Permitir auditorÃ­a suficiente sin guardar indiscriminadamente contenido sensible.
+8. Mantener contratos tecnolÃ³gicos neutrales y extensibles.
 
 ---
 
@@ -66,19 +66,19 @@ Este contrato debe:
 Este RFC no decide:
 
 - modelo formal de roles, permisos o atributos;
-- sintaxis de políticas;
-- sistema de autenticación;
+- sintaxis de polÃ­ticas;
+- sistema de autenticaciÃ³n;
 - protocolo de transporte;
 - formato exacto de schemas;
-- mecanismo técnico de aprobación humana;
-- implementación de sandboxing;
-- almacenamiento de auditoría;
-- UI de administración;
-- taxonomía completa de riesgo;
-- niveles concretos de clasificación de datos;
-- modelo de facturación o presupuestos.
+- mecanismo tÃ©cnico de aprobaciÃ³n humana;
+- implementaciÃ³n de sandboxing;
+- almacenamiento de auditorÃ­a;
+- UI de administraciÃ³n;
+- taxonomÃ­a completa de riesgo;
+- niveles concretos de clasificaciÃ³n de datos;
+- modelo de facturaciÃ³n o presupuestos.
 
-Estas decisiones requerirán RFCs posteriores.
+Estas decisiones requerirÃ¡n RFCs posteriores.
 
 ---
 
@@ -88,239 +88,249 @@ Estas decisiones requerirán RFCs posteriores.
 
 Toda solicitud gobernada debe identificar la identidad ejecutora y, cuando exista, la identidad delegada.
 
-La identidad ejecutora representa al agente, workflow, servicio o componente que solicita o realiza una operación dentro de Kern.
+La identidad ejecutora representa al agente, workflow, servicio o componente que solicita o realiza una operaciÃ³n dentro de Kern.
 
-La identidad delegada representa a la persona u organización en cuyo nombre se inicia una operación.
+La identidad delegada representa a la persona u organizaciÃ³n en cuyo nombre se inicia una operaciÃ³n.
 
-Policy Engine debe evaluar ambas identidades, su relación y el alcance solicitado aplicando privilegio mínimo.
+Policy Engine debe evaluar ambas identidades, su relaciÃ³n y el alcance solicitado aplicando privilegio mÃ­nimo.
 
-Las operaciones programadas o iniciadas sin una persona concreta deben usar una identidad de servicio explícita, autorizada y auditable. No deben inventar una identidad delegada humana.
+Las operaciones programadas o iniciadas sin una persona concreta deben usar una identidad de servicio explÃ­cita, autorizada y auditable. No deben inventar una identidad delegada humana.
 
 ### 5.2 Decision Binding
 
-Un Decision Binding es una evidencia verificable, emitida por el plano de control, que vincula una decisión de política con una solicitud concreta y final.
+Un Decision Binding es una evidencia verificable, emitida por el plano de control, que vincula una decisiÃ³n de polÃ­tica con una solicitud concreta y final.
 
-Debe incluir o referenciar, como mínimo:
+Debe incluir o referenciar, como mÃ­nimo:
 
 - identificador de solicitud;
-- organización;
+- organizaciÃ³n;
 - identidad ejecutora;
 - identidad delegada, cuando exista;
-- tipo de operación;
+- tipo de operaciÃ³n;
 - alcance autorizado;
 - huella del payload final;
-- referencias de procedencia, clasificación y confianza aplicables;
-- decisión de policy y versión de policy;
-- aprobación humana asociada, cuando exista;
-- expiración;
-- identificador de correlación;
-- restricciones, límites o transformaciones aplicadas.
+- referencias de procedencia, clasificaciÃ³n y confianza aplicables;
+- decisiÃ³n de policy y versiÃ³n de policy;
+- aprobaciÃ³n humana asociada, cuando exista;
+- expiraciÃ³n;
+- identificador de correlaciÃ³n;
+- restricciones, lÃ­mites o transformaciones aplicadas.
 
-Tool Engine y Knowledge Engine deben rechazar una operación cuando el Decision Binding falte, no sea válido, esté caducado, se haya emitido para otra solicitud, no coincida con el payload final o no pueda verificarse.
+Tool Engine y Knowledge Engine deben rechazar una operaciÃ³n cuando el Decision Binding falte, no sea vÃ¡lido, estÃ© caducado, se haya emitido para otra solicitud, no coincida con el payload final o no pueda verificarse.
 
-Este RFC no decide el formato criptográfico, token, firma o mecanismo técnico concreto de verificación.
+Este RFC no decide el formato criptogrÃ¡fico, token, firma o mecanismo tÃ©cnico concreto de verificaciÃ³n.
 
-### 5.3 Idempotencia y correlación
+Cuando una operación requiera aprobación humana, Kern puede producir una evaluación de policy provisional antes de la aprobación. Esa evaluación debe estar ligada a la solicitud final, su payload final, alcance, organización, identidades, restricciones y riesgos relevantes.
 
-Toda Action Request debe incluir una clave de idempotencia o un mecanismo equivalente cuando la operación pueda reintentarse, producir efectos irreversibles o generar duplicados.
+La aprobación humana se vincula a esa evaluación provisional y a la solicitud final. Solo después de una aprobación válida puede emitirse el Decision Binding final para ejecución.
 
-La clave debe estar ligada a la organización, operación y alcance autorizado.
+El Decision Binding final debe referenciar la evaluación provisional y la aprobación consumible correspondientes. Tool Engine no puede ejecutar basándose únicamente en una evaluación provisional o en una aprobación sin Decision Binding final.
 
-Toda operación debe conservar un identificador de correlación interno y, cuando exista, una referencia de correlación con el sistema externo.
+### 5.3 Idempotencia y correlaciÃ³n
+
+Toda Action Request debe incluir una clave de idempotencia o un mecanismo equivalente cuando la operaciÃ³n pueda reintentarse, producir efectos irreversibles o generar duplicados.
+
+La clave debe estar ligada a la organizaciÃ³n, operaciÃ³n y alcance autorizado.
+
+Toda operaciÃ³n debe conservar un identificador de correlaciÃ³n interno y, cuando exista, una referencia de correlaciÃ³n con el sistema externo.
 
 ### 5.4 Solicitud gobernada
 
-Una solicitud gobernada es una petición para leer conocimiento empresarial o ejecutar una acción operativa.
+Una solicitud gobernada es una peticiÃ³n para leer conocimiento empresarial o ejecutar una acciÃ³n operativa.
 
-Toda solicitud gobernada debe incluir, como mínimo:
+Toda solicitud gobernada debe incluir, como mÃ­nimo:
 
-- identificador único;
-- organización;
+- identificador Ãºnico;
+- organizaciÃ³n;
 - identidad ejecutora;
 - identidad delegada, cuando exista;
-- tipo de operación;
+- tipo de operaciÃ³n;
 - recurso o capacidad solicitada;
 - alcance solicitado;
 - origen inmediato y cadena de procedencia disponible;
 - referencias brutas de origen aportadas por el solicitante;
-- clasificación, confianza y taint asignados por una frontera controlada por Kern;
-- correlación con sesión, workflow o ejecución de agente;
-- límites aplicables;
-- Decision Binding cuando la solicitud pase a ejecución;
-- referencias de auditoría.
+- clasificaciÃ³n, confianza y taint asignados por una frontera controlada por Kern;
+- correlaciÃ³n con sesiÃ³n, workflow o ejecuciÃ³n de agente;
+- lÃ­mites aplicables;
+- Decision Binding cuando la solicitud pase a ejecuciÃ³n;
+- referencias de auditorÃ­a.
 
-El solicitante puede aportar referencias brutas de origen, pero no puede asignar por sí mismo confianza, clasificación, taint ni autoridad.
+El solicitante puede aportar referencias brutas de origen, pero no puede asignar por sÃ­ mismo confianza, clasificaciÃ³n, taint ni autoridad.
 
-La procedencia debe poder conservar una cadena transitiva de fuentes relevantes. Un salto intermedio no puede eliminar por sí solo los atributos de procedencia o taint de una fuente anterior.
+La procedencia debe poder conservar una cadena transitiva de fuentes relevantes. Un salto intermedio no puede eliminar por sÃ­ solo los atributos de procedencia o taint de una fuente anterior.
 
 ### 5.5 Action Request
 
-Una Action Request solicita un cambio, comunicación, activación, transferencia, configuración o efecto operativo sobre un sistema externo o una persona.
+Una Action Request solicita un cambio, comunicaciÃ³n, activaciÃ³n, transferencia, configuraciÃ³n o efecto operativo sobre un sistema externo o una persona.
 
-Una Action Request siempre es una operación relevante.
+Una Action Request siempre es una operaciÃ³n relevante.
 
-Una acción compuesta o integración con múltiples efectos debe descomponerse en Action Requests gobernadas o en un lote explícitamente limitado, identificable y auditable.
+Una acciÃ³n compuesta o integraciÃ³n con mÃºltiples efectos debe descomponerse en Action Requests gobernadas o en un lote explÃ­citamente limitado, identificable y auditable.
 
-Una aprobación no puede cubrir efectos futuros indeterminados.
+Una aprobaciÃ³n no puede cubrir efectos futuros indeterminados.
 
-Cuando una Action Request derive de Knowledge Request, debe conservar clasificación, procedencia y taint aplicables.
+Cuando una Action Request derive de Knowledge Request, debe conservar clasificaciÃ³n, procedencia y taint aplicables.
 
 Ejemplos:
 
 - enviar un email;
 - crear, modificar o eliminar un registro;
 - emitir una factura;
-- activar una automatización;
+- activar una automatizaciÃ³n;
 - actualizar un calendario;
-- ejecutar una integración;
-- transferir datos fuera de un límite organizativo.
+- ejecutar una integraciÃ³n;
+- transferir datos fuera de un lÃ­mite organizativo.
 
 ### 5.6 Knowledge Request
 
 Una Knowledge Request solicita acceso de lectura a conocimiento empresarial.
 
-Una Knowledge Request debe pasar por identity, tenancy, clasificación, políticas de lectura y segregación organizativa antes de devolver resultados.
+Una Knowledge Request debe pasar por identity, tenancy, clasificaciÃ³n, polÃ­ticas de lectura y segregaciÃ³n organizativa antes de devolver resultados.
 
 Knowledge Engine solo puede usar fuentes, roles, endpoints o configuraciones verificadas como sin efectos secundarios operativos.
 
-Knowledge Request no puede utilizarse como vía alternativa para ejecutar acciones operativas.
+Knowledge Request no puede utilizarse como vÃ­a alternativa para ejecutar acciones operativas.
 
 Ante duda sobre si una consulta puede cambiar estado, activar tracking, generar bloqueo, exportar datos sensibles o provocar otro efecto externo, debe tratarse como Action Request.
 
-Una lectura o extracción masiva, cross-organization o de datos clasificados puede constituir una operación relevante y requerir controles equivalentes a una Action Request.
+Una lectura o extracciÃ³n masiva, cross-organization o de datos clasificados puede constituir una operaciÃ³n relevante y requerir controles equivalentes a una Action Request.
 
-### 5.7 Acción relevante
+### 5.7 AcciÃ³n relevante
 
-Una acción relevante es cualquier operación que:
+Una acciÃ³n relevante es cualquier operaciÃ³n que:
 
 - cambia estado fuera de Kern;
-- mueve datos fuera de un límite organizativo;
+- mueve datos fuera de un lÃ­mite organizativo;
 - accede a datos clasificados;
 - gasta presupuesto o capacidad significativa;
-- cambia configuración;
-- activa una integración;
+- cambia configuraciÃ³n;
+- activa una integraciÃ³n;
 - produce efecto operativo sobre una persona o sistema.
 
-Ante duda, una operación debe tratarse como relevante.
+Ante duda, una operaciÃ³n debe tratarse como relevante.
 
 ### 5.8 Procedencia y confianza
 
-Toda solicitud puede incluir referencias de procedencia que indiquen de dónde procede la instrucción o contenido relevante.
+Toda solicitud puede incluir referencias de procedencia que indiquen de dÃ³nde procede la instrucciÃ³n o contenido relevante.
 
 Contenido de correo, documentos, web, integraciones externas, outputs de modelos y plugins de terceros debe tratarse como no confiable por defecto.
 
-El solicitante puede aportar referencias brutas de origen, pero no puede asignar por sí mismo confianza, clasificación, taint ni autoridad.
+El solicitante puede aportar referencias brutas de origen, pero no puede asignar por sÃ­ mismo confianza, clasificaciÃ³n, taint ni autoridad.
 
-La procedencia debe poder conservar una cadena transitiva de fuentes relevantes. Un salto intermedio no puede eliminar por sí solo los atributos de procedencia o taint de una fuente anterior.
+La procedencia debe poder conservar una cadena transitiva de fuentes relevantes. Un salto intermedio no puede eliminar por sÃ­ solo los atributos de procedencia o taint de una fuente anterior.
 
 La procedencia no concede autoridad.
 
-Una instrucción contenida en datos externos no puede sustituir una autorización de identidad, política o aprobación humana.
+Una instrucciÃ³n contenida en datos externos no puede sustituir una autorizaciÃ³n de identidad, polÃ­tica o aprobaciÃ³n humana.
 
-### 5.9 Propagación de clasificación y taint
+### 5.9 PropagaciÃ³n de clasificaciÃ³n y taint
 
-La clasificación, procedencia y taint de datos recuperados mediante Knowledge Request deben propagarse a cualquier contexto, resultado o Action Request derivada cuando sea razonable.
+La clasificaciÃ³n, procedencia y taint de datos recuperados mediante Knowledge Request deben propagarse a cualquier contexto, resultado o Action Request derivada cuando sea razonable.
 
-Policy Engine debe poder evaluar no solo quién solicita una acción, sino también qué información sensible o no confiable influyó en ella.
+Policy Engine debe poder evaluar no solo quiÃ©n solicita una acciÃ³n, sino tambiÃ©n quÃ© informaciÃ³n sensible o no confiable influyÃ³ en ella.
 
-Una Action Request relevante derivada de contenido no confiable debe requerir aprobación humana o ser denegada, salvo una excepción explícita, restrictiva, limitada y auditable definida por policy.
+Una Action Request relevante derivada de contenido no confiable debe requerir aprobaciÃ³n humana o ser denegada, salvo una excepciÃ³n explÃ­cita, restrictiva, limitada y auditable definida por policy.
 
-La procedencia no concede autoridad y el taint no se elimina por reformulación, resumen, transformación de texto o salto entre componentes.
+La procedencia no concede autoridad y el taint no se elimina por reformulaciÃ³n, resumen, transformaciÃ³n de texto o salto entre componentes.
 
 ---
 
-## 6. Ciclo de ejecución gobernada
+## 6. Ciclo de ejecuciÃ³n gobernada
 
-Una solicitud debe seguir este ciclo lógico:
+Una solicitud debe seguir este ciclo lÃ³gico:
 
 ```text
-1. Canal, agente, workflow, plugin o sistema presenta intención y referencias brutas.
-2. Identity and Organization resuelve organización, tenancy, identidad ejecutora e identidad delegada cuando exista.
-3. Context Assembly y Knowledge Engine obtienen únicamente contexto autorizado, asignan o propagan procedencia, clasificación y taint.
+1. Canal, agente, workflow, plugin o sistema presenta intenciÃ³n y referencias brutas.
+2. Identity and Organization resuelve organizaciÃ³n, tenancy, identidad ejecutora e identidad delegada cuando exista.
+3. Context Assembly y Knowledge Engine obtienen Ãºnicamente contexto autorizado, asignan o propagan procedencia, clasificaciÃ³n y taint.
 4. Se construye una solicitud inicial con alcance, payload y referencias.
-5. Policy Engine evalúa la semántica original de la solicitud.
-6. Si Policy devuelve transform permitido, se crea una solicitud derivada más restrictiva, se registra la relación con la original y se reevalúa la solicitud final.
-7. Un deny sobre la semántica original es terminal y no puede transformarse para obtener allow.
-8. Si se requiere aprobación, el humano revisa la solicitud final, el payload final, el alcance final, los riesgos y la procedencia relevante.
-9. La aprobación se vincula a la solicitud final y se consume en el primer intento de ejecución.
-10. Policy emite un Decision Binding verificable para la solicitud final.
-11. Audit registra de forma durable la intención antes de un efecto irreversible.
-12. Tool Engine o Knowledge Engine verifica el Decision Binding, el payload final, la idempotencia, la organización y las restricciones antes de ejecutar.
-13. La ejecución autorizada ocurre.
-14. Audit registra resultado, error, correlación externa y evidencia permitida.
-15. Observability registra telemetría sin convertirse en un canal lateral de datos sensibles.
+5. Policy Engine evalÃºa la semÃ¡ntica original de la solicitud.
+6. Si Policy devuelve transform permitido, se crea una solicitud derivada mÃ¡s restrictiva, se registra la relaciÃ³n con la original y se reevalÃºa la solicitud final.
+7. Un deny sobre la semÃ¡ntica original es terminal y no puede transformarse para obtener allow.
+8. Si se requiere aprobación, Policy produce una evaluación provisional ligada a la solicitud final.
+9. El humano revisa la solicitud final, el payload final, el alcance final, los riesgos y la procedencia relevante; la aprobación queda ligada a la evaluación provisional y se consume en el primer intento de ejecución.
+10. Policy emite un Decision Binding final, verificable y ejecutable, ligado a la solicitud final, la evaluación provisional y la aprobación válida cuando aplique.
+11. Audit registra de forma durable la intenciÃ³n antes de un efecto irreversible.
+12. Tool Engine o Knowledge Engine verifica el Decision Binding, el payload final, la idempotencia, la organizaciÃ³n y las restricciones antes de ejecutar.
+13. La ejecuciÃ³n autorizada ocurre.
+14. Audit registra resultado, error, correlaciÃ³n externa y evidencia permitida.
+15. Observability registra telemetrÃ­a sin convertirse en un canal lateral de datos sensibles.
 16. El resultado vuelve al solicitante.
 ```
 
 No existe un camino alternativo para ejecutar acciones o leer conocimiento fuera de este ciclo.
 
-Los controles dinámicos relevantes deben poder reevaluarse en el punto de uso antes de ejecutar, para evitar cambios de contexto entre autorización y efecto.
+Los controles dinÃ¡micos relevantes deben poder reevaluarse en el punto de uso antes de ejecutar, para evitar cambios de contexto entre autorizaciÃ³n y efecto.
 
-Un defer nunca permite ejecución. Debe asignarse a una autoridad resolutora, tener plazo de resolución y terminar en deny efectivo si expira, falla o no se resuelve.
+Un defer nunca permite ejecuciÃ³n. Debe asignarse a una autoridad resolutora, tener plazo de resoluciÃ³n y terminar en deny efectivo si expira, falla o no se resuelve.
 
 ---
 
-## 7. Decisiones de política
+## 7. Decisiones de polÃ­tica
 
-Policy Engine puede devolver una de estas decisiones lógicas:
+Policy Engine puede devolver una de estas decisiones lÃ³gicas:
 
-* `allow`: permite la operación dentro del alcance solicitado;
-* `deny`: bloquea la operación;
-* `limit`: permite una operación con alcance, frecuencia, coste, datos o capacidad reducidos;
-* `transform`: modifica la solicitud de forma explícita y auditable antes de evaluarla o ejecutarla;
-* `require_approval`: bloquea temporalmente la ejecución hasta recibir aprobación válida;
-* `defer`: no puede decidir con la información disponible y requiere resolución adicional.
+* `allow`: permite la operaciÃ³n dentro del alcance solicitado;
+* `deny`: bloquea la operaciÃ³n;
+* `limit`: permite una operaciÃ³n con alcance, frecuencia, coste, datos o capacidad reducidos;
+* `transform`: produce una solicitud derivada, explícita y auditable, que debe ser semánticamente más restrictiva y reevaluarse antes de cualquier ejecución;
+* `require_approval`: bloquea temporalmente la ejecuciÃ³n hasta recibir aprobaciÃ³n vÃ¡lida;
+* `defer`: no puede decidir con la informaciÃ³n disponible y requiere resoluciÃ³n adicional.
 
-`deny` es terminal para la solicitud original y no puede convertirse en `allow`, `limit` o `transform` mediante una reevaluación posterior.
+`deny` es terminal para la solicitud original y no puede convertirse en `allow`, `limit` o `transform` mediante una reevaluaciÃ³n posterior.
 
-`transform` solo puede reducir alcance, redactar datos, imponer límites o sustituir una operación por otra semánticamente más restrictiva.
+`transform` solo puede reducir alcance, redactar datos, imponer lÃ­mites o sustituir una operaciÃ³n por otra semÃ¡nticamente mÃ¡s restrictiva.
 
-`transform` no puede ampliar alcance, cambiar destinatario, modificar identidad delegada, elevar privilegios, aumentar presupuesto, cambiar un recurso objetivo ni convertir una operación en otra con mayor efecto operativo.
+`transform` no puede ampliar alcance, cambiar destinatario, modificar identidad delegada, elevar privilegios, aumentar presupuesto, cambiar un recurso objetivo ni convertir una operaciÃ³n en otra con mayor efecto operativo.
 
-Toda transformación debe generar una solicitud derivada con referencias a la solicitud original, huellas pre-transformación y post-transformación, y auditoría de la modificación.
+Toda transformaciÃ³n debe generar una solicitud derivada con referencias a la solicitud original, huellas pre-transformaciÃ³n y post-transformaciÃ³n, y auditorÃ­a de la modificaciÃ³n.
 
-La solicitud derivada debe reevaluarse antes de ejecución. Una transformación no puede utilizarse para escapar de un deny terminal sobre la semántica original.
+La solicitud derivada debe reevaluarse antes de ejecuciÃ³n. Una transformaciÃ³n no puede utilizarse para escapar de un deny terminal sobre la semÃ¡ntica original.
 
-`limit` debe expresar restricciones aplicables y medibles. Tool Engine debe rechazar ejecutar una operación si no puede aplicar, verificar o medir los límites impuestos.
+`limit` debe expresar restricciones aplicables y medibles. Tool Engine debe rechazar ejecutar una operaciÃ³n si no puede aplicar, verificar o medir los lÃ­mites impuestos.
 
 `defer` nunca es ejecutable. Debe identificar una autoridad resolutora y un plazo. Si no se resuelve dentro del plazo, la solicitud termina como deny efectivo y se audita.
 
 ---
 
-## 8. Aprobación humana
+## 8. AprobaciÃ³n humana
 
-Una aprobación humana debe asociarse a una solicitud concreta y no puede reutilizarse fuera de su organización, alcance, operación y periodo de validez.
+Una aprobaciÃ³n humana debe asociarse a una solicitud concreta y no puede reutilizarse fuera de su organizaciÃ³n, alcance, operaciÃ³n y periodo de validez.
 
-La aprobación se realiza únicamente sobre la solicitud final posterior a cualquier transformación permitida.
+La aprobaciÃ³n se realiza Ãºnicamente sobre la solicitud final posterior a cualquier transformaciÃ³n permitida.
 
 Debe vincularse de forma verificable a:
 
 - huella del payload final;
 - alcance final;
-- organización;
+- organizaciÃ³n;
 - identidad ejecutora;
 - identidad delegada, cuando exista;
-- Decision Binding;
-- política y versión aplicable;
-- expiración;
-- identificador de solicitud y correlación.
+- evaluación provisional de policy asociada;
+- polÃ­tica y versiÃ³n aplicable;
+- expiraciÃ³n;
+- identificador de solicitud y correlaciÃ³n.
 
-Una aprobación es de un solo uso. Debe consumirse atómicamente en el primer intento de ejecución, incluso cuando la ejecución falle.
+La aprobación no requiere que exista previamente un Decision Binding final. Debe quedar ligada a la solicitud final y a la evaluación provisional de policy correspondiente.
 
-Si cambia el payload, el alcance, la organización, la identidad, la policy aplicable o el Decision Binding, la aprobación queda invalidada.
+El Decision Binding final se emite después de una aprobación válida y debe referenciar tanto la evaluación provisional como la aprobación consumible.
 
-Una aprobación debe registrar, como mínimo:
+Una aprobaciÃ³n es de un solo uso. Debe consumirse atÃ³micamente en el primer intento de ejecuciÃ³n, incluso cuando la ejecuciÃ³n falle.
+
+Si cambia el payload, el alcance, la organizaciÃ³n, la identidad, la policy aplicable o el Decision Binding, la aprobaciÃ³n queda invalidada.
+
+Una aprobaciÃ³n debe registrar, como mÃ­nimo:
 
 * identidad de quien aprueba;
-* organización;
+* organizaciÃ³n;
 * solicitud aprobada;
 * alcance aprobado;
-* momento de aprobación;
+* momento de aprobaciÃ³n;
 * caducidad, cuando aplique;
-* decisión de política asociada;
-* evidencia de auditoría.
+* decisiÃ³n de polÃ­tica asociada;
+* evidencia de auditorÃ­a.
 
-Una aprobación no puede ampliar permisos que la identidad aprobadora no posea.
+Una aprobaciÃ³n no puede ampliar permisos que la identidad aprobadora no posea.
 
 ---
 
@@ -328,58 +338,58 @@ Una aprobación no puede ampliar permisos que la identidad aprobadora no posea.
 
 Tool Engine debe:
 
-* aceptar únicamente Action Requests válidas;
-* validar schema, organización, identidad, permisos y condiciones;
-* ejecutar solo después de una decisión de política válida;
-* respetar límites, transformaciones y aprobaciones;
-* usar secretos y accesos mínimos necesarios;
-* impedir que una tool amplíe sus propios permisos;
-* registrar evidencia de ejecución;
-* devolver resultados, errores y referencias de auditoría;
-* distinguir solicitud, autorización, ejecución y resultado.
+* aceptar Ãºnicamente Action Requests vÃ¡lidas;
+* validar schema, organizaciÃ³n, identidad, permisos y condiciones;
+* ejecutar solo despuÃ©s de una decisiÃ³n de polÃ­tica vÃ¡lida;
+* respetar lÃ­mites, transformaciones y aprobaciones;
+* usar secretos y accesos mÃ­nimos necesarios;
+* impedir que una tool amplÃ­e sus propios permisos;
+* registrar evidencia de ejecuciÃ³n;
+* devolver resultados, errores y referencias de auditorÃ­a;
+* distinguir solicitud, autorizaciÃ³n, ejecuciÃ³n y resultado.
 
 Tool Engine debe verificar el Decision Binding antes de cada efecto externo.
 
-Debe impedir que el poder efectivo de una credencial externa exceda el alcance autorizado por la solicitud. Cuando el sistema externo lo permita, debe preservar atribución on-behalf-of o una correlación equivalente entre la identidad interna de Kern y la operación externa.
+Debe impedir que el poder efectivo de una credencial externa exceda el alcance autorizado por la solicitud. Cuando el sistema externo lo permita, debe preservar atribuciÃ³n on-behalf-of o una correlaciÃ³n equivalente entre la identidad interna de Kern y la operaciÃ³n externa.
 
-Cuando no sea posible limitar técnicamente una credencial al alcance autorizado, la integración debe tratarse como de mayor riesgo y requerir controles adicionales definidos por policy.
+Cuando no sea posible limitar tÃ©cnicamente una credencial al alcance autorizado, la integraciÃ³n debe tratarse como de mayor riesgo y requerir controles adicionales definidos por policy.
 
-Tool Engine debe rechazar solicitudes mutadas, bindings caducados, approvals reutilizadas, límites no aplicables o claves de idempotencia incompatibles.
+Tool Engine debe rechazar solicitudes mutadas, bindings caducados, approvals reutilizadas, lÃ­mites no aplicables o claves de idempotencia incompatibles.
 
-Tool Engine no decide por sí mismo el modelo de autorización global.
+Tool Engine no decide por sÃ­ mismo el modelo de autorizaciÃ³n global.
 
 ## 10. Requisitos para Knowledge Engine
 
 Knowledge Engine debe:
 
-* aceptar únicamente Knowledge Requests válidas;
-* validar organización, identidad, clasificación y restricciones de lectura;
-* filtrar o particionar resultados por organización antes de recuperarlos;
-* conservar referencias de procedencia y clasificación;
-* respetar retención, eliminación y minimización;
-* devolver referencias y resultados sujetos a política;
-* impedir que recuperación de conocimiento se convierta en autorización de una acción.
+* aceptar Ãºnicamente Knowledge Requests vÃ¡lidas;
+* validar organizaciÃ³n, identidad, clasificaciÃ³n y restricciones de lectura;
+* filtrar o particionar resultados por organizaciÃ³n antes de recuperarlos;
+* conservar referencias de procedencia y clasificaciÃ³n;
+* respetar retenciÃ³n, eliminaciÃ³n y minimizaciÃ³n;
+* devolver referencias y resultados sujetos a polÃ­tica;
+* impedir que recuperaciÃ³n de conocimiento se convierta en autorizaciÃ³n de una acciÃ³n.
 
-Knowledge Engine debe verificar el Decision Binding cuando una lectura sea relevante, clasificada, masiva, cross-organization o esté sometida a límites explícitos.
+Knowledge Engine debe verificar el Decision Binding cuando una lectura sea relevante, clasificada, masiva, cross-organization o estÃ© sometida a lÃ­mites explÃ­citos.
 
-Debe impedir que resultados con clasificación o taint aplicable pierdan esos atributos cuando se entreguen a Context Assembly, Agent Engine o una Action Request derivada.
+Debe impedir que resultados con clasificaciÃ³n o taint aplicable pierdan esos atributos cuando se entreguen a Context Assembly, Agent Engine o una Action Request derivada.
 
-Knowledge Engine no puede devolver contenido de otra organización salvo política explícita de compartición.
+Knowledge Engine no puede devolver contenido de otra organizaciÃ³n salvo polÃ­tica explÃ­cita de comparticiÃ³n.
 
 ## 11. Requisitos para Context Assembly
 
 Context Assembly debe:
 
-* construir contexto usando únicamente datos autorizados;
-* conservar referencias de procedencia, confianza y clasificación;
+* construir contexto usando Ãºnicamente datos autorizados;
+* conservar referencias de procedencia, confianza y clasificaciÃ³n;
 * evitar convertir contenido no confiable en autoridad;
 * permitir que Policy Engine aumente controles cuando una solicitud derive de contenido no confiable;
-* minimizar contenido sensible según políticas de acceso y retención;
+* minimizar contenido sensible segÃºn polÃ­ticas de acceso y retenciÃ³n;
 * mantener referencias entre el contexto utilizado y las solicitudes derivadas cuando sea razonable.
 
 Context Assembly debe distinguir datos, instrucciones confiables y contenido no confiable.
 
-No puede promover contenido no confiable a instrucción autorizada por resumirlo, traducirlo, reformularlo o mezclarlo con contenido confiable.
+No puede promover contenido no confiable a instrucciÃ³n autorizada por resumirlo, traducirlo, reformularlo o mezclarlo con contenido confiable.
 
 Debe permitir limitar el blast radius de una misma fuente no confiable, incluyendo volumen de acciones derivadas, alcance y frecuencia.
 
@@ -387,91 +397,95 @@ Este RFC no afirma que la procedencia elimine por completo prompt injection.
 
 ---
 
-## 12. Auditoría y observabilidad
+## 12. AuditorÃ­a y observabilidad
 
-Antes de un efecto irreversible, Audit debe registrar una intención durable que incluya al menos organización, identidades, solicitud, alcance, Decision Binding, huella de payload, idempotency key y referencias de procedencia aplicables.
+Antes de un efecto irreversible, Audit debe registrar una intenciÃ³n durable que incluya al menos organizaciÃ³n, identidades, solicitud, alcance, Decision Binding, huella de payload, idempotency key y referencias de procedencia aplicables.
 
-Después de la ejecución, Audit debe registrar resultado, error, intentos denegados, deferred, expirados y fallidos, junto con correlación externa cuando exista.
+DespuÃ©s de la ejecuciÃ³n, Audit debe registrar resultado, error, intentos denegados, deferred, expirados y fallidos, junto con correlaciÃ³n externa cuando exista.
 
 La evidencia debe poder preservar huellas, fingerprints o referencias de datos sensibles sin requerir almacenar indiscriminadamente su contenido completo.
 
-La auditoría debe ser resistente a manipulación según un mecanismo técnico que se definirá en un RFC posterior.
+La auditorÃ­a debe ser resistente a manipulaciÃ³n segÃºn un mecanismo tÃ©cnico que se definirÃ¡ en un RFC posterior.
 
-Toda solicitud relevante debe producir evidencia de auditoría suficiente para responder:
+Toda solicitud relevante debe producir evidencia de auditorÃ­a suficiente para responder:
 
-* quién solicitó la operación;
-* para qué organización;
-* qué tipo de operación se intentó;
-* qué recurso, tool o knowledge source intervino;
-* qué política decidió;
-* si hubo aprobación humana;
-* qué resultado o error ocurrió;
-* qué referencias de procedencia y clasificación aplicaron;
-* qué versión de componentes participó.
+* quiÃ©n solicitÃ³ la operaciÃ³n;
+* para quÃ© organizaciÃ³n;
+* quÃ© tipo de operaciÃ³n se intentÃ³;
+* quÃ© recurso, tool o knowledge source intervino;
+* quÃ© polÃ­tica decidiÃ³;
+* si hubo aprobaciÃ³n humana;
+* quÃ© resultado o error ocurriÃ³;
+* quÃ© referencias de procedencia y clasificaciÃ³n aplicaron;
+* quÃ© versiÃ³n de componentes participÃ³.
 
-La auditoría debe respetar minimización, retención y control de acceso.
+La auditorÃ­a debe respetar minimizaciÃ³n, retenciÃ³n y control de acceso.
 
-Observability no puede almacenar payloads sensibles completos ni convertirse en una vía de acceso a datos con controles inferiores a Audit.
+Observability no puede almacenar payloads sensibles completos ni convertirse en una vÃ­a de acceso a datos con controles inferiores a Audit.
 
-Debe priorizar métricas, agregados, identificadores, referencias, trazas minimizadas y datos operativos sujetos a controles de acceso adecuados.
+Debe priorizar mÃ©tricas, agregados, identificadores, referencias, trazas minimizadas y datos operativos sujetos a controles de acceso adecuados.
 
-Observability puede registrar métricas, trazas, rendimiento, degradaciones y consumo con retención y granularidad distintas de Audit.
+Observability puede registrar mÃ©tricas, trazas, rendimiento, degradaciones y consumo con retenciÃ³n y granularidad distintas de Audit.
 
 ---
 
 ## 13. Invariantes
 
-1. Ninguna salida de modelo es autoridad por sí misma.
-2. Ningún solicitante puede autoasignarse confianza, clasificación, taint, permisos o condición de recurso de plataforma.
-3. Toda ejecución relevante requiere Decision Binding válido, verificable, no caducado y ligado al payload final.
+1. Ninguna salida de modelo es autoridad por sÃ­ misma.
+2. NingÃºn solicitante puede autoasignarse confianza, clasificaciÃ³n, taint, permisos o condiciÃ³n de recurso de plataforma.
+3. Toda ejecuciÃ³n relevante requiere Decision Binding vÃ¡lido, verificable, no caducado y ligado al payload final.
 4. Un deny terminal nunca puede transformarse para obtener permiso.
 5. Un defer no resuelto nunca puede ejecutar.
-6. Toda aprobación es de un solo uso y queda ligada a solicitud final, alcance final y payload final.
-7. Toda acción relevante derivada de contenido no confiable requiere aprobación humana o denegación, salvo excepción explícita y limitada de policy.
-8. La clasificación, procedencia y taint no se pierden al pasar de Knowledge a Context Assembly o Action Request.
+6. Toda aprobaciÃ³n es de un solo uso y queda ligada a solicitud final, alcance final y payload final.
+7. Toda acciÃ³n relevante derivada de contenido no confiable requiere aprobaciÃ³n humana o denegaciÃ³n, salvo excepciÃ³n explÃ­cita y limitada de policy.
+8. La clasificaciÃ³n, procedencia y taint no se pierden al pasar de Knowledge a Context Assembly o Action Request.
 9. Todo recurso es organization-scoped por defecto.
-10. Un recurso de plataforma solo puede declararse mediante autoridad explícita del Control Plane y debe quedar auditado.
-11. Una acción compuesta no puede ocultar efectos múltiples no gobernados.
-12. Una solicitud relevante irreversible debe registrar intención durable antes de ejecución.
+10. Un recurso de plataforma solo puede declararse mediante autoridad explÃ­cita del Control Plane y debe quedar auditado.
+11. Una acciÃ³n compuesta no puede ocultar efectos mÃºltiples no gobernados.
+12. Una solicitud relevante irreversible debe registrar intenciÃ³n durable antes de ejecuciÃ³n.
 13. Observability no puede convertirse en canal lateral de payloads sensibles.
 
 ## 14. Consecuencias
 
 Aceptar este RFC implica que futuros contratos de tools, knowledge sources, workflows, agents, channels, plugins y extensiones deben implementar o adaptarse a esta frontera gobernada.
 
-Ninguna integración puede introducir una vía de acción o lectura que evite el contrato de ejecución gobernada.
+Ninguna integraciÃ³n puede introducir una vÃ­a de acciÃ³n o lectura que evite el contrato de ejecuciÃ³n gobernada.
 
-Cualquier excepción requiere RFC explícito.
+Cualquier excepciÃ³n requiere RFC explÃ­cito.
 
 ---
 
 ## 15. Preguntas abiertas
 
-1. ¿Qué formato técnico usará Decision Binding y cómo se verificará entre módulos?
-2. ¿Qué taxonomía versionada de confianza, clasificación y taint debe existir?
-3. ¿Qué excepciones explícitas pueden permitir acciones relevantes derivadas de contenido no confiable?
-4. ¿Qué modelo de delegación y atribución on-behalf-of puede soportar cada integración externa?
-5. ¿Cómo se limitará técnicamente el alcance efectivo de credenciales externas?
-6. ¿Qué políticas de expiración, revocación y reintento aplicarán a Decision Bindings y aprobaciones?
-7. ¿Cómo se representarán operaciones parcialmente reversibles, compensables o por lote?
-8. ¿Qué mecanismos técnicos garantizan audit tamper-evident y retención compatible con privacidad?
-9. ¿Qué umbrales convierten una lectura, exportación o extracción en operación relevante?
-10. ¿Cómo se aplicará el límite de blast radius ante una fuente no confiable?
+1. Â¿QuÃ© formato tÃ©cnico usarÃ¡ Decision Binding y cÃ³mo se verificarÃ¡ entre mÃ³dulos?
+2. Â¿QuÃ© taxonomÃ­a versionada de confianza, clasificaciÃ³n y taint debe existir?
+3. Â¿QuÃ© excepciones explÃ­citas pueden permitir acciones relevantes derivadas de contenido no confiable?
+4. Â¿QuÃ© modelo de delegaciÃ³n y atribuciÃ³n on-behalf-of puede soportar cada integraciÃ³n externa?
+5. Â¿CÃ³mo se limitarÃ¡ tÃ©cnicamente el alcance efectivo de credenciales externas?
+6. Â¿QuÃ© polÃ­ticas de expiraciÃ³n, revocaciÃ³n y reintento aplicarÃ¡n a Decision Bindings y aprobaciones?
+7. Â¿CÃ³mo se representarÃ¡n operaciones parcialmente reversibles, compensables o por lote?
+8. Â¿QuÃ© mecanismos tÃ©cnicos garantizan audit tamper-evident y retenciÃ³n compatible con privacidad?
+9. Â¿QuÃ© umbrales convierten una lectura, exportaciÃ³n o extracciÃ³n en operaciÃ³n relevante?
+10. Â¿CÃ³mo se aplicarÃ¡ el lÃ­mite de blast radius ante una fuente no confiable?
 
 ## 16. Referencias
 
-* RFC-0000 — The Kern RFC Process
-* RFC-0001 — Kern Manifesto
-* RFC-0002 — Kern Logical Architecture
+* RFC-0000 â€” The Kern RFC Process
+* RFC-0001 â€” Kern Manifesto
+* RFC-0002 â€” Kern Logical Architecture
 
 ---
 
 ## 17. Historial de cambios
 
-### 0.1 — 2026-06-27
+### 0.1 â€” 2026-06-27
 
-Borrador inicial del contrato de ejecución gobernada de Kern.
+Borrador inicial del contrato de ejecuciÃ³n gobernada de Kern.
 
-### 0.2 — 2026-06-27
+### 0.2 â€” 2026-06-27
 
-Rediseño parcial tras revisión independiente de seguridad y arquitectura. Introduce identidades ejecutora y delegada, Decision Binding verificable, propagación de procedencia, clasificación y taint, restricciones sobre transform y defer, aprobaciones de un solo uso ligadas a la solicitud final, auditoría write-ahead, idempotencia, controles sobre acciones compuestas y límites frente a contenido no confiable.
+RediseÃ±o parcial tras revisiÃ³n independiente de seguridad y arquitectura. Introduce identidades ejecutora y delegada, Decision Binding verificable, propagaciÃ³n de procedencia, clasificaciÃ³n y taint, restricciones sobre transform y defer, aprobaciones de un solo uso ligadas a la solicitud final, auditorÃ­a write-ahead, idempotencia, controles sobre acciones compuestas y lÃ­mites frente a contenido no confiable.
+
+### 0.2.1 — 2026-06-27
+
+Aclaración del orden entre evaluación provisional de policy, aprobación humana y Decision Binding final. Evita una dependencia circular entre aprobación y autorización ejecutable, y precisa que toda transformación genera una solicitud derivada que debe reevaluarse.
