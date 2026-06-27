@@ -1,7 +1,7 @@
 # RFC-0007 — Decision Binding, Enforcement Evidence and Runtime Verification
 
 - **Estado:** Draft
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Fecha:** 2026-06-27
 
 ## 1. Resumen ejecutivo
@@ -65,11 +65,21 @@ Componente que valida el Binding en tiempo de efecto antes de permitir cualquier
 
 ### Binding Reservation
 
-Estado durable y atómico previo al punto de no retorno mediante el cual Core o un componente controlado por Core obtiene el derecho exclusivo a intentar un efecto concreto.
+La Binding Reservation es el único gate lógico que puede conceder el derecho exclusivo a intentar un efecto relevante.
 
-Una reserva no equivale a éxito del efecto ni autoriza ampliación del Binding.
+La creación de una Binding Reservation debe comprobar y fijar de forma atómica, frente a otros verificadores y workers concurrentes, que:
 
-La reserva debe impedir que dos verificadores, workers o reintentos concurrentes ejecuten el mismo efecto no idempotente o irreversible.
+- el Binding conserva integridad y autenticidad verificables;
+- no está expirado, revocado, invalidado ni previamente consumido;
+- la organización, identidad, delegación, policy, Implementation, Integration, artefacto, destinos, obligaciones y límites continúan siendo válidos para la operación;
+- el estado autoritativo requerido satisface la frescura exigida por el riesgo;
+- no existe otra reserva activa o consumo incompatible para el mismo efecto o subefecto.
+
+Una comprobación de verificación previa que no quede reafirmada dentro de la creación de la reserva no es suficiente para autorizar el Point of No Return.
+
+La reserva no equivale a éxito, consumo final ni confirmación de efecto externo.
+
+Su objetivo es impedir que una revocación intermedia, un segundo worker, una ejecución concurrente o un replay obtengan autoridad para producir el mismo efecto.
 
 ### Point of No Return
 
@@ -80,6 +90,10 @@ La ubicación lógica del Point of No Return debe declararse para cada tipo de e
 ### Effect Intent Evidence
 
 Evidencia durable, emitida por Core o un componente controlado por Core, que registra que un Binding válido fue verificado y reservado para un efecto concreto antes de alcanzar su Point of No Return.
+
+Para este RFC, durable significa que la evidencia se ha comprometido en un estado recuperable por Core tras caída de proceso, host, worker o reinicio del componente que la emitió.
+
+La persistencia únicamente en memoria, en buffers no confirmados o en logs auto-reportados por una Tool, Integration o Extension no satisface este requisito.
 
 ### Effect Outcome Evidence
 
@@ -99,6 +113,14 @@ Proceso gobernado que intenta resolver un Unknown Outcome mediante evidencia aut
 
 La reconciliación no puede ampliar el alcance del Binding original ni emitir efectos adicionales sin autorización nueva.
 
+Binding Reconciliation debe ser idempotente, resumible y resistente a caída.
+
+Una caída, interrupción o reinicio durante la reconciliación no puede transformar un Unknown Outcome en éxito, fallo o autorización de replay de forma implícita.
+
+Tras una interrupción, el estado debe permanecer estable como Unknown Outcome hasta que Core o un componente controlado por Core obtenga evidencia suficiente para registrar un resultado observado, una compensación válida o una resolución humana gobernada.
+
+La reconciliación no puede emitir efectos externos adicionales, repetir el efecto original ni iniciar compensación sin la autorización aplicable.
+
 ### Effect-Time Verification
 
 Verificación realizada justo antes del efecto externo.
@@ -106,6 +128,10 @@ Verificación realizada justo antes del efecto externo.
 ### Replay
 
 Intento de reutilizar un Binding ya consumido o aplicado a un contexto distinto.
+
+Cuando un tipo de efecto, sistema externo o Integration no permita declarar, acotar o verificar razonablemente su Point of No Return, Kern no puede tratar la operación como plenamente gobernable.
+
+Debe clasificarse conforme al modelo de Integration opaca de RFC-0006 y quedar denegada por defecto para efectos relevantes, salvo excepción explícita de policy con controles reforzados, vigencia limitada, auditoría reforzada y reconocimiento del riesgo residual.
 
 ### Authoritative State
 
@@ -196,6 +222,10 @@ La verificación debe usar estado autoritativo fresco cuando la revocación, la 
 
 Timeout, partición, inconsistencia, ausencia de respuesta, imposibilidad de determinar frescura o pérdida de capacidad de verificación constituyen incertidumbre de autoridad y deben resultar en deny para el efecto pendiente.
 
+El intento de efecto externo posterior a una Binding Reservation debe realizarse exclusivamente por Core o por un efector o mediador que cumpla la definición de componente controlado por Core de RFC-0006.
+
+Una Tool, Integration, Extension, adapter o Extension Publisher no puede ejecutar el efecto por fuera de la secuencia de reserva, evidencia y verificación gobernadas.
+
 ## 9. Revocación, expiración e invalidación
 
 Un Binding se invalida ante:
@@ -233,10 +263,10 @@ Antes del disparo efectivo de una operación asíncrona, Core o un componente co
 
 El flujo lógico obligatorio es:
 
-1. verificar Binding con estado autoritativo fresco;
-2. crear de forma atómica una Binding Reservation durable;
+1. realizar una evaluación preliminar del Binding;
+2. crear la Binding Reservation como gate atómico de revalidación, exclusividad y transición;
 3. producir Effect Intent Evidence durable;
-4. alcanzar el Point of No Return solo después de los pasos 1 a 3;
+4. alcanzar el Point of No Return solo después de los pasos anteriores;
 5. intentar el efecto externo con la misma identidad de operación y la misma idempotencia ligada al Binding;
 6. registrar Effect Outcome Evidence durable;
 7. consumir, completar, compensar, invalidar o marcar Unknown Outcome según el resultado observado;
@@ -259,6 +289,10 @@ Un reintento no puede aumentar cantidad, frecuencia, límites, alcance, destinos
 Cuando un efecto no idempotente no disponga de una forma verificable de evitar duplicación o reconciliar un resultado incierto, Kern debe denegar el reintento automático y requerir resolución gobernada.
 
 Los efectos compuestos requieren Binding individual por subefecto o una composición verificable que mantenga controles de consumo, destino, obligación y límite por subefecto.
+
+Una reserva cuyo titular interrumpe la ejecución antes de alcanzar el Point of No Return solo puede liberarse o cederse cuando Core pueda demostrar que el Point of No Return no fue alcanzado.
+
+Una interrupción después del Point of No Return, o una imposibilidad de probar que no fue alcanzado, debe producir o preservar Unknown Outcome y activar Binding Reconciliation.
 
 ## 11. Evidencia de enforcement y auditoría
 
@@ -322,6 +356,13 @@ Este RFC no habilita una ruta de ejecución adicional. Formaliza la condición m
 - La verificación asíncrona se repite antes del efecto.
 - Un Binding invalidado no puede recuperarse sin nueva evaluación y nueva autorización ejecutable.
 - No existe ruta alternativa de verificación o consumo mediante código de Extension.
+- La Binding Reservation es el gate atómico de revalidación, exclusividad y transición hacia el Point of No Return.
+- Effect Intent Evidence debe ser durable y recuperable por Core antes del Point of No Return.
+- Una caída antes del Point of No Return no permite ceder o repetir una reserva sin demostrar que el efecto no pudo haberse producido.
+- Una caída después del Point of No Return preserva Unknown Outcome hasta reconciliación gobernada.
+- Binding Reconciliation es idempotente, resumible y no habilita efectos, replay ni compensación sin autorización aplicable.
+- Un Point of No Return no declarable o no verificable impide tratar el efecto como plenamente gobernable.
+- El intento de efecto externo ocurre únicamente mediante Core o un mediador controlado por Core.
 
 ## 14. Consecuencias
 
@@ -356,6 +397,6 @@ No mantengas abierta la necesidad de integridad, verificación Core, reserva pre
 
 ## 17. Historial de cambios
 
-### 0.2 — 2026-06-27
+### 0.2.1 — 2026-06-27
 
-Rediseño parcial tras revisión independiente de seguridad. Define integridad y autenticidad del Decision Binding, verificación exclusiva por Core, reserva y consumo atómicos, punto de no retorno, evidencia durable previa y posterior al efecto, resultados inciertos, no amplificación por reintentos, verificación asíncrona fresca y dependencia de estado autoritativo fail-closed.
+Endurecimiento tras revisión independiente de seguridad. Define la reserva como gate atómico de autoridad y exclusividad, exige evidencia de intención recuperable antes del Point of No Return, establece reconciliación idempotente y resistente a caídas, y aclara el tratamiento de efectos con Point of No Return no declarable o no verificable.
