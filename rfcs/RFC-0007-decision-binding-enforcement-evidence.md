@@ -1,6 +1,6 @@
 # RFC-0007 — Decision Binding, Enforcement Evidence and Runtime Verification
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Versión:** 0.2.2
 - **Fecha:** 2026-06-27
 
@@ -429,3 +429,7 @@ Endurecimiento tras revisión independiente de seguridad. Define la reserva como
 ### 0.2.2 — 2026-06-27
 
 Cierre operativo previo a aceptación. Define detección y recuperación gobernada de reservas abandonadas, preservación explícita de Unknown Outcome ante pérdida de liveness y orden durable de Effect Outcome Evidence antes de declarar consumo exitoso.
+
+### Aceptado — 2026-06-27
+
+RFC-0007 se acepta tras revisión independiente y verificación final. Establece el contrato fundacional de Kern para Decision Bindings íntegros y autenticables, verificados por Core, reservados de forma atómica antes del Point of No Return y acompañados de evidencia durable, recuperación gobernada y tratamiento explícito de resultados inciertos.
