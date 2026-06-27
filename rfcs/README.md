@@ -21,3 +21,4 @@ This directory contains Kern RFCs.
 | [RFC-0001](RFC-0001-kern-manifesto.md) | Kern Manifesto | Accepted | 2026-06-26 | Define por qué existe Kern, qué problema resuelve y los principios que deben guiar su evolución como infraestructura privada gobernable para ejecutar acciones empresariales. |
 | [RFC-0002](RFC-0002-kern-logical-architecture.md) | Kern Logical Architecture | Accepted | 2026-06-26 | Define los motores, planos, fronteras de confianza y reglas de dependencia de Kern. |
 | [RFC-0003](RFC-0003-governed-execution-contract.md) | Governed Execution Contract | Accepted | 2026-06-27 | Define el contrato lógico para lecturas gobernadas, acciones operativas, decisiones de política, aprobaciones y auditoría. |
+| [RFC-0004](RFC-0004-identity-tenancy-authorization.md) | Identity, Tenancy and Authorization Model | Draft | 2026-06-27 | Define identidades, organizaciones, delegación, authority, scopes, revocación y segregación multiempresa de Kern. |
