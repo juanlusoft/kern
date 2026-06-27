@@ -121,6 +121,18 @@ Tras una interrupción, el estado debe permanecer estable como Unknown Outcome h
 
 La reconciliación no puede emitir efectos externos adicionales, repetir el efecto original ni iniciar compensación sin la autorización aplicable.
 
+### Reservation Liveness and Recovery
+
+Core o un componente controlado por Core debe poder detectar una Binding Reservation que permanece activa sin progreso observable hacia Effect Outcome Evidence, consumo final, liberación demostrablemente segura o transición explícita a Unknown Outcome.
+
+La detección de una reserva abandonada no autoriza por sí sola a liberar, ceder, repetir, consumir ni declarar éxito o fallo del Binding.
+
+Cuando Core no pueda demostrar que el Point of No Return no fue alcanzado, la reserva abandonada debe transicionar o permanecer en Unknown Outcome y activar Binding Reconciliation.
+
+Cuando Core pueda demostrar que el Point of No Return no fue alcanzado, puede liberar o ceder la reserva bajo las mismas restricciones de Binding, organización, identidad, payload, destinos, obligaciones y límites.
+
+La política puede definir tiempos de detección, escalado y tratamiento operativo de reservas abandonadas, pero ninguna política puede convertir una reserva incierta en éxito, fallo o replay implícito.
+
 ### Effect-Time Verification
 
 Verificación realizada justo antes del efecto externo.
@@ -294,6 +306,10 @@ Una reserva cuyo titular interrumpe la ejecución antes de alcanzar el Point of 
 
 Una interrupción después del Point of No Return, o una imposibilidad de probar que no fue alcanzado, debe producir o preservar Unknown Outcome y activar Binding Reconciliation.
 
+La recuperación de liveness de una reserva debe ser realizada por Core o por un componente controlado por Core.
+
+Una reserva abandonada después del Point of No Return, o cuando el estado respecto al Point of No Return no pueda probarse, no puede recuperarse mediante reintento automático. Debe preservar Unknown Outcome hasta reconciliación gobernada.
+
 ## 11. Evidencia de enforcement y auditoría
 
 Enforcement Evidence debe ser emitida por Core o por un componente controlado por Core y debe ser íntegra, autenticable, durable y vinculable al Binding, la reserva y el efecto observado.
@@ -333,6 +349,14 @@ La evidencia mínima después del efecto incluye:
 
 La ausencia de Effect Outcome Evidence después del Point of No Return no autoriza considerar el efecto como inexistente ni repetirlo automáticamente.
 
+Cuando el efector o mediador controlado por Core observe confirmación suficiente de que el efecto externo se completó, Effect Outcome Evidence debe comprometerse en estado durable y recuperable antes de que Core declare el Binding como consumido con éxito.
+
+La transición a consumo exitoso debe estar vinculada a Effect Outcome Evidence que identifica el Binding, la reserva, el efecto observado, la confirmación disponible y la correlación externa cuando exista.
+
+Si Core observa un posible éxito externo pero no puede comprometer Effect Outcome Evidence, no puede declarar éxito ni habilitar replay. Debe preservar Unknown Outcome y activar recuperación o reconciliación gobernada.
+
+La persistencia posterior de Outcome Evidence puede completarse mediante recuperación controlada por Core, pero no puede dejar un Binding en éxito sin evidencia durable del resultado observado.
+
 ## 12. Dependencias con RFC-0003 a RFC-0006
 
 RFC-0007 solo cumple su función cuando la integridad y autenticidad del Binding, el Binding Verifier controlado por Core, la reserva atómica, la evidencia durable y la verificación en tiempo de efecto están disponibles para la ruta concreta.
@@ -370,6 +394,7 @@ Este RFC no habilita una ruta de ejecución adicional. Formaliza la condición m
 - Permite auditoría posterior y verificación activa.
 - Hace explícito el punto en el que una autorización deja de ser teórica y se convierte en efecto.
 - Exige que las rutas críticas de Kern puedan demostrar autoridad y resultado, no solo intención.
+- Cuando una reserva queda incierta, Kern prioriza seguridad y trazabilidad sobre disponibilidad automática.
 
 ## 15. Preguntas abiertas
 
@@ -400,3 +425,7 @@ No mantengas abierta la necesidad de integridad, verificación Core, reserva pre
 ### 0.2.1 — 2026-06-27
 
 Endurecimiento tras revisión independiente de seguridad. Define la reserva como gate atómico de autoridad y exclusividad, exige evidencia de intención recuperable antes del Point of No Return, establece reconciliación idempotente y resistente a caídas, y aclara el tratamiento de efectos con Point of No Return no declarable o no verificable.
+
+### 0.2.2 — 2026-06-27
+
+Cierre operativo previo a aceptación. Define detección y recuperación gobernada de reservas abandonadas, preservación explícita de Unknown Outcome ante pérdida de liveness y orden durable de Effect Outcome Evidence antes de declarar consumo exitoso.
