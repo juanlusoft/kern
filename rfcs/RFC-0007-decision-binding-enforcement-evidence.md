@@ -1,12 +1,12 @@
 # RFC-0007 — Decision Binding, Enforcement Evidence and Runtime Verification
 
 - **Estado:** Draft
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Fecha:** 2026-06-27
 
 ## 1. Resumen ejecutivo
 
-Este RFC define la evidencia mínima que Kern necesita para verificar, en tiempo de efecto, que una operación gobernada corresponde realmente a un Decision Binding válido, fresco, no revocado y consumible.
+Este RFC define el contrato lógico que Kern necesita para demostrar, en tiempo de efecto, que una operación gobernada corresponde realmente a un Decision Binding íntegro, autenticable, reservado, consumible y verificable por Core.
 
 ## 2. Problema
 
@@ -15,13 +15,21 @@ RFC-0004 define identidad, tenancy, scopes, delegación y revocación.
 RFC-0005 define evaluación de policy, composición y decisiones provisionales.
 RFC-0006 define capabilities, tools, extensiones, implementación y enforcement.
 
-Falta formalizar la evidencia verificable que liga esa cadena lógica con el momento exacto en el que se produce un efecto externo.
+Ese modelo todavía necesita un contrato mecánico para:
+
+- ligar el Binding con una operación final exacta;
+- reservar el derecho exclusivo a intentar el efecto;
+- registrar evidencia durable antes y después del punto de no retorno;
+- distinguir éxito, fallo, compensación e incertidumbre;
+- impedir replay o amplificación por reintentos;
+- revalidar operaciones asíncronas con estado autoritativo fresco;
+- fallar cerrado cuando no pueda probarse la autoridad del estado consultado.
 
 ## 3. Objetivos
 
 - Definir qué debe probarse antes de ejecutar.
-- Separar decisión, evidencia de enforcement y resultado operativo.
-- Mantener el modelo fail-closed ante Binding ausente, obsoleto o ambiguo.
+- Separar decisión, reserva, evidencia de enforcement y resultado operativo.
+- Mantener el modelo fail-closed ante Binding ausente, obsoleto, ambiguo o no autenticable.
 - Evitar que una recomendación, evaluación provisional o aprobación humana aislada produzca efecto.
 
 ## 4. No objetivos
@@ -30,6 +38,7 @@ Falta formalizar la evidencia verificable que liga esa cadena lógica con el mom
 - No redefine el ciclo de ejecución gobernada.
 - No introduce un protocolo criptográfico concreto.
 - No decide almacenamiento, formato de red ni transporte.
+- No elige tecnologías concretas de emisión, reserva, consumo o reconciliación.
 
 ## 5. Conceptos normativos
 
@@ -37,6 +46,14 @@ Falta formalizar la evidencia verificable que liga esa cadena lógica con el mom
 
 Autorización ejecutable y verificable emitida para una solicitud final concreta.
 Un Decision Binding no es una recomendación, una respuesta de policy, una aprobación humana ni una credencial amplia. Es una autorización ejecutable y verificable, emitida para una solicitud final concreta y consumible únicamente bajo las restricciones que contiene.
+
+### Binding Integrity and Authenticity
+
+Un Decision Binding debe incluir una prueba verificable de integridad y autenticidad emitida bajo control de Core.
+
+La prueba debe permitir a un Binding Verifier controlado por Core detectar cualquier alteración, sustitución, fabricación o reutilización no autorizada del Binding o de los atributos que liga.
+
+Una afirmación declarativa, un campo auto-reportado, un log de Extension o una respuesta no autenticada de Policy Engine no constituyen prueba suficiente de integridad y autenticidad.
 
 ### Binding Issuer
 
@@ -46,21 +63,41 @@ Entidad lógica que emite el Decision Binding final.
 
 Componente que valida el Binding en tiempo de efecto antes de permitir cualquier acción externa.
 
-### Enforcement Evidence
+### Binding Reservation
 
-Conjunto mínimo de huellas, marcas, referencias y comprobaciones que prueban que la ejecución se realizó con el Binding correcto.
+Estado durable y atómico previo al punto de no retorno mediante el cual Core o un componente controlado por Core obtiene el derecho exclusivo a intentar un efecto concreto.
 
-### Binding Subject
+Una reserva no equivale a éxito del efecto ni autoriza ampliación del Binding.
 
-Solicitud final concreta, organización, identidades, scope, payload final y restricciones asociadas.
+La reserva debe impedir que dos verificadores, workers o reintentos concurrentes ejecuten el mismo efecto no idempotente o irreversible.
 
-### Binding Freshness
+### Point of No Return
 
-Estado que indica que el Binding sigue vigente, no ha expirado y no ha sido revocado ni consumido.
+Instante a partir del cual un efecto externo puede haberse producido y ya no puede garantizarse que no ocurrió.
 
-### Binding Consumption
+La ubicación lógica del Point of No Return debe declararse para cada tipo de efecto relevante.
 
-Uso único del Binding para una ejecución concreta o lote gobernado concreto.
+### Effect Intent Evidence
+
+Evidencia durable, emitida por Core o un componente controlado por Core, que registra que un Binding válido fue verificado y reservado para un efecto concreto antes de alcanzar su Point of No Return.
+
+### Effect Outcome Evidence
+
+Registra el resultado observado del efecto: completado, rechazado, fallido antes de efecto, parcialmente completado, compensado, no compensable o de resultado incierto.
+
+Debe incluir la evidencia externa disponible, identificadores de correlación externos cuando existan y la relación con el Binding reservado.
+
+### Unknown Outcome
+
+Estado obligatorio cuando Kern no puede demostrar de forma suficiente si el sistema externo produjo o no el efecto tras alcanzar el Point of No Return.
+
+Un Unknown Outcome no autoriza replay automático, nuevo intento implícito ni consumo silencioso como éxito.
+
+### Binding Reconciliation
+
+Proceso gobernado que intenta resolver un Unknown Outcome mediante evidencia autoritativa del sistema externo, trazabilidad disponible, estado de idempotencia, comprobaciones de efecto o procedimientos de compensación aceptados.
+
+La reconciliación no puede ampliar el alcance del Binding original ni emitir efectos adicionales sin autorización nueva.
 
 ### Effect-Time Verification
 
@@ -76,94 +113,239 @@ Estado maestro verificable para organización, identidad, revocación, delegaci�
 
 ## 6. Modelo lógico de Decision Binding
 
-Un Binding debe vincular, como mínimo:
+Un Binding debe quedar ligado de forma explícita, exacta y verificable a:
 
-- solicitud final;
+- identificador único;
 - organización;
-- identidades relevantes;
-- scope final;
-- payload final o huella verificable;
-- policy o evaluación final aplicable;
+- identidad ejecutora;
+- identidad delegada;
+- delegación y sus restricciones;
+- capability;
+- implementation exacta;
+- versión;
+- identidad inmutable de artefacto;
+- integration exacta;
+- configuración organization-scoped de integración;
+- solicitud final;
+- representación canónica verificable del payload final;
+- recurso objetivo;
+- tipo de efecto;
+- destinos permitidos;
+- clasificación, procedencia y taint relevantes;
+- scopes;
+- snapshot, versión o identidad verificable de policy;
+- obligaciones;
+- aprobación aplicable;
+- límites cuantitativos;
+- correlación;
+- idempotency key o material de idempotencia aplicable;
+- hora de emisión;
 - expiración;
-- revocación;
-- consumo;
-- referencias de procedencia y correlación;
-- restricciones de implementación y capability;
-- versión o identidad verificable del artefacto autorizado.
+- condiciones de revocación e invalidación;
+- estado de reserva y consumo.
 
-Un Binding no puede autorizar una Implementation genérica, una versión flotante, un artefacto mutable, una organización implícita, una identidad no verificable ni un payload materialmente distinto del evaluado.
+El payload final debe coincidir exactamente con una representación canónica verificable ligada al Binding, incluyendo los elementos de solicitud que puedan alterar recurso, efecto, destino, cantidad, límite o semántica operativa.
+
+Una variación no ligada explícitamente al Binding requiere una nueva evaluación de Policy Engine y un nuevo Binding final.
+
+Un Decision Binding no puede autorizar una Implementation genérica, una versión flotante, un artefacto mutable, una organización implícita, una identidad no verificable, una Integration no ligada, un destino no ligado, obligaciones no verificadas ni un payload distinto del evaluado.
 
 ## 7. Emisión y contenido mínimo
 
-Solo el Core o un componente controlado por Core puede emitir un Decision Binding final.
+Solo Core o un componente controlado por Core puede emitir un Decision Binding.
+
 La emisión ocurre después de la evaluación final de policy y, cuando aplique, después de una aprobación humana válida.
+
 Las transformaciones permitidas deben haber sido reevaluadas antes de emitir el Binding final.
-Tool, Integration o Extension no pueden emitirse a sí mismos un Binding.
+
+Solo Core o un componente controlado por Core puede actuar como Binding Verifier final, validar la integridad y autenticidad de un Binding, comprobar su estado, reservarlo, consumirlo, decidir deny o registrar Enforcement Evidence.
+
+Una Tool, Integration, Extension, adapter o Extension Publisher puede solicitar una operación o aportar datos de ejecución, pero nunca puede verificar por sí misma un Binding como autoridad final ni decidir que sigue vigente.
+
 Si falta un atributo crítico, el sistema falla cerrado.
 
 ## 8. Verificación y consumo en tiempo de efecto
 
-Antes de cualquier efecto externo, el ejecutor debe verificar:
+Antes de cualquier efecto externo, irreversible, compuesto, asíncrono o relevante, Core o un componente controlado por Core debe comprobar:
 
-- que el Binding existe y sigue vigente;
-- que no está revocado, expirado ni consumido;
-- que la organización y las identidades siguen siendo válidas;
-- que scope, payload, capability e implementación coinciden con lo autorizado;
-- que la procedencia, la correlación y las restricciones continúan intactas;
-- que el estado maestro consultado es fresco y verificable.
+1. integridad y autenticidad del Binding;
+2. vigencia y expiración;
+3. revocación e invalidación;
+4. reserva, consumo y no replay;
+5. organización;
+6. identidad ejecutora y delegada;
+7. scopes y delegación;
+8. capability;
+9. implementation;
+10. versión;
+11. artefacto realmente ejecutado;
+12. integration y configuración organization-scoped;
+13. solicitud y payload final canónico;
+14. recurso objetivo;
+15. tipo de efecto;
+16. destinos observados y permitidos;
+17. clasificación, procedencia y taint;
+18. policy aplicable;
+19. obligaciones;
+20. aprobación aplicable;
+21. límites cuantitativos;
+22. correlación e idempotencia aplicables;
+23. precondiciones de aislamiento, mediación y attestation heredadas de RFC-0006.
 
-Si una comprobación falla, no se ejecuta nada y se registra la razón.
+La verificación debe usar estado autoritativo fresco cuando la revocación, la versión de policy, el lifecycle, la identidad de artefacto, la Integration, las credenciales, las obligaciones o las precondiciones de ejecución puedan haber cambiado.
+
+Timeout, partición, inconsistencia, ausencia de respuesta, imposibilidad de determinar frescura o pérdida de capacidad de verificación constituyen incertidumbre de autoridad y deben resultar en deny para el efecto pendiente.
 
 ## 9. Revocación, expiración e invalidación
 
-Un Binding puede revocarse antes de su uso.
-Un Binding expira por tiempo, por consumo o por invalidación del contexto de referencia.
-El consumidor debe tratar cualquier duda como fallo cerrado.
+Un Binding se invalida ante:
+
+- expiración;
+- revocación o suspensión de organización;
+- revocación o suspensión de identidad;
+- cambio de scope;
+- cambio de delegación;
+- retiro de consentimiento;
+- cambio de approval;
+- cambio de policy;
+- cambio de obligation;
+- cambio de integration;
+- cambio de configuración organization-scoped;
+- cambio de credencial;
+- cambio de extension;
+- cambio de implementation;
+- cambio de versión;
+- cambio de artefacto;
+- cambio de lifecycle;
+- cambio de destino;
+- cambio de clasificación o taint relevantes;
+- cambio de límites;
+- cambio de precondiciones de aislamiento;
+- cambio de mediación de efectos;
+- cambio de verificación de artefacto;
+- pérdida de capacidad de consulta de estado autoritativo.
+
+Un Binding emitido para una operación asíncrona no conserva autoridad por el mero hecho de haber sido emitido antes.
+
+Antes del disparo efectivo de una operación asíncrona, Core o un componente controlado por Core debe repetir la verificación de tiempo de efecto, obtener estado autoritativo fresco y crear o revalidar la reserva aplicable.
 
 ## 10. Replay, idempotencia y concurrencia
 
-Toda operación reintentable, asíncrona o capaz de duplicar efectos requiere idempotencia o mecanismo equivalente.
-Si concurren dos intentos con el mismo Binding, solo el primero puede consumirlo.
-Los intentos posteriores deben fallar cerrado y dejar evidencia.
+El flujo lógico obligatorio es:
+
+1. verificar Binding con estado autoritativo fresco;
+2. crear de forma atómica una Binding Reservation durable;
+3. producir Effect Intent Evidence durable;
+4. alcanzar el Point of No Return solo después de los pasos 1 a 3;
+5. intentar el efecto externo con la misma identidad de operación y la misma idempotencia ligada al Binding;
+6. registrar Effect Outcome Evidence durable;
+7. consumir, completar, compensar, invalidar o marcar Unknown Outcome según el resultado observado;
+8. reconciliar cualquier Unknown Outcome sin replay implícito.
+
+La verificación, reserva y transición hacia el Point of No Return deben impedir que una revocación, un segundo worker o un reintento concurrente produzcan un segundo efecto autorizado por el mismo Binding.
+
+No se exige una transacción distribuida perfecta entre Kern y un sistema externo. En su ausencia, Kern debe registrar intención durable antes del efecto, mantener identidad de operación estable, usar idempotencia externa cuando exista y tratar como Unknown Outcome cualquier caso en que no pueda probarse el resultado.
+
+Un Binding consumido sin evidencia de efecto no se presenta como éxito.
+Un efecto posiblemente producido sin evidencia final no se reintenta automáticamente.
+Un Binding reservado no puede liberarse para reintento salvo que Core pueda demostrar que el Point of No Return no fue alcanzado o que el reintento usa una primitiva externa de idempotencia verificable.
+
+Idempotencia no equivale a autorización de replay.
+
+Un reintento autorizado debe conservar el mismo Binding, la misma organización, identidades, delegación, capability, implementation, Integration, payload canónico, recurso, tipo de efecto, destinos, obligaciones y límites cuantitativos.
+
+Un reintento no puede aumentar cantidad, frecuencia, límites, alcance, destinos, scopes, delegación ni efectos.
+
+Cuando un efecto no idempotente no disponga de una forma verificable de evitar duplicación o reconciliar un resultado incierto, Kern debe denegar el reintento automático y requerir resolución gobernada.
+
+Los efectos compuestos requieren Binding individual por subefecto o una composición verificable que mantenga controles de consumo, destino, obligación y límite por subefecto.
 
 ## 11. Evidencia de enforcement y auditoría
 
-La evidencia mínima debe incluir:
+Enforcement Evidence debe ser emitida por Core o por un componente controlado por Core y debe ser íntegra, autenticable, durable y vinculable al Binding, la reserva y el efecto observado.
 
-- identificador del Binding;
-- huella del payload final;
-- solicitud final;
+Los logs, métricas, trazas o auto-reportes de una Tool, Integration o Extension no sustituyen Enforcement Evidence.
+
+La evidencia mínima antes del Point of No Return incluye:
+
+- binding id;
+- identidad del Binding Verifier;
+- integridad y autenticidad verificadas;
+- policy y versión;
 - organización e identidades;
-- decisión o evaluación final que lo originó;
-- tiempo de emisión;
-- tiempo de verificación;
-- resultado de cada comprobación;
-- estado de consumo o rechazo;
-- correlación con auditoría.
+- delegación;
+- capability;
+- implementation, versión y artefacto observado;
+- integration y configuración;
+- payload canónico o huella verificable;
+- recurso, tipo de efecto y destino;
+- obligaciones, aprobación y límites comprobados;
+- reserva creada;
+- timestamp;
+- correlación;
+- motivo de deny si aplica.
+
+La evidencia mínima después del efecto incluye:
+
+- resultado observado;
+- confirmación, rechazo, timeout o incertidumbre;
+- identificador externo o correlación externa cuando exista;
+- consumo final;
+- estado parcial;
+- compensación iniciada, completada o imposible;
+- Unknown Outcome, cuando corresponda;
+- resultado de reconciliación posterior;
+- timestamp y trazabilidad.
+
+La ausencia de Effect Outcome Evidence después del Point of No Return no autoriza considerar el efecto como inexistente ni repetirlo automáticamente.
 
 ## 12. Dependencias con RFC-0003 a RFC-0006
+
+RFC-0007 solo cumple su función cuando la integridad y autenticidad del Binding, el Binding Verifier controlado por Core, la reserva atómica, la evidencia durable y la verificación en tiempo de efecto están disponibles para la ruta concreta.
+
+Mientras esas propiedades no puedan demostrarse, las garantías de ejecución gobernada dependientes de Decision Binding en RFC-0003 a RFC-0006 no pueden considerarse plenamente conformes para efectos relevantes.
 
 Este RFC no habilita una ruta de ejecución adicional. Formaliza la condición mecánica necesaria para que las garantías de RFC-0003 a RFC-0006 sean verificables en tiempo de efecto.
 
 ## 13. Invariantes
 
-- Sin Binding verificable no hay efecto externo.
-- Binding revocado o consumido no se reutiliza.
-- Un Binding no amplía scope, identidad, tenant ni capability.
-- La evidencia de enforcement debe ser verificable y auditable.
-- Toda duda sobre frescura, procedencia o consumo se resuelve en deny.
+- No existe efecto relevante sin Binding final íntegro, autenticado y válido.
+- Solo Core o componente controlado por Core emite o verifica Binding como autoridad final.
+- Un Binding liga organization, identidades, delegación, solicitud, payload, capability, implementation, artefacto, Integration, destino, obligaciones y límites.
+- Una reserva durable y exclusiva precede al Point of No Return.
+- Idempotencia no autoriza replay.
+- Un reintento nunca amplía ningún atributo autorizado.
+- Un resultado incierto no autoriza replay automático.
+- La evidencia de Core prevalece sobre auto-reportes de Extension.
+- Todo efecto relevante tiene Effect Intent Evidence y Effect Outcome Evidence, o estado Unknown Outcome explícito.
+- Timeout, partición, inconsistencia o incapacidad de consultar estado autoritativo fallan cerrados.
+- La verificación asíncrona se repite antes del efecto.
+- Un Binding invalidado no puede recuperarse sin nueva evaluación y nueva autorización ejecutable.
+- No existe ruta alternativa de verificación o consumo mediante código de Extension.
 
 ## 14. Consecuencias
 
 - Reduce ambigüedad operativa en ejecución distribuida.
 - Permite auditoría posterior y verificación activa.
 - Hace explícito el punto en el que una autorización deja de ser teórica y se convierte en efecto.
+- Exige que las rutas críticas de Kern puedan demostrar autoridad y resultado, no solo intención.
 
 ## 15. Preguntas abiertas
 
-- Qué formato de huella se estandariza primero.
-- Qué campos del Binding se consideran obligatorios para cada tipo de efecto.
-- Qué política de retención se aplica a la evidencia.
+Mantén abiertas solo decisiones de implementación, como:
+
+- formato del Binding;
+- mecanismo concreto de integridad/autenticidad;
+- almacén concreto de reservas, consumo y revocación;
+- protocolo concreto de verificación;
+- algoritmo de canonicalización;
+- modelo de disponibilidad, consistencia y recuperación;
+- retención de evidencia;
+- mecanismo técnico de reconciliación;
+- composición concreta de bindings;
+- representación de payloads sensibles.
+
+No mantengas abierta la necesidad de integridad, verificación Core, reserva previa al punto de no retorno, evidencia durable o fail-closed: esas propiedades quedan normativamente exigidas.
 
 ## 16. Referencias
 
@@ -174,6 +356,6 @@ Este RFC no habilita una ruta de ejecución adicional. Formaliza la condición m
 
 ## 17. Historial de cambios
 
-### 0.1 — 2026-06-27
+### 0.2 — 2026-06-27
 
-Primer borrador del contrato de evidencia de enforcement para Decision Bindings y verificación en tiempo de efecto.
+Rediseño parcial tras revisión independiente de seguridad. Define integridad y autenticidad del Decision Binding, verificación exclusiva por Core, reserva y consumo atómicos, punto de no retorno, evidencia durable previa y posterior al efecto, resultados inciertos, no amplificación por reintentos, verificación asíncrona fresca y dependencia de estado autoritativo fail-closed.
