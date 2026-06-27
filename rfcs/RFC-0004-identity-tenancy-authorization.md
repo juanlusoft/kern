@@ -2,8 +2,7 @@
 
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
-- **Fecha:** 2026-06-27
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** Identidad, tenancy y autorización
 - **Depends on:** RFC-0000, RFC-0001, RFC-0002, RFC-0003
@@ -408,6 +407,8 @@ Kern debe modelar explícitamente relaciones relevantes entre identidades:
 * provider o runtime autorizado como recurso de plataforma;
 * identidad delegada por otra identidad;
 * aprobador autorizado para un tipo de operación.
+* operador de plataforma distinto de administrador de organización;
+* administrador de organización distinto de aprobador independiente cuando la política exija separación de deberes.
 
 Estas relaciones no conceden por sí mismas autoridad ilimitada.
 
@@ -451,13 +452,19 @@ Un workflow no puede mantener acceso después de una revocación, suspensión, e
 
 Una extensión puede declarar capacidades, permisos requeridos y compatibilidad, pero no puede concederse autoridad.
 
+La habilitación de una extensión para una organización debe conceder únicamente los scopes mínimos necesarios, con propósito declarado, periodo de validez, posibilidad de revocación y reconsentimiento cuando cambien capacidades, permisos solicitados o riesgo operativo.
+
 Una tool puede usar credenciales externas únicamente dentro del alcance autorizado por una solicitud y su Decision Binding.
+
+Cuando el sistema externo solo permita una credencial amplia, esa credencial no constituye autoridad global para Kern. La integración debe tratarse como de mayor riesgo y quedar sometida a controles adicionales definidos por policy, límites de blast radius, auditoría reforzada y aprobación cuando corresponda.
 
 Un channel puede aportar credenciales y referencias de origen, pero no puede validar por sí mismo organización, identidad, confianza, clasificación o taint.
 
 Las extensiones, tools y canales no pueden autoasignarse permisos, marcarse como recurso de plataforma ni convertir una credencial amplia en una autoridad válida para una operación concreta.
 
 La validación de autoridad para estos componentes exige policy, scope, organization context y trazabilidad independientes del propio componente.
+
+Tool Engine debe comprobar, antes de cada efecto externo, la vigencia de identidad, organización, scope, delegación, revocación, Decision Binding y restricciones aplicables. Una tool no puede tomar decisiones de autorización locales ni ampliar el efecto permitido por la solicitud.
 
 ### 8.5 Operadores de Kern
 
@@ -483,6 +490,8 @@ Una aprobación no puede:
 * aprobar una identidad suspendida o revocada;
 * reutilizarse para otra solicitud;
 * evitar una denegación terminal de Policy Engine.
+
+Una misma identidad no puede solicitar y aprobar una operación cuando la política exija aprobación independiente. Tampoco puede emitir una concesión o delegación y aprobar la misma operación cuando dicha combinación elimine la independencia exigida.
 
 Toda aprobación permanece ligada a la solicitud final, a la evaluación provisional de Policy cuando exista, a la organización, a las identidades involucradas, al scope final, al payload final, a la policy aplicable, a la expiración y a la correlación de auditoría.
 
@@ -514,6 +523,9 @@ RFC-0003 define cómo una solicitud se evalúa, aprueba, vincula y ejecuta.
 Este RFC define los atributos de identidad, organización, delegación, autoridad y scope que alimentan esa evaluación.
 
 RFC-0003 no puede emitir un Decision Binding válido si la identidad ejecutora, la identidad delegada o la organización no cumplen las reglas de este RFC.
+Los Decision Bindings se rigen por RFC-0003. Este RFC depende de que sean verificables, emitidos por el Control Plane, ligados a la solicitud final, identidades, organización, scope, restricciones, expiración y aprobación cuando aplique.
+
+RFC-0004 no decide su formato técnico, firma ni mecanismo criptográfico. Ningún componente puede inventar, sustituir o interpretar un Decision Binding como válido fuera de las reglas de verificación de RFC-0003.
 
 Antes de emitir un Decision Binding, Policy Engine debe poder comprobar:
 
@@ -521,6 +533,9 @@ Antes de emitir un Decision Binding, Policy Engine debe poder comprobar:
 * identidad ejecutora válida;
 * identidad delegada válida, cuando exista;
 * delegación válida, cuando aplique;
+* ausencia de suspensión, revocación, expiración o invalidación relevante en el punto de ejecución;
+* cadena de delegación válida, acíclica y dentro de la profundidad permitida;
+* scope explícito, acotado y verificable;
 * concesiones y scopes suficientes;
 * ausencia de revocación o suspensión;
 * relación permitida entre identidades;
@@ -596,3 +611,6 @@ Borrador inicial del modelo de identidad, tenancy y autorización de Kern.
 ### 0.2 — 2026-06-27
 
 Ampliación del modelo con autoridad atenuada, principal autorizador, separación más estricta entre recursos de plataforma y datos empresariales, y reglas de integración más precisas con RFC-0003.
+### 0.2.1 — 2026-06-27
+
+Correcciones de precisión normativa tras verificación final. Explicita el reconsentimiento de extensiones, el tratamiento de credenciales externas amplias, la prohibición de autorización local por tools, la separación entre operador de plataforma y administrador de organización, la independencia entre concesión y aprobación, y las comprobaciones obligatorias de Decision Binding y cadena de delegación.
