@@ -22,3 +22,4 @@ This directory contains Kern RFCs.
 | [RFC-0002](RFC-0002-kern-logical-architecture.md) | Kern Logical Architecture | Accepted | 2026-06-26 | Define los motores, planos, fronteras de confianza y reglas de dependencia de Kern. |
 | [RFC-0003](RFC-0003-governed-execution-contract.md) | Governed Execution Contract | Accepted | 2026-06-27 | Define el contrato lógico para lecturas gobernadas, acciones operativas, decisiones de política, aprobaciones y auditoría. |
 | [RFC-0004](RFC-0004-identity-tenancy-authorization.md) | Identity, Tenancy and Authorization Model | Accepted | 2026-06-27 | Define identidades, organizaciones, delegación, authority, scopes, revocación y segregación multiempresa de Kern. |
+| [RFC-0005](RFC-0005-policy-evaluation-decision-model.md) | Policy Evaluation and Decision Model | Draft | 2026-06-27 | Define cómo Policy Engine evalúa contexto, compone políticas, genera restricciones y decide si una operación puede llegar a ejecución gobernada. |
