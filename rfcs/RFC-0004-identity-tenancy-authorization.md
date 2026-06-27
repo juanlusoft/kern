@@ -1,8 +1,8 @@
 # RFC-0004 — Identity, Tenancy and Authorization Model
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** Identidad, tenancy y autorización
 - **Depends on:** RFC-0000, RFC-0001, RFC-0002, RFC-0003
@@ -611,6 +611,10 @@ Borrador inicial del modelo de identidad, tenancy y autorización de Kern.
 ### 0.2 — 2026-06-27
 
 Ampliación del modelo con autoridad atenuada, principal autorizador, separación más estricta entre recursos de plataforma y datos empresariales, y reglas de integración más precisas con RFC-0003.
+
+### 0.2.2 — 2026-06-27
+
+RFC Accepted por el Technical Owner tras revisión independiente de seguridad y arquitectura. Este RFC establece el modelo fundacional de Kern para identidad, tenancy, scopes, delegación atenuada, revocación, separación de deberes y límites de autoridad en ejecuciones gobernadas.
 ### 0.2.1 — 2026-06-27
 
 Correcciones de precisión normativa tras verificación final. Explicita el reconsentimiento de extensiones, el tratamiento de credenciales externas amplias, la prohibición de autorización local por tools, la separación entre operador de plataforma y administrador de organización, la independencia entre concesión y aprobación, y las comprobaciones obligatorias de Decision Binding y cadena de delegación.
