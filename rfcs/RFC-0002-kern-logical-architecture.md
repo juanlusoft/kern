@@ -1,9 +1,9 @@
 ﻿# RFC-0002 — Kern Logical Architecture
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-26
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Architecture / Foundational
 - **Dominio:** Arquitectura lógica de plataforma
 - **Depends on:** RFC-0000, RFC-0001
@@ -695,3 +695,7 @@ Rediseño parcial tras revisión externa. Convierte el Control Plane en transver
 ### 0.2.1 — 2026-06-26
 
 Correcciones de consistencia tras la revisión final: numeración completa de motores, definición de configuración y ciclo de vida de extensiones, separación explícita entre acciones operativas y acceso gobernado a conocimiento, y regla provisional de conflicto de políticas.
+
+### 0.2.2 — 2026-06-26
+
+RFC Accepted por el Technical Owner tras revisión independiente de arquitectura e investigación estratégica externa. Esta arquitectura lógica se convierte en la referencia para las fronteras de control, ejecución gobernada, tenancy, extensiones y evolución de Kern.
