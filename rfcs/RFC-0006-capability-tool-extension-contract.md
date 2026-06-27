@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** Capacidades, tools, integraciones, extensiones, registry y control de ejecución
 - **Depends on:** RFC-0002, RFC-0003, RFC-0004, RFC-0005
@@ -96,6 +96,10 @@ Una Integration es una configuración organization-scoped que conecta una Tool o
 Un adapter es un detalle interno de implementación de una Tool o Integration. No es una categoría autónoma de ejecución, autorización, resolución ni lifecycle.
 
 Un adapter no puede introducir una ruta de efecto, credencial, red, callback, secreto o resolución fuera de las fronteras aplicables a la Tool o Integration que lo contiene.
+
+Toda operación externa realizada mediante una Integration debe atravesar la misma frontera de ejecución gobernada y mediación controlada por Core aplicable a una Tool.
+
+Una Integration no puede producir, delegar ni reenviar efectos externos por una ruta independiente de Core.
 
 Una Integration no puede ser simultáneamente una capability y una implementación.
 
@@ -223,6 +227,10 @@ La evidencia de esa coincidencia debe formar parte de la trazabilidad de ejecuci
 
 El mapeo implementation identifier + version -> immutable artifact identity debe anclarse en Core o en una raíz de confianza validada por Core, no en una declaración unilateral del Extension Publisher.
 
+Si una frontera de enforcement, mediador de credenciales, sink de telemetría o componente controlado por Core no está disponible, no puede verificar restricciones o pierde capacidad de aplicar bindings y obligaciones, debe fallar cerrado para los efectos y canales que gobierna.
+
+Una Extension no puede sustituir temporalmente ese componente ni degradar sus controles para mantener continuidad operativa.
+
 ---
 
 ## 7. Contrato de capability e implementación
@@ -275,6 +283,18 @@ La identidad de una implementación debe estar ligada a un artefacto verificable
 La combinación de identificador de implementación y versión no puede apuntar a contenido distinto con posterioridad.
 
 Un cambio de contenido de artefacto, incluso si conserva el mismo manifest, identificador o versión declarada, constituye un cambio de implementación y requiere reevaluación de seguridad, lifecycle, consentimiento y autorizaciones dependientes.
+
+### Canales secundarios y telemetría
+
+Los logs, métricas, trazas, telemetría, diagnósticos, eventos operativos y cualquier canal secundario emitido por una Tool, Integration o Extension constituyen salidas gobernadas.
+
+No pueden enviarse directamente a destinos externos, publishers, servicios de observabilidad ni repositorios de terceros sin pasar por un sink controlado por Core o por un componente controlado por Core.
+
+El sink debe aplicar clasificación, procedencia, taint, restricciones de destino, límites y obligaciones antes de retener, procesar o exportar datos.
+
+Una Tool, Integration o Extension no puede usar telemetría, logs, métricas, trazas, temporización, errores, tamaño de payload o canales secundarios como vía alternativa de exfiltración o comunicación no gobernada.
+
+Cuando Core no pueda verificar y gobernar un canal secundario relevante, dicho canal no puede habilitarse para una Extension no confiable.
 
 ---
 
@@ -348,6 +368,10 @@ Los disparadores obligatorios de reevaluación y reconsentimiento incluyen:
 - modelo de aislamiento;
 - configuración organization-scoped.
 
+Un cambio de identidad de artefacto, versión, Implementation, manifest, destino, credencial, riesgo, lifecycle o configuración organization-scoped invalida las resoluciones, consentimientos, Decision Bindings y trabajos asíncronos dependientes que aún no hayan producido su efecto.
+
+Un trabajo asíncrono invalidado no puede reanudarse de forma implícita. Debe reevaluarse y recibir una nueva autorización ejecutable antes de cualquier efecto posterior.
+
 Una Implementation o Extension vulnerable o revocada no puede reactivarse, seleccionarse, instalarse ni ejecutarse mediante excepción de policy.
 
 Una Implementation o Extension deprecada o retirada exclusivamente por compatibilidad puede admitir una excepción limitada, temporal, auditable y aprobada cuando corresponda, siempre que policy lo permita.
@@ -376,6 +400,14 @@ La mediación reduce el blast radius de una credencial amplia, pero no elimina p
 
 Cuando un sistema no proporcione confinamiento, trazabilidad, idempotencia, cancelación o visibilidad suficientes, la Integration debe clasificarse como de mayor riesgo y requerir deny o controles reforzados conforme a policy. Nunca puede tratarse como plenamente gobernada por defecto.
 
+Una Integration opaca es aquella para la que Core no puede verificar suficientemente destino, efecto, identidad externa, idempotencia, cancelación, trazabilidad o restricciones relevantes.
+
+Una Integration opaca debe ser denegada por defecto para operaciones relevantes.
+
+Solo puede habilitarse mediante excepción explícita de policy, limitada en alcance y vigencia, con controles reforzados, aprobación cuando corresponda, auditoría reforzada y reconocimiento explícito del riesgo residual.
+
+Una Integration opaca no puede declararse plenamente gobernada ni equivalente a una Integration con mediación verificable.
+
 Una instancia de Extension que atienda más de una organización debe impedir acceso cruzado incluso durante ejecuciones concurrentes.
 
 No puede depender de memoria global mutable, pools no vinculados a organización, variables de entorno compartidas, caches con claves incompletas ni estados de proceso reutilizables entre organizaciones.
@@ -395,6 +427,14 @@ RFC-0004: scopes, delegación, revocación y cross-organization no pueden amplia
 RFC-0005: Policy Engine compone decisiones sobre la implementación exacta, configuración, efectos, destinos, riesgo y lifecycle.
 
 RFC-0006 depende de que RFC-0003 proporcione Decision Bindings verificables ligados a la solicitud y del enforcement controlado por Core; de que RFC-0004 impida ampliación de autoridad y regule credenciales externas; y de que RFC-0005 componga policy de forma fail-closed.
+
+### Dependencia de conformidad de ejecución
+
+Las garantías de RFC-0006 para operaciones relevantes dependen de que RFC-0003 proporcione Decision Bindings verificables, no reutilizables y ligados a la solicitud, organización, identidad, implementación concreta, efectos autorizados y restricciones aplicables.
+
+Mientras una instalación de Kern no pueda demostrar esta propiedad para una ruta de ejecución concreta, una Tool, Integration o Extension no puede ejecutar efectos externos, irreversibles, compuestos, asíncronos ni relevantes mediante esa ruta.
+
+Esta dependencia es una condición de conformidad y despliegue, no una recomendación opcional.
 
 La ejecución de una Extension como código no confiable requiere precondiciones verificables de aislamiento, mediación de efectos, identidad de artefacto en tiempo de ejecución y confinamiento de credenciales.
 
@@ -452,6 +492,8 @@ Aceptar este RFC implica que toda capability, tool, integration o extension futu
 
 Ningún componente podrá usar una capability para crear una vía de ejecución paralela a las reglas de Kern.
 
+El registro operativo de Core debe distinguir entre telemetría interna permitida, telemetría retenida, telemetría transformada o redactada, telemetría bloqueada e intento de egreso no autorizado por canal secundario.
+
 ---
 
 ## 14. Preguntas abiertas
@@ -496,3 +538,7 @@ Rediseño parcial tras revisión independiente de seguridad. Define fronteras ob
 ### 0.2.1 — 2026-06-27
 
 Endurecimiento tras revisión independiente de seguridad y patrones de extensibilidad. Define componente controlado por Core, prohíbe decisiones locales de autorización por extensiones, establece precondiciones bloqueantes para código no confiable, exige verificación de artefacto en tiempo de efecto, fija taint y clasificación bajo fronteras de Core, endurece credenciales externas amplias, callbacks, aislamiento concurrente multi-tenant y política de versiones vulnerables o revocadas.
+
+### 0.2.2 — 2026-06-27
+
+Cierre previo a aceptación tras revisión final independiente. Declara logs, métricas, trazas y telemetría como salidas mediadas por Core; establece la conformidad de RFC-0003 como condición bloqueante de ejecución; invalida trabajos asíncronos ante cambios relevantes; exige fallo cerrado de componentes controlados por Core; y clasifica las Integrations opacas como denegadas por defecto salvo excepción reforzada.
