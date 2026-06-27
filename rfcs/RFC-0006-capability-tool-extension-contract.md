@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** Capacidades, tools, integraciones, extensiones, registry y control de ejecución
 - **Depends on:** RFC-0002, RFC-0003, RFC-0004, RFC-0005
@@ -91,7 +91,11 @@ Una Tool no recibe autoridad ambiental para producir efectos externos por libre.
 
 ### 5.3 Integration
 
-Una Integration es una configuración y adaptador organization-scoped que conecta una Tool o Capability con un sistema externo concreto.
+Una Integration es una configuración organization-scoped que conecta una Tool o Capability con un sistema externo concreto.
+
+Un adapter es un detalle interno de implementación de una Tool o Integration. No es una categoría autónoma de ejecución, autorización, resolución ni lifecycle.
+
+Un adapter no puede introducir una ruta de efecto, credencial, red, callback, secreto o resolución fuera de las fronteras aplicables a la Tool o Integration que lo contiene.
 
 Una Integration no puede ser simultáneamente una capability y una implementación.
 
@@ -106,15 +110,17 @@ Debe incluir como mínimo:
 
 ### 5.4 Extension
 
-Una Extension es un artefacto instalable que puede aportar una o más Tools, Integrations, manifests o adaptadores.
+Una Extension es un artefacto instalable que puede aportar una o más Tools, Integrations, manifests o componentes internos de implementación.
 
 Una Extension:
 
 - puede declarar necesidades;
 - no puede auto-concederse autoridad;
-- no puede ser su propio punto de enforcement;
+- no puede ser un punto de decisión de autorización ni de mediación de efectos;
 - no puede custodiar por defecto una credencial externa amplia;
 - no puede declarar por sí misma que sus efectos reales son seguros.
+
+Una Extension no puede aportar un adapter como ruta independiente no gobernada.
 
 ### 5.5 Extension Publisher
 
@@ -144,11 +150,35 @@ Registry y Capability Resolution son responsabilidades distintas, conforme a RFC
 
 Capability Resolution no puede sustituir una implementación, versión, configuración o artefacto después de que Policy Engine haya evaluado la solicitud y emitido la autorización correspondiente.
 
-### 5.9 Core Enforcement Boundary
+### 5.9 Implementation
+
+Una Implementation es el artefacto concreto, identificable y verificable que realiza una Kern Capability mediante una Tool o una Integration.
+
+Una Implementation debe tener identidad inmutable, versión, referencia de artefacto verificable, lifecycle y asociación explícita con las Capabilities que puede realizar.
+
+Capability Resolution selecciona una Implementation concreta. Policy Engine y el Decision Binding final deben evaluar y ligar esa Implementation exacta, no una categoría genérica de Tool o Extension.
+
+### 5.10 Core Enforcement Boundary
 
 La frontera de enforcement, la validación de Decision Bindings, la mediación de efectos externos, la custodia de credenciales y la verificación de obligaciones pertenecen a Core o a componentes controlados por Core.
 
-Una Tool, Integration o Extension no puede ser propietaria exclusiva de su propia frontera de enforcement.
+Una Tool, Integration o Extension nunca es un punto de decisión de autorización.
+
+Puede solicitar una operación, aportar datos de ejecución o recibir una invocación gobernada, pero no puede emitir allow, resolver defer, validar por sí misma un Decision Binding, aprobar una excepción ni decidir que una obligación ha quedado satisfecha.
+
+Toda decisión de autorización, mediación de efectos, validación de binding, verificación de obligaciones y custodia de credenciales pertenece exclusivamente a Core o a componentes controlados por Core.
+
+### 5.11 Componente controlado por Core
+
+Un componente controlado por Core es un componente que opera dentro del dominio de confianza de Kern y cumple simultáneamente estas condiciones:
+
+- no es código suministrado, actualizado ni administrado por una Extension o Extension Publisher;
+- su identidad, lifecycle y configuración se validan bajo control de Core;
+- sus decisiones de enforcement, autorización, mediación de efectos y custodia de credenciales no pueden ser modificadas, anuladas ni influenciadas por una Extension;
+- produce evidencia verificable de la aplicación de bindings, obligaciones y restricciones;
+- puede ser auditado e invalidado por los mecanismos de gobierno de Kern.
+
+Una Tool, Integration, Extension, adapter o Extension Publisher no puede declararse por sí mismo componente controlado por Core.
 
 ---
 
@@ -178,6 +208,20 @@ Una Tool, Integration o Extension no puede ser propietaria exclusiva de su propi
 10. Un efecto no declarado, destino no autorizado o subefecto no gobernado debe bloquear la operación.
 
 El Core no confía operativamente en que una Tool, Integration o Extension describa de forma honesta todos sus subefectos. Las declaraciones de manifest son entrada para validación y policy, no sustituyen la mediación real de efectos.
+
+La ejecución de una Extension como código no confiable requiere precondiciones verificables de aislamiento, mediación de efectos, identidad de artefacto en tiempo de ejecución y confinamiento de credenciales.
+
+Mientras una instalación de Kern no pueda demostrar esas precondiciones para una clase concreta de Extension o Integration, dicha clase no puede activarse para operaciones relevantes ni recibir acceso a sistemas externos, secretos, credenciales amplias, red, almacenamiento, callbacks, colas o procesos.
+
+Estas precondiciones no son meras recomendaciones de implementación ni pueden degradarse a buenas prácticas opcionales.
+
+Antes de un efecto externo, irreversible, compuesto, asíncrono o relevante, Core o un componente controlado por Core debe verificar que la Implementation efectivamente ejecutada coincide con la identidad de artefacto ligada al Decision Binding.
+
+Una verificación realizada solo durante Capability Resolution no es suficiente cuando pueda existir sustitución de artefacto entre decisión y efecto.
+
+La evidencia de esa coincidencia debe formar parte de la trazabilidad de ejecución.
+
+El mapeo implementation identifier + version -> immutable artifact identity debe anclarse en Core o en una raíz de confianza validada por Core, no en una declaración unilateral del Extension Publisher.
 
 ---
 
@@ -212,7 +256,15 @@ Toda Capability debe tener:
 - comportamiento de compensación cuando aplique;
 - subefectos gobernables cuando exista composición.
 
-Una Capability de lectura no se considera automáticamente de bajo riesgo. La salida de una Capability debe propagar clasificación, procedencia y taint para que los usos posteriores sigan gobernados conforme a RFC-0003 y RFC-0005.
+Una Capability de lectura no se considera automáticamente de bajo riesgo.
+
+La clasificación, procedencia y taint de datos obtenidos, transformados, leídos o emitidos por una Capability deben ser asignados o verificados por una frontera de lectura, conocimiento, datos o ejecución controlada por Core.
+
+Una Tool, Integration o Extension no puede elevar la confianza, reducir clasificación, eliminar taint ni declarar por sí misma que esos atributos dejan de aplicar.
+
+Cuando no pueda verificarse la clasificación, procedencia o taint de una salida relevante, dicha salida debe tratarse como no confiable y de mayor riesgo conforme a RFC-0003 y RFC-0005.
+
+Los logs, la telemetría, las métricas, las trazas y los canales secundarios no pueden convertirse en una vía de exfiltración ni en un camino para saltarse esas reglas de clasificación y gobernanza.
 
 Una Capability de escritura, externa, irreversible, compuesta, asíncrona o diferida debe declarar explícitamente idempotencia, correlación y límites aplicables.
 
@@ -238,9 +290,17 @@ Un efecto asíncrono o diferido incluye, entre otros, colas, jobs, webhooks, cal
 
 Un efecto asíncrono no puede sobrevivir como autorización implícita tras expirar, revocarse o invalidarse el Decision Binding que lo originó.
 
-Antes del disparo efectivo de un efecto asíncrono, el sistema debe comprobar de nuevo autorización, revocación, policy vigente, organización, identidad aplicable, destinos y obligaciones.
+Todo recheck previo al disparo de un efecto asíncrono debe ejecutarse por Core o un componente controlado por Core usando fuentes autoritativas y actuales de revocación, policy, organización, identidad, destinos y obligaciones.
+
+Una Extension no puede autoevaluar que un binding asíncrono sigue vigente.
+
+Todo callback o webhook entrante debe autenticarse y asociarse a una organización, Integration y contexto gobernado mediante mecanismos verificados por Core.
+
+La organización, identidad, destino o contexto declarados por el callback no son evidencia suficiente por sí mismos.
 
 Los efectos asíncronos relevantes deben poder cancelarse, suspenderse o bloquearse cuando se revoque la autorización, se suspenda una extensión o se invalide una integración.
+
+Cuando una operación compuesta o irreversible no pueda demostrar atomicidad, idempotencia y compensación verificables, debe denegarse por defecto hasta que exista un contrato de compensación aceptado para ese tipo de sistema externo.
 
 Un resultado parcial no puede ocultarse como éxito completo.
 
@@ -288,7 +348,11 @@ Los disparadores obligatorios de reevaluación y reconsentimiento incluyen:
 - modelo de aislamiento;
 - configuración organization-scoped.
 
-Una versión deprecada, revocada, vulnerable o retirada no puede reactivarse ni seleccionarse para una nueva ejecución salvo excepción explícita de policy, limitada, auditable y aprobada cuando corresponda.
+Una Implementation o Extension vulnerable o revocada no puede reactivarse, seleccionarse, instalarse ni ejecutarse mediante excepción de policy.
+
+Una Implementation o Extension deprecada o retirada exclusivamente por compatibilidad puede admitir una excepción limitada, temporal, auditable y aprobada cuando corresponda, siempre que policy lo permita.
+
+Un rollback hacia una versión vulnerable o revocada debe ser denegado.
 
 Un rollback es un cambio de lifecycle y debe reevaluar consentimiento, riesgo y autorizaciones dependientes.
 
@@ -302,13 +366,21 @@ Una Extension habilitada para una organización no puede servir implícitamente 
 
 Una ejecución multi-tenant debe recibir organización explícita y no puede reutilizar memoria, contexto, secretos, resultados, variables de entorno, colas ni datos empresariales de otra organización.
 
-El Core o una frontera controlada por Core custodia las credenciales externas de integración.
+Cuando un sistema externo solo exponga una credencial de servicio amplia, la credencial debe permanecer exclusivamente bajo custodia de Core o de un componente controlado por Core.
 
-Una Tool, Integration o Extension recibe únicamente material de acceso limitado a la operación autorizada, o invoca un mediador controlado por Core que realiza el efecto dentro de las restricciones del Decision Binding.
+Una Tool, Integration o Extension no puede recibir esa credencial, ni completa ni disfrazada como material limitado a la operación.
 
-Una credencial externa amplia no puede entregarse como autoridad ambiental a una Extension.
+En ese caso, la Extension solo puede solicitar una operación a un mediador controlado por Core, que aplica las restricciones del Decision Binding antes de producir el efecto externo.
 
-Cuando no exista confinamiento verificable de credencial, identidad on-behalf-of o mediación equivalente para un efecto relevante, la operación debe resultar en deny o require_approval conforme a policy. No puede ejecutarse silenciosamente.
+La mediación reduce el blast radius de una credencial amplia, pero no elimina por sí sola el riesgo residual del sistema externo. Kern debe preferir identidad on-behalf-of o credenciales externas acotadas cuando el sistema lo permita.
+
+Cuando un sistema no proporcione confinamiento, trazabilidad, idempotencia, cancelación o visibilidad suficientes, la Integration debe clasificarse como de mayor riesgo y requerir deny o controles reforzados conforme a policy. Nunca puede tratarse como plenamente gobernada por defecto.
+
+Una instancia de Extension que atienda más de una organización debe impedir acceso cruzado incluso durante ejecuciones concurrentes.
+
+No puede depender de memoria global mutable, pools no vinculados a organización, variables de entorno compartidas, caches con claves incompletas ni estados de proceso reutilizables entre organizaciones.
+
+Core debe poder verificar que cada ejecución recibe contexto organizativo explícito y que el estado mutable relevante se encuentra aislado por organización o por invocación.
 
 ---
 
@@ -324,6 +396,12 @@ RFC-0005: Policy Engine compone decisiones sobre la implementación exacta, conf
 
 RFC-0006 depende de que RFC-0003 proporcione Decision Bindings verificables ligados a la solicitud y del enforcement controlado por Core; de que RFC-0004 impida ampliación de autoridad y regule credenciales externas; y de que RFC-0005 componga policy de forma fail-closed.
 
+La ejecución de una Extension como código no confiable requiere precondiciones verificables de aislamiento, mediación de efectos, identidad de artefacto en tiempo de ejecución y confinamiento de credenciales.
+
+Mientras una instalación de Kern no pueda demostrar esas precondiciones para una clase concreta de Extension o Integration, dicha clase no puede activarse para operaciones relevantes ni recibir acceso a sistemas externos, secretos, credenciales amplias, red, almacenamiento, callbacks, colas o procesos.
+
+Estas precondiciones no son meras recomendaciones de implementación ni pueden degradarse a buenas prácticas opcionales.
+
 Una Extension, Tool o Integration no puede degradar estas garantías a decisiones locales o advisory.
 
 ---
@@ -336,10 +414,10 @@ Una Extension, Tool o Integration no puede degradar estas garantías a decisione
 4. Capability Resolution no puede sustituir implementación, versión, artefacto o configuración después de autorización.
 5. Una Extension no puede autoaprobarse, ampliar scopes, identidad, delegación, organización ni authority.
 6. La frontera de enforcement y mediación de efectos pertenece a Core o a componentes controlados por Core.
-7. Una Tool, Integration o Extension no puede ser su único enforcement point.
+7. Una Tool, Integration o Extension nunca es un punto de decisión de autorización.
 8. Ningún efecto externo, irreversible, compuesto o asíncrono puede producirse fuera del ciclo gobernado.
 9. Ninguna Tool puede ocultar subefectos o invocar otra capacidad fuera de una nueva frontera gobernada.
-10. La salida de una Capability propaga clasificación, procedencia y taint cuando aplique.
+10. La salida de una Capability propaga clasificación, procedencia y taint.
 11. La identidad de implementación está ligada a un artefacto verificable e inmutable.
 12. Un cambio de artefacto invalida consentimientos, resoluciones y autorizaciones dependientes.
 13. Las credenciales externas amplias no son autoridad global y no se entregan como capacidad ambiental a extensiones.
@@ -347,9 +425,16 @@ Una Extension, Tool o Integration no puede degradar estas garantías a decisione
 15. Configuraciones, credenciales, caches, resultados, logs, colas, callbacks y lifecycle son organization-scoped por defecto.
 16. Una operación asíncrona revalida autorización y obligaciones antes del disparo efectivo.
 17. Una operación compuesta declara y gobierna sus subefectos o demuestra atomicidad, idempotencia y compensación.
-18. Versiones deprecadas, revocadas o retiradas no pueden reactivarse silenciosamente.
+18. Versiones vulnerables, revocadas, deprecadas o retiradas no pueden reactivarse silenciosamente.
 19. No existe ruta alternativa de ejecución mediante código de extensión.
 20. Una declaración de manifest no sustituye la verificación ni mediación controlada por Core.
+21. Un componente controlado por Core debe cumplir el dominio de confianza definido en este RFC.
+22. La ejecución de código no confiable sin aislamiento, mediación de efectos, identidad de artefacto verificable en runtime y confinamiento de credenciales está prohibida para operaciones relevantes.
+23. La clasificación, procedencia y taint relevantes no pueden ser establecidos, eliminados ni reducidos unilateralmente por una Extension.
+24. Una credencial externa amplia solo puede utilizarse desde Core o un mediador controlado por Core.
+25. Un callback entrante no puede autoatribuirse organización, identidad ni autoridad.
+26. Una versión vulnerable o revocada no es excepcionable.
+27. Cuando no pueda verificarse atomicidad, idempotencia y compensación de un efecto compuesto o irreversible, la operación debe denegarse por defecto.
 
 ---
 
@@ -371,6 +456,8 @@ Ningún componente podrá usar una capability para crear una vía de ejecución 
 
 ## 14. Preguntas abiertas
 
+Las preguntas abiertas solo cubren elecciones tecnológicas concretas. Las precondiciones de aislamiento, mediación de efectos, verificación de artefacto y confinamiento de credenciales no quedan abiertas en este RFC.
+
 1. ¿Qué formato de manifest se decidirá más adelante?
 2. ¿Qué transporte o protocolo gobernará la distribución de capabilities?
 3. ¿Cómo se implementará el sandboxing concreto?
@@ -380,11 +467,10 @@ Ningún componente podrá usar una capability para crear una vía de ejecución 
 7. ¿Cuál será el catálogo inicial de capabilities?
 8. ¿Qué mecanismos técnicos de aislamiento se seleccionarán?
 9. ¿Qué UI de instalación y consentimiento se usará?
-10. ¿En qué condiciones puede Kern permitir una integración opaca cuyo sistema externo no expone primitives de confinamiento, idempotencia, cancelación o trazabilidad suficientes?
-11. ¿Qué modelo de compensación se exigirá para sistemas externos sin rollback?
-12. ¿Qué estrategia de observación de subefectos se adoptará?
-13. ¿Qué modelo de aprobación se usará para excepciones de anti-rollback?
-14. ¿Cómo se compatibilizarán artefactos, manifests y contratos de capability cuando evolucionen de forma asíncrona?
+10. ¿Qué modelo de compensación se exigirá para sistemas externos sin rollback?
+11. ¿Qué estrategia de observación de subefectos se adoptará?
+12. ¿Qué modelo de aprobación se usará para excepciones de anti-rollback?
+13. ¿Cómo se compatibilizarán artefactos, manifests y contratos de capability cuando evolucionen de forma asíncrona?
 
 ---
 
@@ -406,3 +492,7 @@ Borrador inicial del contrato lógico para capabilities, tools, integraciones y 
 ### 0.2 — 2026-06-27
 
 Rediseño parcial tras revisión independiente de seguridad. Define fronteras obligatorias entre Core y extensiones no confiables, mediación de efectos, confinamiento de credenciales, identidad verificable de artefactos, resolución ligada a implementación concreta, operaciones asíncronas gobernadas y aislamiento multi-tenant de extensiones e integraciones.
+
+### 0.2.1 — 2026-06-27
+
+Endurecimiento tras revisión independiente de seguridad y patrones de extensibilidad. Define componente controlado por Core, prohíbe decisiones locales de autorización por extensiones, establece precondiciones bloqueantes para código no confiable, exige verificación de artefacto en tiempo de efecto, fija taint y clasificación bajo fronteras de Core, endurece credenciales externas amplias, callbacks, aislamiento concurrente multi-tenant y política de versiones vulnerables o revocadas.
