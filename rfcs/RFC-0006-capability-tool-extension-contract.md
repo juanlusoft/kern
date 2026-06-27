@@ -1,6 +1,6 @@
 # RFC-0006 — Capability, Tool and Extension Contract
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
 - **Versión:** 0.2.2
@@ -542,3 +542,7 @@ Endurecimiento tras revisión independiente de seguridad y patrones de extensibi
 ### 0.2.2 — 2026-06-27
 
 Cierre previo a aceptación tras revisión final independiente. Declara logs, métricas, trazas y telemetría como salidas mediadas por Core; establece la conformidad de RFC-0003 como condición bloqueante de ejecución; invalida trabajos asíncronos ante cambios relevantes; exige fallo cerrado de componentes controlados por Core; y clasifica las Integrations opacas como denegadas por defecto salvo excepción reforzada.
+
+### Aceptado — 2026-06-27
+
+RFC-0006 se acepta tras revisión independiente y verificación final de aceptación. Establece el contrato fundacional de Kern para Capabilities, Tools, Integrations y Extensions no confiables: ejecución gobernada por Core, identidad verificable de artefactos, confinamiento de credenciales, mediación de efectos y telemetría, aislamiento multi-tenant, invalidación de trabajos asíncronos y dependencia bloqueante de Decision Bindings verificables conforme a RFC-0003.
