@@ -3,7 +3,7 @@
 - **Estado:** Draft
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** Identidad, tenancy y autorización
 - **Depends on:** RFC-0000, RFC-0001, RFC-0002, RFC-0003
@@ -32,6 +32,8 @@ Este RFC define el modelo lógico de:
 - revocación.
 
 El objetivo es que Policy Engine y el Governed Execution Contract puedan evaluar solicitudes con identidades y límites explícitos, evitando privilegios globales implícitos, confusión entre organizaciones y escalada de autoridad mediante agentes, tools o integraciones.
+
+El modelo exige que la autoridad efectiva sea explícita, atenuada y verificable en el punto de ejecución. Una concesión lógica no puede interpretarse como garantía suficiente sobre el efecto externo cuando la credencial de una integración posea más privilegios que la operación autorizada.
 
 ---
 
@@ -103,7 +105,9 @@ Toda identidad, recurso, sesión, solicitud, Decision Binding, aprobación, conf
 
 Por defecto, todo recurso es organization-scoped.
 
-Una organización no puede acceder a datos, configuraciones, resultados o recursos de otra organización salvo mediante una política explícita de compartición aprobada por una autoridad válida.
+Una organización no puede acceder a datos, configuraciones, resultados o recursos de otra organización salvo mediante una política explícita de compartición, consentimiento o autoridad válida de las organizaciones implicadas, scope limitado, periodo de validez y auditoría.
+
+Un operador de plataforma no puede autorizar por sí solo acceso cross-organization al contenido empresarial de una organización.
 
 ### 5.2 Recurso de plataforma
 
@@ -114,6 +118,12 @@ Un recurso no puede declararse como recurso de plataforma por una extensión, ag
 Solo una autoridad explícita del Control Plane puede crear o clasificar un recurso de plataforma, y esa decisión debe quedar auditada.
 
 Los recursos de plataforma deben tener límites de acceso, ownership, propósito y políticas explícitas.
+
+Un recurso de plataforma que procese, transporte, almacene, indexe, memorice, cachee o genere telemetría sobre datos de organizaciones debe aplicar aislamiento verificable por organización en cada solicitud.
+
+No puede reutilizar contenido, contexto, memoria, caché, resultados, índices, trazas detalladas o datos derivados de una organización para otra, salvo una política explícita de compartición, límites verificables y auditoría.
+
+La condición de recurso de plataforma no convierte los datos empresariales procesados por ese recurso en datos de plataforma.
 
 ### 5.3 Identidad
 
@@ -147,6 +157,8 @@ Representa un proceso no humano autorizado para ejecutar operaciones programadas
 Debe tener propósito, organización, alcance, propietario responsable y límites explícitos.
 
 No puede asumir implícitamente la identidad de una persona.
+
+Una identidad de servicio no puede usar concesiones amplias o permanentes como sustituto de una delegación válida, una aprobación concreta o una evaluación de policy.
 
 #### Identidad de agente
 
@@ -219,6 +231,22 @@ La autoridad no se deriva automáticamente de:
 - pertenecer a otra organización;
 - ser el autor de un workflow.
 
+### 5.6.1 Principal autorizador
+
+Un principal autorizador es la autoridad responsable que puede conceder, limitar, suspender o revocar una autoridad dentro de su ámbito.
+
+Puede ser una persona, un rol explícito, una identidad de servicio o un componente de plataforma autorizado, siempre dentro de un organization context o de la condición formal de recurso de plataforma.
+
+El principal autorizador debe tener:
+
+- legitimidad verificable;
+- scope explícito;
+- límites de tiempo y propósito;
+- trazabilidad de la decisión;
+- capacidad de ser auditado y revocado.
+
+El principal autorizador no puede inferirse implícitamente por cercanía técnica, propiedad del código, mera posesión de credenciales o capacidad operativa.
+
 ### 5.7 Scope
 
 Un scope define los límites verificables de una concesión de autoridad.
@@ -244,9 +272,13 @@ Un scope debe ser lo suficientemente específico para permitir a Policy Engine y
 
 Un scope ambiguo debe tratarse como insuficiente para autorizar una operación relevante.
 
+Toda concesión o delegación debe enumerar scopes explícitos, limitados y verificables. Un scope implícito, heredado de forma amplia, no acotado, ambiguo, malformado o imposible de comprobar debe tratarse como insuficiente y resultar en deny para operaciones relevantes.
+
+El scope mínimo necesario es la postura por defecto. Una concesión o delegación no puede representar acceso global a una organización, salvo una excepción de plataforma definida expresamente, limitada, auditable y aprobada por un principal autorizador válido.
+
 ### 5.8 Delegación
 
-La delegación permite que una identidad ejecutora actúe en nombre de una identidad delegada dentro de límites explícitos.
+La delegación permite que una identidad ejecutora actúe en nombre de una identidad delegada dentro de límites explícitos, atenuados y verificables.
 
 Toda delegación debe incluir o referenciar:
 
@@ -254,15 +286,36 @@ Toda delegación debe incluir o referenciar:
 - identidad ejecutora;
 - identidad delegada;
 - acciones permitidas;
-- recursos o scopes permitidos;
-- periodo de validez;
-- condiciones de revocación;
+- recursos y scopes explícitos permitidos;
+- periodo de validez acotado;
+- condiciones de revocación o suspensión;
 - origen de la delegación;
+- profundidad de delegación permitida;
 - evidencia de auditoría.
 
-La delegación no puede conceder más autoridad que la que posee la identidad delegada ni más autoridad que la permitida a la identidad ejecutora.
+La delegación debe atenuar autoridad. No puede conceder más autoridad que la poseída por la identidad delegada, más autoridad que la permitida a la identidad ejecutora, ni scopes más amplios que los expresamente autorizados.
 
-La delegación no puede utilizarse para cruzar organizaciones sin política explícita de compartición y autoridad válida.
+La autoridad efectiva de una operación delegada es una intersección, nunca una unión, de:
+
+- concesiones válidas de la identidad ejecutora;
+- concesiones válidas de la identidad delegada;
+- delegación vigente;
+- organización;
+- recurso objetivo;
+- acción solicitada;
+- scope;
+- políticas aplicables;
+- límites temporales, operativos y económicos.
+
+La re-delegación está prohibida por defecto. Solo puede permitirse cuando la delegación original lo autorice expresamente, mantenga atenuación monotónica, incluya la cadena completa de delegación y permanezca dentro de una profundidad máxima verificable.
+
+Una cadena de delegación no puede contener ciclos. Una identidad no puede recuperar mediante re-delegación una autoridad que no poseía directamente.
+
+Una delegación no puede heredar de forma implícita todos los scopes de una identidad. Debe enumerar el subconjunto mínimo necesario.
+
+Las delegaciones no pueden ser permanentes. Deben expirar, poder revocarse y reevaluarse antes de efectos relevantes. Un workflow o ejecución diferida no puede usar una delegación antigua sin validar de nuevo su vigencia y condiciones aplicables.
+
+La delegación no puede utilizarse para cruzar organizaciones salvo política explícita de compartición, consentimiento válido de las organizaciones implicadas y scope limitado.
 
 ### 5.9 Concesión de autoridad
 
@@ -284,15 +337,27 @@ Una concesión no sustituye Policy Engine ni Decision Binding.
 
 Una concesión define el límite potencial de una operación; Policy Engine decide si esa operación concreta puede realizarse en el contexto actual.
 
+Una concesión de autoridad no puede ser global, ilimitada o permanente por defecto.
+
+Las concesiones de identidades de servicio, agentes, workflows y extensiones deben limitarse al propósito declarado, organización, recurso, acciones y periodo de validez necesarios.
+
+Una concesión propia de la identidad ejecutora no puede ampliar una operación delegada más allá de la intersección definida en la sección 5.8.
+
 ### 5.10 Revocación y suspensión
 
-Kern debe poder revocar o suspender identidades, delegaciones, concesiones, sesiones, aprobaciones, Decision Bindings y accesos de extensión.
+La suspensión es un estado reversible que bloquea temporalmente el uso de una identidad, delegación, concesión, sesión, aprobación, Decision Binding o acceso de extensión.
 
-Una revocación o suspensión debe aplicarse antes de nuevas operaciones relevantes y debe invalidar cualquier autoridad que dependa de ella.
+La revocación invalida una autoridad emitida y exige una nueva concesión, delegación o aprobación válida antes de que pueda volver a utilizarse.
 
-Las operaciones ya iniciadas deben reevaluarse antes de producir efectos adicionales cuando sea razonable.
+Kern debe poder suspender o revocar identidades, delegaciones, concesiones, sesiones, aprobaciones, Decision Bindings y accesos de extensión.
 
-La implementación concreta de propagación de revocación se decidirá en un RFC posterior.
+Una suspensión o revocación debe comprobarse antes de cada efecto relevante, irreversible o externo. Tool Engine y otros puntos de ejecución no pueden tratar un Decision Binding emitido previamente como suficiente si la identidad, delegación, concesión, aprobación o binding del que depende ha sido suspendido, revocado o ha expirado.
+
+Las operaciones de larga duración deben reevaluar autorización antes de producir efectos relevantes adicionales. Si la reevaluación no puede completarse o falla, no deben producirse efectos relevantes nuevos.
+
+Las decisiones de autorización cacheadas, si existen, no pueden sobrevivir a una suspensión, revocación, expiración o cambio relevante de política aplicable.
+
+La implementación concreta de propagación, invalidación y consistencia distribuida de revocación se decidirá en un RFC posterior.
 
 ---
 
@@ -390,15 +455,19 @@ Una tool puede usar credenciales externas únicamente dentro del alcance autoriz
 
 Un channel puede aportar credenciales y referencias de origen, pero no puede validar por sí mismo organización, identidad, confianza, clasificación o taint.
 
+Las extensiones, tools y canales no pueden autoasignarse permisos, marcarse como recurso de plataforma ni convertir una credencial amplia en una autoridad válida para una operación concreta.
+
+La validación de autoridad para estos componentes exige policy, scope, organization context y trazabilidad independientes del propio componente.
+
 ### 8.5 Operadores de Kern
 
 Un operador de Kern administra componentes, configuraciones y organizaciones dentro de la autoridad que se le haya concedido.
 
-Un operador no obtiene por defecto acceso al contenido empresarial de todas las organizaciones.
+Un operador no obtiene por defecto acceso al contenido empresarial de todas las organizaciones ni a los recursos compartidos con significado empresarial.
 
-Las operaciones administrativas relevantes de un operador deben ser auditadas y estar sujetas a tenancy, scopes y políticas.
+Las operaciones administrativas relevantes de un operador deben ser auditadas y estar sujetas a tenancy, scopes, separación de deberes y políticas.
 
----
+La capacidad de operar infraestructura no concede autoridad sobre datos empresariales de clientes.
 
 ## 9. Aprobación humana y separación de deberes
 
@@ -415,13 +484,13 @@ Una aprobación no puede:
 * reutilizarse para otra solicitud;
 * evitar una denegación terminal de Policy Engine.
 
+Toda aprobación permanece ligada a la solicitud final, a la evaluación provisional de Policy cuando exista, a la organización, a las identidades involucradas, al scope final, al payload final, a la policy aplicable, a la expiración y a la correlación de auditoría.
+
 Kern debe poder requerir separación de deberes cuando una política lo exija.
 
 Una misma identidad no debe solicitar y aprobar una operación de alto impacto cuando la política aplicable requiera aprobación independiente.
 
 El modelo concreto de umbrales, doble aprobación y flujos de escalado se decidirá posteriormente.
-
----
 
 ## 10. Tenancy y recursos compartidos
 
@@ -444,6 +513,8 @@ RFC-0003 define cómo una solicitud se evalúa, aprueba, vincula y ejecuta.
 
 Este RFC define los atributos de identidad, organización, delegación, autoridad y scope que alimentan esa evaluación.
 
+RFC-0003 no puede emitir un Decision Binding válido si la identidad ejecutora, la identidad delegada o la organización no cumplen las reglas de este RFC.
+
 Antes de emitir un Decision Binding, Policy Engine debe poder comprobar:
 
 * organización válida;
@@ -456,15 +527,17 @@ Antes de emitir un Decision Binding, Policy Engine debe poder comprobar:
 * aprobación válida, cuando se requiera;
 * políticas y límites aplicables.
 
+El Decision Binding debe quedar ligado a la evaluación final de Policy, a la solicitud final, al payload final, a las identidades involucradas, al scope, a la organization context, a la policy aplicable, a la expiración y a la aprobación consumible cuando aplique.
+
 Ningún Decision Binding puede conceder autoridad que este RFC no permita.
 
----
+La aprobación o el Decision Binding de RFC-0003 no pueden usarse para atenuar, ampliar o sustituir reglas de identidad, tenancy, delegación o autoridad definidas en este RFC.
 
 ## 12. Invariantes
 
 1. Toda operación tiene organization context explícito o pertenece formalmente a un recurso de plataforma.
 2. Todo recurso es organization-scoped por defecto.
-3. Ninguna identidad obtiene autoridad por existir, autenticarse o instalarse.
+3. Ninguna identidad obtiene autoridad por existir, autenticarse, instalarse o ser declarada operativa.
 4. Ninguna identidad ejecutora puede exceder la autoridad de la identidad delegada, cuando exista.
 5. Ninguna delegación puede ampliar autoridad respecto a ejecutor, delegado, organización o scope.
 6. Ninguna extensión, tool, agente, workflow o canal puede concederse permisos a sí misma.
@@ -474,11 +547,11 @@ Ningún Decision Binding puede conceder autoridad que este RFC no permita.
 10. Toda autoridad relevante debe poder revocarse o suspenderse.
 11. Una revocación o suspensión invalida futuras operaciones dependientes antes de su ejecución.
 12. Todo acceso cross-organization requiere política explícita, autoridad válida, scope limitado y auditoría.
-13. Ninguna credencial externa puede justificar por sí misma una operación fuera del scope autorizado.
+13. Ninguna credencial externa puede justificar por sí sola una operación fuera del scope autorizado.
 14. Ningún recurso puede declararse de plataforma sin autoridad explícita del Control Plane y auditoría.
 15. Una denegación válida prevalece sobre cualquier concesión, delegación o permiso.
-
----
+16. Un principal autorizador no puede actuar fuera de su scope, ni conceder autoridad que no pueda auditarse, limitarse y revocarse.
+17. Una aprobación ligada a RFC-0003 no sustituye las reglas de identidad, tenancy, delegación o autoridad de este RFC.
 
 ## 13. Consecuencias
 
@@ -501,8 +574,9 @@ Cualquier excepción requiere RFC explícito.
 7. ¿Qué mecanismos de federación o SSO podrán integrarse sin romper tenancy y revocación?
 8. ¿Cómo se comprobará revocación de forma consistente en operaciones distribuidas o de larga duración?
 9. ¿Qué tipo de recursos de plataforma deben existir y qué autoridad puede administrarlos?
-
----
+10. ¿Cómo se formalizará la figura de principal autorizador dentro de distintos modelos organizativos?
+11. ¿Cómo se representará la autoridad externa cuando una credencial de integración sea más amplia que el scope autorizado?
+12. ¿Qué política concreta regirá la separación de deberes para aprobaciones de alto impacto en RFC-0003 y RFCs posteriores?
 
 ## 15. Referencias
 
@@ -519,3 +593,6 @@ Cualquier excepción requiere RFC explícito.
 
 Borrador inicial del modelo de identidad, tenancy y autorización de Kern.
 
+### 0.2 — 2026-06-27
+
+Ampliación del modelo con autoridad atenuada, principal autorizador, separación más estricta entre recursos de plataforma y datos empresariales, y reglas de integración más precisas con RFC-0003.
