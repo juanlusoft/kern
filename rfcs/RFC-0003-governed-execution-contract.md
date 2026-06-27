@@ -1,9 +1,9 @@
 ﻿# RFC-0003 â€” Governed Execution Contract
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Autor:** Kern Architecture Council
 - **Fecha:** 2026-06-27
-- **Versión:** 0.2.1
+- **Versión:** 0.2.2
 - **Tipo:** Architecture / Security / Foundational
 - **Dominio:** EjecuciÃ³n gobernada y contratos de control
 - **Depends on:** RFC-0000, RFC-0001, RFC-0002
@@ -489,3 +489,7 @@ RediseÃ±o parcial tras revisiÃ³n independiente de seguridad y arquitectura. 
 ### 0.2.1 — 2026-06-27
 
 Aclaración del orden entre evaluación provisional de policy, aprobación humana y Decision Binding final. Evita una dependencia circular entre aprobación y autorización ejecutable, y precisa que toda transformación genera una solicitud derivada que debe reevaluarse.
+
+### 0.2.2 — 2026-06-27
+
+RFC Accepted por el Technical Owner tras revisión independiente de seguridad y arquitectura. Este contrato se convierte en la referencia fundacional de Kern para solicitudes gobernadas, Decision Bindings, aprobaciones humanas, ejecución mediada, procedencia, auditoría e idempotencia.
