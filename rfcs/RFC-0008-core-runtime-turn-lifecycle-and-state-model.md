@@ -1,7 +1,7 @@
 # RFC-0008 — Core Runtime, Turn Lifecycle and State Model
 
 - **Estado:** Draft
-- **Versión:** 0.1
+- **Versión:** 0.2
 - **Fecha:** 2026-06-27
 
 ## 1. Resumen ejecutivo
@@ -98,13 +98,25 @@ Estado que debe sobrevivir a caídas y ser recuperable para reanudar, auditar, r
 
 Estado temporal útil durante una ejecución inmediata pero no suficiente por sí solo para reanudar o autorizar una acción futura.
 
-### Pending Approval
+### Waiting for Approval
 
 Estado en el que un Turn no puede continuar hasta que exista una aprobación válida conforme al contrato aplicable.
 
-### Pending External Outcome
+### Waiting for External Outcome
 
 Estado en el que el Turn espera un resultado externo gobernado por RFC-0007 o por otro contrato aplicable.
+
+`Waiting for External Outcome` representa la espera normal de una respuesta o resultado externo antes de que exista incertidumbre material.
+
+### Waiting for Reconciliation
+
+Estado de un Turn cuyo efecto relevante alcanzó o pudo alcanzar el Point of No Return y permanece en `Unknown Outcome` conforme a RFC-0007.
+
+Este estado preserva explícitamente que el resultado externo no está confirmado. No constituye éxito, fallo, cancelación ni expiración del efecto.
+
+Solo puede abandonarse mediante evidencia suficiente de resultado observada conforme a RFC-0007, una compensación autorizada y confirmada, o una resolución gobernada que conserve explícitamente la incertidumbre histórica.
+
+`Waiting for Reconciliation` representa una incertidumbre ya declarada por RFC-0007, incluida la imposibilidad de probar si el efecto ocurrió.
 
 Un Turn no es una conversación completa, una sesión, una identidad, una aprobación ni un Decision Binding.
 
@@ -147,7 +159,7 @@ Un canal puede transportar credenciales y metadatos, pero no puede declarar por 
 
 Estados mínimos:
 
-Received, Context Resolving, Ready, Running, Waiting for Approval, Waiting for External Outcome, Deferred, Completed, Denied, Cancelled, Failed, Expired.
+Received, Context Resolving, Ready, Running, Waiting for Approval, Waiting for External Outcome, Waiting for Reconciliation, Deferred, Completed, Denied, Cancelled, Failed, Expired.
 
 Estados terminales:
 
@@ -174,9 +186,10 @@ Transiciones válidas:
 | Received | Llegó una Turn Request verificable. | No | Context Resolving, Denied, Expired |
 | Context Resolving | Se resuelven identidad, organización y ruta. | No | Ready, Waiting for Approval, Denied, Expired |
 | Ready | Puede comenzar ejecución gobernada. | Sí, si los contratos aplican | Running, Waiting for Approval, Deferred, Denied, Expired, Cancelled |
-| Running | El Turn está procesando trabajo gobernado. | Sí, sujeto a controles | Waiting for Approval, Waiting for External Outcome, Completed, Failed, Cancelled, Denied, Expired |
+| Running | El Turn está procesando trabajo gobernado. | Sí, sujeto a controles | Waiting for Approval, Waiting for External Outcome, Waiting for Reconciliation, Completed, Failed, Cancelled, Denied, Expired |
 | Waiting for Approval | Espera aprobación válida. | No | Ready, Running, Denied, Cancelled, Expired |
-| Waiting for External Outcome | Espera resultado externo explícito. | No | Running, Completed, Failed, Cancelled, Expired |
+| Waiting for External Outcome | Espera resultado externo explícito. | No | Running, Waiting for Reconciliation, Cancelled |
+| Waiting for Reconciliation | Resultado externo incierto o pendiente de reconciliación conforme a RFC-0007. | No, salvo una operación de reconciliación o compensación con autorización aplicable | Completed, Failed, Deferred o Cancelled únicamente cuando exista evidencia suficiente, compensación autorizada o una resolución gobernada que conserve la incertidumbre histórica |
 | Deferred | Queda pospuesto por condición externa. | No | Ready, Waiting for Approval, Running, Cancelled, Expired |
 | Completed | Terminó satisfactoriamente. | No | Ninguna |
 | Denied | No recibió autorización suficiente. | No | Ninguna |
@@ -190,8 +203,23 @@ Aclaraciones:
 - `Denied` no equivale a `Failed`;
 - `Cancelled` no demuestra que no haya ocurrido un efecto externo;
 - `Waiting for External Outcome` preserva incertidumbre explícita;
+- `Waiting for Reconciliation` preserva explícitamente un resultado incierto y no concede autoridad adicional;
 - una aprobación no reactiva un Turn sin revalidación aplicable;
 - ningún estado habilita una ruta alternativa para saltarse policy, bindings o verificaciones.
+
+`Completed`, `Denied`, `Cancelled`, `Failed` y `Expired` son terminales solo cuando no existe una obligación pendiente de reconciliación, evidencia de resultado o compensación gobernada asociada a un efecto relevante.
+
+Un Turn con `Unknown Outcome` no alcanza un terminal semántico pleno hasta que la incertidumbre se preserve y se trate conforme a RFC-0007.
+
+Un Turn no puede transicionar desde `Waiting for External Outcome` a `Completed`, `Failed` o `Expired` sin Effect Outcome Evidence suficiente conforme a RFC-0007.
+
+Cuando RFC-0007 produzca o preserve `Unknown Outcome`, el Turn debe transicionar a `Waiting for Reconciliation` y no puede declarar `Completed`, `Failed` ni `Expired` por la sola ausencia de respuesta, timeout, desconexión o vencimiento de una espera.
+
+`Expired` solo puede cerrar la admisión, ejecución o espera de un Turn cuando no exista un efecto relevante incierto pendiente de reconciliación. No puede descartar, ocultar ni reemplazar un `Unknown Outcome`.
+
+`Cancelled` no elimina la obligación de conservar `Waiting for Reconciliation` o evidencia equivalente cuando un efecto relevante haya alcanzado o pueda haber alcanzado el Point of No Return.
+
+`Waiting for Reconciliation` no puede convertirse en éxito o fallo por política sin evidencia. Una decisión humana puede definir tratamiento operativo, pero no puede borrar o reinterpretar el hecho histórico de incertidumbre.
 
 ## 9. Ejecución síncrona, asíncrona y diferida
 
@@ -207,6 +235,12 @@ Reanudación, callback o worker posterior no puede autoafirmar identidad, organi
 
 Cualquier efecto tardío requiere revalidación conforme a RFC-0007.
 
+Todo efecto, síncrono o asíncrono, usa los mismos controles de Decision Binding, Binding Reservation, Point of No Return y Enforcement Evidence definidos por RFC-0007. No existe una vía rápida interactiva que reduzca esos controles.
+
+Cuando un efecto alcance `Unknown Outcome`, el Runtime debe conservar la correlación con el Binding, la reserva y la evidencia disponible, y mover el Turn a `Waiting for Reconciliation`.
+
+Una aprobación, callback, reanudación, timeout, cancelación o desconexión de canal no puede convertir `Unknown Outcome` en éxito, fallo, expiración o reintento implícito.
+
 ## 10. Cancelación, timeouts y desconexión de canal
 
 Cancelar una interacción no equivale necesariamente a cancelar un efecto ya iniciado.
@@ -220,6 +254,10 @@ Si el Point of No Return fue alcanzado o el resultado es incierto, debe conserva
 Un Turn cancelado no puede reanudarse automáticamente con más alcance.
 
 La cancelación debe quedar correlacionada y auditable.
+
+Una cancelación, timeout o desconexión no puede convertir `Unknown Outcome` en éxito, fallo, expiración o reintento implícito.
+
+Si el efecto pudo haber alcanzado el Point of No Return, el Turn debe preservar `Waiting for Reconciliation` o evidencia equivalente, no un terminal silencioso.
 
 ## 11. Contexto, memoria y persistencia de estado
 
@@ -238,6 +276,8 @@ Se exige que:
 - estado no verificable o no atribuible se trate como no confiable o requiera reevaluación;
 - no se reconstituya un Turn con datos que permitan ampliar permisos o efecto respecto al contexto original.
 
+El contexto heredado entre Turns o reanudaciones conserva procedencia, clasificación, taint, obligaciones, restricciones y correlación con binding, reserva y evidencia cuando exista.
+
 ## 12. Invocación de capacidades y efectos gobernados
 
 El Runtime puede planificar y solicitar capacidades.
@@ -251,6 +291,8 @@ Un Turn puede esperar aprobación, Decision Binding o resultado externo.
 El Runtime no puede convertir una intención del modelo en un efecto externo sin mediación de Core.
 
 Cualquier subefecto compuesto mantiene correlación y controles propios.
+
+Las operaciones de reconciliación o compensación solo pueden ejecutarse con la autorización aplicable. El Turn no gana autoridad adicional por estar en `Waiting for Reconciliation`.
 
 ## 13. Concurrencia, reintentos e idempotencia del Turn
 
@@ -272,6 +314,10 @@ Exige:
 - límites de recursos por organización, identidad, agente y Turn;
 - degradación segura ante agotamiento de recursos, timeout o pérdida de estado crítico.
 
+Ante agotamiento de recursos, pérdida de estado crítico o interrupción del Runtime, Kern debe denegar nuevas admisiones o efectos pendientes de forma segura.
+
+Para efectos que hayan alcanzado o puedan haber alcanzado el Point of No Return, debe preservar estado durable, evidencia y `Unknown Outcome` o `Waiting for Reconciliation`, en lugar de declarar éxito, fallo o expiración implícitos.
+
 ## 15. Aislamiento multi-tenant y límites de recursos
 
 El Runtime debe aislar:
@@ -288,6 +334,8 @@ El Runtime debe aislar:
 Un Turn de una organización no puede observar, reusar ni inferir estado de otra organización sin un contrato explícito y gobernado.
 
 Los límites de recursos por organización, identidad, agente y Turn deben ser observables, aplicables y fail-closed.
+
+Para efectos que hayan alcanzado o puedan haber alcanzado el Point of No Return, debe preservar estado durable, evidencia y `Unknown Outcome` o `Waiting for Reconciliation`, en lugar de declarar éxito, fallo o expiración implícitos.
 
 ## 16. Dependencias con RFC-0002 a RFC-0007
 
@@ -319,6 +367,13 @@ Formaliza cómo el Runtime de Kern coordina una unidad de trabajo sin debilitar 
 13. Ninguna transición permite omitir Policy Engine, Decision Binding o Core-controlled enforcement cuando aplique.
 14. La memoria de agente no constituye autoridad ni prueba de autorización.
 15. Falta de contexto crítico, estado durable o capacidad de verificación falla cerrada para el efecto pendiente.
+16. Cada estado del Turn tiene un único nombre canónico.
+17. Un Turn no puede alcanzar `Completed`, `Failed` ni `Expired` mientras un efecto relevante permanezca en `Unknown Outcome`.
+18. `Waiting for Reconciliation` preserva explícitamente la incertidumbre y no concede autoridad adicional.
+19. Timeout, cancelación, desconexión o expiración no eliminan la obligación de reconciliación de un efecto incierto.
+20. Todo efecto síncrono y asíncrono usa los mismos controles de RFC-0007.
+21. Una reanudación exige revalidación de contexto y autoridad aplicable.
+22. La procedencia, clasificación, taint, obligaciones y restricciones se conservan en contexto heredado.
 
 ## 18. Consecuencias
 
@@ -354,3 +409,7 @@ Formaliza cómo el Runtime de Kern coordina una unidad de trabajo sin debilitar 
 ### 0.1 — 2026-06-27
 
 Borrador inicial. Define el contrato lógico del Runtime de Kern, el ciclo de vida de Turns, contexto verificable, estados explícitos, ejecución asíncrona, cancelación, persistencia y coordinación con los controles de ejecución gobernada.
+
+### 0.2 — 2026-06-27
+
+Endurecimiento del modelo de estados tras revisión independiente. Unifica nombres canónicos de estados, integra resultados externos inciertos y reconciliación pendiente, y prohíbe declarar un estado terminal de Turn cuando un efecto relevante continúa sin evidencia de resultado suficiente conforme a RFC-0007.
