@@ -1,42 +1,42 @@
-# RFC-0009 — Governed Knowledge Access, Retrieval and Context Provenance
+# RFC-0009 â€” Governed Knowledge Access, Retrieval and Context Provenance
 
 - **Estado:** Draft
-- **Versión:** 0.1
+- **Versión:** 0.2
 
 ## 1. Resumen ejecutivo
 
-Define cómo Kern accede, recupera, transforma, selecciona y entrega información empresarial a un Turn, agente, workflow o capacidad.
+Define cÃ³mo Kern accede, recupera, transforma, selecciona y entrega informaciÃ³n empresarial a un Turn, agente, workflow o capacidad.
 
-Kern debe funcionar con fuentes heterogéneas por empresa. No presupone una aplicación, proveedor, formato ni mecanismo de almacenamiento concreto.
+Kern debe funcionar con fuentes heterogÃ©neas por empresa. No presupone una aplicaciÃ³n, proveedor, formato ni mecanismo de almacenamiento concreto.
 
-La información recuperada debe:
+La informaciÃ³n recuperada debe:
 
-* pertenecer a una organización verificable;
+* pertenecer a una organizaciÃ³n verificable;
 * estar autorizada para la identidad y finalidad concretas;
-* conservar procedencia, clasificación, taint y restricciones;
+* conservar procedencia, clasificaciÃ³n, taint y restricciones;
 * poder explicarse y auditarse;
 * no convertirse en autoridad por aparecer en el contexto de un modelo;
 * no mezclarse entre organizaciones;
-* reevaluarse si cambian permisos, política, fuente, clasificación, versión o restricciones.
+* reevaluarse si cambian permisos, polÃ­tica, fuente, clasificaciÃ³n, versiÃ³n o restricciones.
 
 ## 2. Problema
 
-Explica que una empresa puede usar sistemas distintos para facturación, CRM, correo, documentos, ERP, conocimiento interno o bases de datos.
+Explica que una empresa puede usar sistemas distintos para facturaciÃ³n, CRM, correo, documentos, ERP, conocimiento interno o bases de datos.
 
-El riesgo no depende de que una fuente sea Holded, Odoo, Gmail, SAP o un sistema propio. El riesgo aparece cuando Kern recupera datos sin saber de qué organización son, quién puede verlos, con qué finalidad se usan o qué restricciones conservan al ser resumidos, indexados, enviados a un modelo o usados como base de una acción.
+El riesgo no depende de que una fuente sea Holded, Odoo, Gmail, SAP o un sistema propio. El riesgo aparece cuando Kern recupera datos sin saber de quÃ© organizaciÃ³n son, quiÃ©n puede verlos, con quÃ© finalidad se usan o quÃ© restricciones conservan al ser resumidos, indexados, enviados a un modelo o usados como base de una acciÃ³n.
 
 ## 3. Objetivos
 
 Incluye:
 
-* acceso gobernado a fuentes heterogéneas;
-* recuperación bajo identidad, organización, finalidad y policy verificables;
+* acceso gobernado a fuentes heterogÃ©neas;
+* recuperaciÃ³n bajo identidad, organizaciÃ³n, finalidad y policy verificables;
 * Context Assembly controlado;
-* procedencia, clasificación, taint y restricciones preservadas;
+* procedencia, clasificaciÃ³n, taint y restricciones preservadas;
 * aislamiento multi-tenant;
-* invalidación y reevaluación;
+* invalidaciÃ³n y reevaluaciÃ³n;
 * uso seguro del contexto por modelos, agentes, workflows, Tools e Integrations;
-* trazabilidad suficiente para explicar qué conocimiento fue usado.
+* trazabilidad suficiente para explicar quÃ© conocimiento fue usado.
 
 ## 4. No objetivos
 
@@ -44,32 +44,32 @@ Incluye:
 
 * elegir ERP, CRM, correo, proveedor cloud o sistema documental;
 * definir un conector concreto;
-* elegir RAG, embeddings, vector database, OCR, chunking, ranking o indexación;
+* elegir RAG, embeddings, vector database, OCR, chunking, ranking o indexaciÃ³n;
 * imponer formatos de documentos;
-* decidir UX de búsqueda o citas;
+* decidir UX de bÃºsqueda o citas;
 * sustituir RFC-0003 a RFC-0008.
 
 ## 5. Conceptos normativos
 
 Define con precisión:
 
-* `Knowledge Source`: sistema, repositorio, integración o dominio de datos que una organización autoriza a Kern a consultar. Puede ser software comercial, servicio cloud, API, base de datos, archivos, correo, sistema interno o cualquier otra fuente conectada.
-* `Knowledge Resource`
-* `Knowledge Access Request`
-* `Knowledge Result`
-* `Knowledge Context`
-* `Context Assembly`
-* `Provenance`
-* `Classification`
-* `Taint`
-* `Restriction`
-* `Derived Knowledge`
-* `Knowledge Freshness`
-* `Knowledge Snapshot`
-* `Retrieval Scope`
-* `Source Authority`
-* `Context Consumer`
-* `Knowledge Invalidation`
+* `Knowledge Source`: sistema, repositorio, integración o dominio de datos que una organización autoriza a Kern a consultar. Puede ser software comercial, servicio cloud, API, base de datos, archivos, correo, sistema interno o cualquier otra fuente conectada. La fuente puede aportar metadatos, pero no decide por sí sola el tratamiento final de seguridad dentro de Kern.
+* `Knowledge Resource`: unidad identificable de información dentro de una fuente, con identidad o versión verificable cuando exista.
+* `Knowledge Access Request`: solicitud concreta de lectura bajo organización, identidad, finalidad, alcance y restricciones verificables; no es una autorización por sí misma. La finalidad declarada debe corresponder a una finalidad gobernada y evaluable por policy. No puede ser texto libre autoafirmado por un canal, modelo, agente, workflow, Tool, Integration o Extension.
+* `Knowledge Result`: resultado individual recuperado o derivado, con metadatos gobernados suficientes para decidir uso posterior.
+* `Knowledge Context`: conjunto limitado de resultados preparado para un consumidor concreto; no es autoridad ni permiso.
+* `Context Assembly`: proceso controlado por Core que selecciona y compone contexto sin ampliar acceso.
+* `Provenance`: evidencia de origen, recurso, transformaciones, dependencias y correlaciones relevantes.
+* `Classification`: sensibilidad y tratamiento requerido del conocimiento.
+* `Taint`: señal de riesgo, origen no confiable, dependencia restringida o condición que debe propagarse a usos posteriores.
+* `Restriction`: límite de lectura, divulgación, destino, retención, transformación, uso o efecto.
+* `Derived Knowledge`: conocimiento producido a partir de una o más fuentes, incluyendo resumen, extracción, clasificación, indexación, embedding, inferencia o salida estructurada.
+* `Knowledge Freshness`: vigencia y condiciones bajo las cuales un resultado puede seguir utilizándose.
+* `Knowledge Snapshot`: representación durable y acotada del conocimiento material y sus metadatos para una ejecución o decisión concreta.
+* `Retrieval Scope`: límite verificable de fuentes, recursos, criterios, volumen, clasificación, finalidad y destinos permitidos.
+* `Source Authority`: autoridad de la fuente sobre la existencia, versión u origen de un recurso, que no sustituye la autorización de Kern para usarlo.
+* `Context Consumer`: modelo, agente, workflow, Tool, Integration, Extension o componente que recibe conocimiento para una finalidad limitada; nunca autoridad final.
+* `Knowledge Invalidation`: condición o proceso gobernado que vuelve no utilizable, exige reevaluar o restringe conocimiento y derivados previamente recuperados.
 
 Incluye expresamente:
 
@@ -83,46 +83,46 @@ Que una información aparezca en el contexto de un modelo, agente, workflow, Too
 
 Establece que toda lectura parte de un `Knowledge Access Request` verificable y ligado al menos a:
 
-* organización;
+* organizaciÃ³n;
 * identidad ejecutora;
 * identidad delegada, cuando exista;
-* Turn o ejecución correlacionada;
+* Turn o ejecuciÃ³n correlacionada;
 * fuente, recurso o clase de recurso solicitada;
 * finalidad declarada;
 * scopes y restricciones aplicables;
 * policy y obligaciones relevantes;
-* criterios de recuperación;
-* límites de volumen, sensibilidad y destino;
-* correlación y snapshot de ejecución aplicable.
+* criterios de recuperaciÃ³n;
+* lÃ­mites de volumen, sensibilidad y destino;
+* correlaciÃ³n y snapshot de ejecuciÃ³n aplicable.
 
 Incluye:
 
 ```md
-Una recuperación de conocimiento no puede asumir organización, identidad, scopes, finalidad, clasificación permitida ni destino de uso de forma implícita.
+Una recuperaciÃ³n de conocimiento no puede asumir organizaciÃ³n, identidad, scopes, finalidad, clasificaciÃ³n permitida ni destino de uso de forma implÃ­cita.
 
-La falta, ambigüedad, conflicto o imposibilidad de verificar un atributo crítico debe producir deny para la lectura o reducir la recuperación a un resultado que no amplíe acceso.
+La falta, ambigÃ¼edad, conflicto o imposibilidad de verificar un atributo crÃ­tico debe producir deny para la lectura o reducir la recuperaciÃ³n a un resultado que no amplÃ­e acceso.
 ```
 
-## 7. Identidad, organización y autorización de lectura
+## 7. Identidad, organizaciÃ³n y autorizaciÃ³n de lectura
 
 Define que:
 
-* todo acceso está sometido a RFC-0003, RFC-0004 y RFC-0005;
-* la autorización se evalúa para la solicitud concreta, no porque un Turn ya exista;
-* un canal, agente, workflow, Tool, Integration o Extension no puede declararse autorizado a leer por sí mismo;
-* la delegación nunca amplía alcance;
-* cambios de identidad, scopes, policy, consentimiento o clasificación invalidan recuperaciones relevantes;
+* todo acceso estÃ¡ sometido a RFC-0003, RFC-0004 y RFC-0005;
+* la autorizaciÃ³n se evalÃºa para la solicitud concreta, no porque un Turn ya exista;
+* un canal, agente, workflow, Tool, Integration o Extension no puede declararse autorizado a leer por sÃ­ mismo;
+* la delegaciÃ³n nunca amplÃ­a alcance;
+* cambios de identidad, scopes, policy, consentimiento o clasificaciÃ³n invalidan recuperaciones relevantes;
 * permisos de una fuente externa no sustituyen controles de Kern;
 * datos recuperados usando credenciales amplias deben tratarse como mayor riesgo cuando corresponda.
 
-## 8. Recuperación, selección y Context Assembly
+## 8. RecuperaciÃ³n, selecciÃ³n y Context Assembly
 
 Define que `Context Assembly`:
 
-* selecciona información bajo control de Core;
+* selecciona informaciÃ³n bajo control de Core;
 * no otorga autoridad;
 * conserva referencias de procedencia y restricciones de cada elemento;
-* aplica límites de volumen, clasificación y relevancia;
+* aplica lÃ­mites de volumen, clasificaciÃ³n y relevancia;
 * puede excluir resultados que no puedan atribuirse, clasificarse o verificarse;
 * no mezcla resultados de organizaciones distintas;
 * no oculta que un resumen o fragmento procede de una fuente restringida;
@@ -131,9 +131,9 @@ Define que `Context Assembly`:
 Incluye:
 
 ```md
-La recuperación no equivale a permiso de divulgación.
+La recuperaciÃ³n no equivale a permiso de divulgaciÃ³n.
 
-Un resultado puede ser accesible para una finalidad interna limitada y seguir estando restringido para ser mostrado, resumido, enviado a un modelo externo, incluido en telemetría o usado como entrada de una capacidad.
+Un resultado puede ser accesible para una finalidad interna limitada y seguir estando restringido para ser mostrado, resumido, enviado a un modelo externo, incluido en telemetrÃ­a o usado como entrada de una capacidad.
 ```
 
 ## 9. Procedencia, clasificación, taint y restricciones
@@ -162,6 +162,10 @@ Una transformación, resumen, extracción, chunking, indexación o combinación 
 Cuando esos atributos no puedan conservarse o verificarse, el resultado derivado debe tratarse como no confiable, de mayor riesgo o no apto para el uso solicitado.
 ```
 
+Ninguna transformación, resumen, extracción, indexación, embedding, combinación o dato derivado puede rebajar clasificación, taint, restricciones u obligaciones por el mero hecho de haberse transformado.
+
+Este RFC no define una vía general de desclasificación, anonimizaciÃ³n o rebaja de taint. Cualquier mecanismo futuro de ese tipo requerirá un contrato específico, verificable y gobernado.
+
 ## 10. Transformación, resumen y datos derivados
 
 Define que resumen, extracción, normalización, chunking, indexación, OCR, clasificación automática, inferencia o embedding producen `Derived Knowledge`.
@@ -174,6 +178,10 @@ Exige que:
 * resultados generados por modelo se distingan de datos recuperados;
 * un modelo no invente que una inferencia es un hecho contenido en una fuente;
 * la salida pueda indicar incertidumbre, procedencia o límites cuando sea relevante.
+
+La combinación de resultados individualmente permitidos puede revelar una inferencia más sensible que cada elemento por separado.
+
+Cuando la sensibilidad o restricción resultante no pueda componerse de forma verificable, Core debe aplicar una restricción más estricta, requerir reevaluación o excluir el resultado derivado. La composición no puede usarse para eludir restricciones mediante agregación.
 
 ## 11. Freshness, invalidación y cambios de fuente
 
@@ -204,18 +212,22 @@ Un resultado recuperado anteriormente no conserva autorización indefinida por h
 Antes de usar conocimiento en un efecto relevante, en un destino externo o en una reanudación asíncrona, Kern debe reevaluar la validez del contexto y las restricciones aplicables.
 ```
 
+La invalidación por borrado, revocación, reclasificación o cambio material debe alcanzar resultados, cachés, índices, embeddings, resúmenes, datos derivados y Knowledge Context aún retenido para Turns diferidos o asíncronos.
+
+Mientras no se pueda demostrar que la reevaluación aplicable se ha completado, ese conocimiento no puede reutilizarse para divulgación, destino externo, reanudación o efecto relevante.
+
 ## 12. Contexto entregado a modelos, agentes y workflows
 
 Establece que:
 
 * entregar contexto a un modelo es un uso gobernado de datos;
 * un modelo, agente o workflow es un `Context Consumer`, no una autoridad;
-* el contexto se limita al mínimo necesario;
+* el contexto se limita al mÃ­nimo necesario;
 * Runtime distingue instrucciones, datos recuperados, datos no confiables, mensajes de usuario, memoria y resultados de herramientas;
 * contenido recuperado no puede alterar reglas de seguridad, policy, identidad, scopes ni Decision Bindings;
 * instrucciones dentro de documentos, correos, webs o adjuntos son contenido no confiable, nunca instrucciones de sistema;
-* enviar contexto a un proveedor externo exige controles y autorización aplicables;
-* memoria de agente no conserva conocimiento restringido fuera de sus reglas de retención y aislamiento.
+* enviar contexto a un proveedor externo exige controles y autorizaciÃ³n aplicables;
+* memoria de agente no conserva conocimiento restringido fuera de sus reglas de retenciÃ³n y aislamiento.
 
 ## 13. Uso de conocimiento en capacidades y efectos gobernados
 
@@ -224,57 +236,57 @@ Define que:
 * una Tool, Integration o Extension recibe solo conocimiento mínimo permitido;
 * conocimiento recuperado no concede autorización para ejecutar un efecto;
 * si conocimiento no confiable o de alto riesgo influye materialmente en una acción externa, se aplican restricciones y aprobaciones de RFC-0003, RFC-0005 y RFC-0007;
-* Runtime puede vincular conocimiento material usado en una acción con correlación, Binding y evidencia correspondiente;
+* cuando conocimiento recuperado o derivado justifique materialmente un efecto relevante, irreversible, externo o de alto impacto, Kern debe poder vincular el conocimiento material usado con el Turn, la decisión aplicable, el Decision Binding y la evidencia correspondiente;
 * una acción no puede alegar una fuente no accesible o no conservada como justificación suficiente.
 
 ## 14. Aislamiento multi-tenant, cachés e índices compartidos
 
 Exige que:
 
-* recursos, resultados, índices, embeddings, cachés, resúmenes, artefactos y trazas sean organization-scoped;
-* cualquier recurso compartido formal demuestre aislamiento verificable por organización;
-* no se reutilicen resultados, contexto, ranking, caché ni inferencias entre organizaciones;
-* una fuente conectada por una organización no se convierta en fuente global;
-* una Extension, proveedor, Tool o agente no pueda usar índice o caché de otra organización;
-* fallos de aislamiento, clasificación o procedencia bloqueen la recuperación relevante.
+* recursos, resultados, Ã­ndices, embeddings, cachÃ©s, resÃºmenes, artefactos y trazas sean organization-scoped;
+* cualquier recurso compartido formal demuestre aislamiento verificable por organizaciÃ³n;
+* no se reutilicen resultados, contexto, ranking, cachÃ© ni inferencias entre organizaciones;
+* una fuente conectada por una organizaciÃ³n no se convierta en fuente global;
+* una Extension, proveedor, Tool o agente no pueda usar Ã­ndice o cachÃ© de otra organizaciÃ³n;
+* fallos de aislamiento, clasificaciÃ³n o procedencia bloqueen la recuperaciÃ³n relevante.
 
-## 15. Observabilidad, explicabilidad y auditoría
+## 15. Observabilidad, explicabilidad y auditorÃ­a
 
 Exige evidencia suficiente para reconstruir:
 
 * solicitud de conocimiento;
-* organización e identidades;
+* organizaciÃ³n e identidades;
 * fuente y recursos consultados;
-* criterios de recuperación;
+* criterios de recuperaciÃ³n;
 * resultados seleccionados o excluidos;
-* clasificación, taint y restricciones;
+* clasificaciÃ³n, taint y restricciones;
 * transformaciones realizadas;
 * contexto entregado;
 * consumidor de contexto;
 * destinos externos, cuando existan;
 * invalidaciones y reevaluaciones;
-* correlación con Turn, capability, Decision Binding y efecto cuando corresponda.
+* correlaciÃ³n con Turn, capability, Decision Binding y efecto cuando corresponda.
 
-Aclara que telemetría, logs, trazas, prompts y diagnósticos son destinos de datos gobernados conforme a RFC-0006.
+Aclara que telemetrÃ­a, logs, trazas, prompts y diagnÃ³sticos son destinos de datos gobernados conforme a RFC-0006.
 
 ## 16. Dependencias con RFC-0002 a RFC-0008
 
-Relaciona explícitamente:
+Relaciona explÃ­citamente:
 
-* RFC-0002: Context Assembly y planos lógicos;
-* RFC-0003: ejecución gobernada y procedencia;
-* RFC-0004: organización, identidad, delegación y aislamiento;
-* RFC-0005: policy, obligaciones, composición e invalidación;
-* RFC-0006: capabilities, Extensions, telemetría y mediación;
+* RFC-0002: Context Assembly y planos lÃ³gicos;
+* RFC-0003: ejecuciÃ³n gobernada y procedencia;
+* RFC-0004: organizaciÃ³n, identidad, delegaciÃ³n y aislamiento;
+* RFC-0005: policy, obligaciones, composiciÃ³n e invalidaciÃ³n;
+* RFC-0006: capabilities, Extensions, telemetrÃ­a y mediaciÃ³n;
 * RFC-0007: Bindings, evidencia, efectos y resultados inciertos;
-* RFC-0008: Turns, Execution Context, snapshots, reanudación y estados.
+* RFC-0008: Turns, Execution Context, snapshots, reanudaciÃ³n y estados.
 
 Incluye:
 
 ```md
 RFC-0009 no crea una autoridad de datos ni una ruta de lectura alternativa.
 
-Formaliza cómo Kern recupera y ensambla conocimiento bajo los controles ya definidos, conservando las propiedades necesarias para explicar, limitar y gobernar su uso posterior.
+Formaliza cÃ³mo Kern recupera y ensambla conocimiento bajo los controles ya definidos, conservando las propiedades necesarias para explicar, limitar y gobernar su uso posterior.
 ```
 
 ## 17. Invariantes
@@ -299,25 +311,25 @@ Incluye al menos:
 
 ## 18. Consecuencias
 
-Explica los beneficios y costes: más trazabilidad y seguridad, pero también más contexto que mantener, más invalidaciones, más decisiones explícitas y menor comodidad que una solución RAG sin controles.
+Explica los beneficios y costes: mÃ¡s trazabilidad y seguridad, pero tambiÃ©n mÃ¡s contexto que mantener, mÃ¡s invalidaciones, mÃ¡s decisiones explÃ­citas y menor comodidad que una soluciÃ³n RAG sin controles.
 
 ## 19. Preguntas abiertas
 
 Deja abiertas, sin decidir:
 
-* estrategia concreta de indexación;
+* estrategia concreta de indexaciÃ³n;
 * formatos de documento;
 * OCR;
 * chunking;
 * embeddings;
 * ranking;
-* retención concreta;
-* gestión de borrado;
-* interfaces de búsqueda;
-* modelos de clasificación automática;
-* mecanismos técnicos de provenance;
+* retenciÃ³n concreta;
+* gestiÃ³n de borrado;
+* interfaces de bÃºsqueda;
+* modelos de clasificaciÃ³n automÃ¡tica;
+* mecanismos tÃ©cnicos de provenance;
 * UX para explicar fuentes y restricciones;
-* implementación de cachés e invalidación.
+* implementaciÃ³n de cachÃ©s e invalidaciÃ³n.
 
 ## 20. Referencias
 
@@ -325,10 +337,6 @@ Incluye RFC-0002 a RFC-0008 como referencias internas.
 
 ## 21. Historial de cambios
 
-Añade:
+### 0.2 — 2026-06-28
 
-```md
-### 0.1 — 2026-06-28
-
-Borrador inicial. Define el contrato de acceso gobernado a conocimiento, recuperación, Context Assembly, procedencia, clasificación, datos derivados, aislamiento multi-tenant y uso seguro de contexto por agentes, modelos, workflows y capacidades.
-```
+Endurecimiento del contrato tras revisión independiente. Define todos los conceptos normativos, establece confinamiento estricto de resultados recuperados mediante credenciales amplias y exige que procedencia, clasificación, taint y restricciones sean establecidos y preservados por una frontera controlada por Core.
