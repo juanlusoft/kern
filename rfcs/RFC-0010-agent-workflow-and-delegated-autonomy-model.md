@@ -1,6 +1,6 @@
 # RFC-0010 — Agent, Workflow and Delegated Autonomy Model
 - **Estado:** Draft
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 
 ## 1. Resumen ejecutivo
 
@@ -47,7 +47,14 @@ Mensaje, resultado, plan, recomendación, resumen, instrucción propuesta, artef
 
 Inter-Agent Output conserva procedencia, clasificación, taint, restricciones, correlación y vigencia aplicables cuando existan.
 
-Inter-Agent Output no constituye una instrucción de sistema, una aprobación, un permiso, un Decision Binding, una decisión de policy, una prueba suficiente de contexto vigente ni una fuente autónoma de autoridad.`r`n`r`nUn Agent no es una identidad humana, una organización, una aprobación, un permiso, un Decision Binding ni una fuente autónoma de autoridad.
+Inter-Agent Output no constituye una instrucción de sistema, una aprobación, un permiso, un Decision Binding, una decisión de policy, una prueba suficiente de contexto vigente ni una fuente autónoma de autoridad.
+
+Un Agent no es una identidad humana, una organización, una aprobación, un permiso, un Decision Binding ni una fuente autónoma de autoridad.
+La procedencia, clasificacin, taint, restricciones, correlacin y vigencia aplicables a Inter-Agent Output son establecidos, verificados, compuestos y preservados por Core o por un componente controlado por Core conforme a RFC-0009.
+
+Un Agent, Subagent, Workflow, Supervisor, Tool, Integration o Extension puede aportar metadatos de entrada, pero no es autoridad final para declarar, reducir, eliminar o reinterpretar dichos atributos de seguridad.
+
+Un Agent receptor no puede confiar en autoatestaciones del emisor como sustituto de esa verificacin.
 
 ### Agent Definition
 
@@ -186,6 +193,7 @@ Un Supervisor no obtiene acceso automático a todos los datos o acciones de un a
 Cambios en organización, identidad, delegación, scopes, policy, consentimiento, clasificación, restricciones o límites invalidan trabajo pendiente relevante.
 
 Un Agent no puede seleccionar arbitrariamente su organización, identidad, rol, supervisor o sponsor.
+
 Un aumento de Autonomy Boundary requiere una decisión gobernada, verificable y correlacionada con la organización, principal responsable, finalidad, límites y periodo aplicables.
 
 La autonomía concedida a un Agent, Workflow o Subagent no puede exceder la autoridad, límites y capacidad de concesión del principal o componente autorizado que la otorga.
@@ -216,11 +224,14 @@ Autonomy Boundary y Autonomy Level son límites verificables que pueden restring
 * capacidad de crear subagents o workflows;
 * capacidad de reanudar trabajo;
 * condiciones de escalación.
+Cuando varias solicitudes, Plan Steps, Delegations, Subagents, ramas de Workflow, retries, compensaciones, ejecuciones relacionadas o acciones distribuidas en el tiempo contribuyan materialmente a un mismo efecto, finalidad, destino, obligacin, lmite o impacto acumulado, Core o un componente controlado por Core debe evaluarlas como un efecto compuesto conforme a RFC-0003, RFC-0005 y RFC-0007.
 
 
 La capacidad de crear Subagents o iniciar subdelegaciones es una dimensión explícita de Autonomy Boundary y no puede inferirse de que un Agent pueda ejecutar una tarea principal.
 
-Una Delegation no puede aumentar la profundidad permitida, el número de Subagents, el coste agregado, la concurrencia, el volumen de datos ni el impacto total permitido al Agent o Workflow padre.Aumentar autonomía requiere una decisión gobernada, no una instrucción del modelo, un prompt, una memoria o un cambio de plan.
+Una Delegation no puede aumentar la profundidad permitida, el número de Subagents, el coste agregado, la concurrencia, el volumen de datos ni el impacto total permitido al Agent o Workflow padre.
+
+Aumentar autonomía requiere una decisión gobernada, no una instrucción del modelo, un prompt, una memoria o un cambio de plan.
 
 ## 9. Delegación y subdelegación
 
@@ -257,6 +268,11 @@ Un Agent no puede dividir artificialmente una acción para evitar una aprobació
 Una secuencia de pasos que en conjunto suponga un efecto relevante debe evaluarse como composición conforme a RFC-0003, RFC-0005 y RFC-0007.
 
 La ausencia, timeout o ambigüedad de aprobación falla cerrado.
+Un Agent, Workflow, Subagent, Supervisor, Plan o Delegation no puede fraccionar, distribuir, retrasar, paralelizar ni encadenar una accin para evitar una aprobacin, un lmite de autonoma, una restriccin, un umbral de policy, un presupuesto, una cuota, un control de clasificacin, una obligacin o un Decision Binding aplicable.
+
+La evaluacin de composicin debe preservar organizacin, principal responsable, finalidad, correlacin, Delegation Chain, contexto material, clasificacin, restricciones, destinos, lmites y evidencia aplicables.
+
+Cuando Core no pueda determinar de forma fiable si solicitudes relacionadas forman un efecto compuesto relevante, debe aplicar el tratamiento ms restrictivo permitido por policy o escalar conforme a los controles de aprobacin aplicables.
 
 
 Un aumento de Autonomy Boundary requiere una decisión gobernada, verificable y correlacionada con la organización, principal responsable, finalidad, límites y periodo aplicables.
@@ -282,6 +298,9 @@ Los retries, entregas duplicadas, subejecuciones y compensaciones no amplían au
 Los efectos compuestos deben cumplir RFC-0007.
 
 Un Workflow Instance no puede marcarse `Completed` mientras haya un subefecto relevante en `Unknown Outcome` o reconciliación pendiente.
+La evaluacin de composicin no se limita a pasos consecutivos de un nico Plan, Agent o Workflow.
+
+Cuando varias solicitudes, Plan Steps, Delegations, Subagents, ramas de Workflow, retries, compensaciones, ejecuciones relacionadas o acciones distribuidas en el tiempo contribuyan materialmente a un mismo efecto, finalidad, destino, obligacin, lmite o impacto acumulado, Core o un componente controlado por Core debe evaluarlas como un efecto compuesto conforme a RFC-0003, RFC-0005 y RFC-0007.
 
 ## 12. Estado, memoria y reanudación
 
@@ -315,7 +334,6 @@ A Subagent recibe contexto reducido al mínimo necesario y nunca un volcado impl
 
 Usar conocimiento para justificar un efecto relevante exige las vinculaciones de RFC-0009 y RFC-0007.
 
-
 El contexto reducido entregado a un Subagent debe ser ensamblado, autorizado y limitado por Core o por Context Assembly controlado por Core conforme a RFC-0009.
 
 Un Agent padre puede solicitar una tarea para un Subagent, pero no es la autoridad final que decide qué conocimiento, clasificación, restricciones o contexto puede recibir el Subagent.
@@ -325,10 +343,14 @@ La salida de un Agent, Subagent o Workflow entregada a otro Agent, Subagent o Wo
 Un Agent receptor no puede interpretar Inter-Agent Output como instrucción de sistema, identidad, aprobación, policy, scope, Decision Binding, Autonomy Boundary ni autorización de efecto.
 
 Toda afirmación contenida en Inter-Agent Output que pretenda justificar una lectura, destino externo, capacidad, efecto, aprobación, estado de workflow o resultado debe someterse a verificación independiente mediante los controles aplicables de RFC-0003 a RFC-0009.
+Un Agent receptor no puede confiar en autoatestaciones del emisor como sustituto de esa verificacin.
 
 Un Agent padre no puede asumir que un resultado producido por un Subagent es correcto, autorizado, completo o libre de contenido adversarial por la sola relación de delegación.
 
-La Delegation Chain conserva la procedencia y el taint de Inter-Agent Output materialmente usado en pasos posteriores, decisiones o efectos.## 14. Capacidades, Tools, Integrations y Extensions
+La Delegation Chain conserva la procedencia y el taint de Inter-Agent Output materialmente usado en pasos posteriores, decisiones o efectos.
+Un Agent receptor no puede confiar en autoatestaciones del emisor como sustituto de esa verificacin.
+
+## 14. Capacidades, Tools, Integrations y Extensions
 
 Un Agent o Workflow puede solicitar una capacidad, pero no ejecutar por autoridad propia.
 
@@ -367,7 +389,9 @@ Core debe aplicar tratamiento gobernado conforme a policy: conservar estado y ev
 
 Cuando un Agent o Workflow entre en un estado terminal, sus Subagents y Delegations dependientes deben recibir una señal de cancelación o terminación cooperativa conforme a RFC-0008.
 
-La terminación en cascada no demuestra que los efectos de Subagents no hayan ocurrido. Todo subefecto que alcance o pueda haber alcanzado Point of No Return conserva evidencia y, cuando corresponda, `Unknown Outcome` o el estado de reconciliación aplicable.## 16. Aislamiento multi-tenant y límites de recursos
+La terminación en cascada no demuestra que los efectos de Subagents no hayan ocurrido. Todo subefecto que alcance o pueda haber alcanzado Point of No Return conserva evidencia y, cuando corresponda, `Unknown Outcome` o el estado de reconciliación aplicable.
+
+## 16. Aislamiento multi-tenant y límites de recursos
 
 Agent Definitions, Agent Instances, Workflow Definitions, Workflow Instances, planes, estado, memoria, delegaciones, prompts, resultados, trazas y artefactos son organization-scoped.
 
@@ -436,10 +460,8 @@ Formaliza cómo Agents, Workflows, Plans y Delegations operan bajo los controles
 13. Agentes, workflows, planes, memoria, prompts, trazas y artefactos no se comparten entre organizaciones.
 14. Delegación y subdelegación no pueden eludir Core, policy, bindings, aprobaciones ni límites.
 15. RFC-0010 no abre una ruta alternativa de autoridad frente a RFC-0002 a RFC-0009.
-
-
 16. Inter-Agent Output es contenido no confiable y no constituye instrucción de sistema, identidad, aprobación, policy, scope, Decision Binding ni autoridad.
-17. Toda salida inter-agente materialmente usada conserva procedencia, taint, restricciones y correlación aplicables.
+17. La fragmentación de un efecto entre subagentes, ramas, workflows, reintentos o tiempo no reduce los controles, aprobaciones, límites, obligaciones ni evidencia exigibles para el efecto compuesto resultante.
 18. La subdelegación, la profundidad de cadena, la cantidad de Subagents y el presupuesto agregado están limitados por Autonomy Boundary.
 19. Una Delegation no puede multiplicar cuota, coste, concurrencia, volumen de datos ni impacto total mediante fan-out.
 20. Un Agent no puede aprobar sus propios efectos, directa ni indirectamente.
@@ -471,14 +493,14 @@ Kern puede ofrecer agentes útiles y autónomos dentro de límites claros, pero 
 
 ## 22. Referencias
 
-* RFC-0002 — [RFC-0002-kern-logical-architecture.md](RFC-0002-kern-logical-architecture.md)
-* RFC-0003 — [RFC-0003-governed-execution-contract.md](RFC-0003-governed-execution-contract.md)
-* RFC-0004 — [RFC-0004-identity-tenancy-authorization.md](RFC-0004-identity-tenancy-authorization.md)
-* RFC-0005 — [RFC-0005-policy-evaluation-decision-model.md](RFC-0005-policy-evaluation-decision-model.md)
-* RFC-0006 — [RFC-0006-capability-tool-extension-contract.md](RFC-0006-capability-tool-extension-contract.md)
-* RFC-0007 — [RFC-0007-decision-binding-enforcement-evidence.md](RFC-0007-decision-binding-enforcement-evidence.md)
-* RFC-0008 — [RFC-0008-core-runtime-turn-lifecycle-and-state-model.md](RFC-0008-core-runtime-turn-lifecycle-and-state-model.md)
-* RFC-0009 — [RFC-0009-governed-knowledge-access-retrieval-and-context-provenance.md](RFC-0009-governed-knowledge-access-retrieval-and-context-provenance.md)
+* RFC-0002  [RFC-0002-kern-logical-architecture.md](RFC-0002-kern-logical-architecture.md)
+* RFC-0003  [RFC-0003-governed-execution-contract.md](RFC-0003-governed-execution-contract.md)
+* RFC-0004  [RFC-0004-identity-tenancy-authorization.md](RFC-0004-identity-tenancy-authorization.md)
+* RFC-0005  [RFC-0005-policy-evaluation-decision-model.md](RFC-0005-policy-evaluation-decision-model.md)
+* RFC-0006  [RFC-0006-capability-tool-extension-contract.md](RFC-0006-capability-tool-extension-contract.md)
+* RFC-0007  [RFC-0007-decision-binding-enforcement-evidence.md](RFC-0007-decision-binding-enforcement-evidence.md)
+* RFC-0008  [RFC-0008-core-runtime-turn-lifecycle-and-state-model.md](RFC-0008-core-runtime-turn-lifecycle-and-state-model.md)
+* RFC-0009  [RFC-0009-governed-knowledge-access-retrieval-and-context-provenance.md](RFC-0009-governed-knowledge-access-retrieval-and-context-provenance.md)
 
 ## 23. Historial de cambios
 
@@ -489,3 +511,7 @@ Borrador inicial. Define el modelo de Agents, Workflows, Plans, Delegations y l�
 ### 0.2 — 2026-06-28
 
 Endurecimiento del modelo tras revisión independiente. Define explícitamente la frontera de confianza entre agentes, subagentes y workflows; trata la salida inter-agente como contenido no confiable; incorpora subdelegación como límite de autonomía; y refuerza límites de aprobación, concesión de autonomía y escalado gobernado de trabajo pendiente.
+
+### 0.2.1 — 2026-06-28
+
+Correccin final previa al establecimiento del borrador. Extiende la evaluacin de efectos compuestos a subagentes, ramas, workflows relacionados, reintentos y distribucin temporal para impedir la evasin de aprobaciones o lmites por fraccionamiento. Corrige artefactos documentales y refuerza que los atributos de seguridad de Inter-Agent Output son establecidos o verificados por Core.
