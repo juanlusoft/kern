@@ -365,6 +365,14 @@ Incluye RFC-0002 a RFC-0008 como referencias internas.
 
 ## 21. Historial de cambios
 
+### 0.1 — 2026-06-28
+
+Borrador inicial. Define el contrato de acceso gobernado a conocimiento, recuperación, Context Assembly, procedencia, clasificación, datos derivados, aislamiento multi-tenant y uso seguro de contexto por agentes, modelos, workflows y capacidades.
+
+### 0.2 — 2026-06-28
+
+Endurecimiento del contrato tras revisión independiente. Define todos los conceptos normativos, establece confinamiento estricto de resultados recuperados mediante credenciales amplias y exige que procedencia, clasificación, taint y restricciones sean establecidos y preservados por una frontera controlada por Core.
+
 ### 0.2.1 — 2026-06-28
 
 Corrección final previa al establecimiento del borrador. Define el ciclo de exclusión de over-fetch fuera del Retrieval Scope autorizado, establece explícitamente la frontera de verificación y composición de atributos de seguridad controlada por Core, y refuerza el aislamiento de prompts, payloads de contexto y memoria por organización.
