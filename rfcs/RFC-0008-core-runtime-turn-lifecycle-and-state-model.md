@@ -1,7 +1,7 @@
 # RFC-0008 — Core Runtime, Turn Lifecycle and State Model
 
 - **Estado:** Draft
-- **Versión:** 0.2
+- **Versión:** 0.2.1
 - **Fecha:** 2026-06-27
 
 ## 1. Resumen ejecutivo
@@ -155,6 +155,12 @@ Debe fallar cerrado cuando falte una organización, identidad, ruta permitida o 
 
 Un canal puede transportar credenciales y metadatos, pero no puede declarar por sí solo autoridad, organización definitiva, scopes o permisos.
 
+La ausencia, ambigüedad, conflicto, inconsistencia o imposibilidad de verificar un atributo crítico de Execution Context debe impedir la admisión del Turn o producir deny para cualquier efecto pendiente.
+
+Un Runtime no puede elegir arbitrariamente entre valores conflictivos de organización, identidad, delegación, ruta, clasificación, procedencia, restricciones, scopes, límites o correlación.
+
+La resolución de conflicto requiere contexto verificable adicional y la reevaluación aplicable. Mientras persista la ambigüedad, el Turn no obtiene autoridad adicional ni puede producir efectos relevantes.
+
 ## 8. Estados y transiciones del Turn
 
 Estados mínimos:
@@ -220,6 +226,14 @@ Cuando RFC-0007 produzca o preserve `Unknown Outcome`, el Turn debe transicionar
 `Cancelled` no elimina la obligación de conservar `Waiting for Reconciliation` o evidencia equivalente cuando un efecto relevante haya alcanzado o pueda haber alcanzado el Point of No Return.
 
 `Waiting for Reconciliation` no puede convertirse en éxito o fallo por política sin evidencia. Una decisión humana puede definir tratamiento operativo, pero no puede borrar o reinterpretar el hecho histórico de incertidumbre.
+
+Los Turns en `Waiting for Approval`, `Waiting for External Outcome` o `Waiting for Reconciliation` deben ser observables por Core o por un componente controlado por Core para detectar ausencia prolongada de progreso verificable.
+
+La detección de falta de progreso no autoriza a declarar éxito, fallo, expiración, cancelación, consumo, replay, compensación ni liberación de una obligación de reconciliación.
+
+Core debe aplicar un tratamiento gobernado conforme a policy: conservar el estado, solicitar información adicional, escalar a resolución humana, limitar nuevas admisiones relacionadas o iniciar únicamente operaciones de reconciliación o compensación que dispongan de autorización aplicable.
+
+Un `Waiting for Reconciliation` no puede alcanzar `Completed`, `Failed`, `Cancelled` ni `Expired` por el mero transcurso del tiempo o por agotamiento de recursos. Debe preservar explícitamente `Unknown Outcome` y la evidencia disponible hasta que exista evidencia suficiente o una resolución gobernada que conserve la incertidumbre histórica.
 
 ## 9. Ejecución síncrona, asíncrona y diferida
 
@@ -374,6 +388,7 @@ Formaliza cómo el Runtime de Kern coordina una unidad de trabajo sin debilitar 
 20. Todo efecto síncrono y asíncrono usa los mismos controles de RFC-0007.
 21. Una reanudación exige revalidación de contexto y autoridad aplicable.
 22. La procedencia, clasificación, taint, obligaciones y restricciones se conservan en contexto heredado.
+23. Un Execution Context ambiguo, conflictivo, inconsistente o no verificable falla cerrado para admisión, reanudación o efecto pendiente.
 
 ## 18. Consecuencias
 
@@ -381,6 +396,7 @@ Formaliza cómo el Runtime de Kern coordina una unidad de trabajo sin debilitar 
 - Obliga a distinguir claramente entre conversación, turno, sesión y autorización.
 - Hace posible una implementación futura sin acoplar el diseño al canal o la interfaz.
 - Reduce el riesgo de que memoria, desconexión o reintento generen autoridad implícita.
+- Kern prioriza seguridad, trazabilidad y aislamiento de recursos frente a disponibilidad automática cuando una espera no puede resolverse con evidencia suficiente.
 
 ## 19. Preguntas abiertas
 
@@ -413,3 +429,7 @@ Borrador inicial. Define el contrato lógico del Runtime de Kern, el ciclo de vi
 ### 0.2 — 2026-06-27
 
 Endurecimiento del modelo de estados tras revisión independiente. Unifica nombres canónicos de estados, integra resultados externos inciertos y reconciliación pendiente, y prohíbe declarar un estado terminal de Turn cuando un efecto relevante continúa sin evidencia de resultado suficiente conforme a RFC-0007.
+
+### 0.2.1 — 2026-06-27
+
+Endurecimiento previo al establecimiento del borrador. Exige fallo cerrado ante contexto ambiguo o conflictivo y define liveness, detección y escalado gobernado para Turns que permanecen esperando aprobación, resultado externo o reconciliación.
