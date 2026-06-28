@@ -283,7 +283,9 @@ Un Supervisor, Sponsor o Agent no puede conceder autonomía, acceso, aprobación
 
 Un Agent no puede aprobar sus propios efectos, ni directa ni indirectamente mediante un Subagent, Workflow, Supervisor automatizado o cadena de delegación controlada por el mismo Agent.
 
-Toda aprobación permanece limitada por la autoridad del aprobador y por acción, alcance, payload, contexto, correlación, vigencia y condiciones aplicables.## 11. Ejecución de workflows y subefectos
+Toda aprobación permanece limitada por la autoridad del aprobador y por acción, alcance, payload, contexto, correlación, vigencia y condiciones aplicables.
+
+## 11. Ejecución de workflows y subefectos
 
 Cada Workflow Step se ejecuta dentro de un Turn o ejecución correlacionada.
 
