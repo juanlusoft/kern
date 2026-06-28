@@ -1,6 +1,6 @@
 # RFC-0009 — Governed Knowledge Access, Retrieval and Context Provenance
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Versión:** 0.2.1
 
 ## 1. Resumen ejecutivo
@@ -376,3 +376,7 @@ Endurecimiento del contrato tras revisión independiente. Define todos los conce
 ### 0.2.1 — 2026-06-28
 
 Corrección final previa al establecimiento del borrador. Define el ciclo de exclusión de over-fetch fuera del Retrieval Scope autorizado, establece explícitamente la frontera de verificación y composición de atributos de seguridad controlada por Core, y refuerza el aislamiento de prompts, payloads de contexto y memoria por organización.
+
+### Aceptado — 2026-06-28
+
+RFC-0009 se acepta tras revisión independiente y verificación final. Establece el contrato fundacional de acceso gobernado al conocimiento de Kern: lectura bajo organización, identidad y finalidad verificables; confinamiento de over-fetch; procedencia y restricciones controladas por Core; aislamiento multi-tenant; y reevaluación antes de divulgación, reanudación o efecto relevante.
