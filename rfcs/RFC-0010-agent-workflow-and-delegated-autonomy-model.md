@@ -1,5 +1,5 @@
 # RFC-0010 — Agent, Workflow and Delegated Autonomy Model
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Versión:** 0.2.1
 
 ## 1. Resumen ejecutivo
@@ -517,3 +517,7 @@ Endurecimiento del modelo tras revisión independiente. Define explícitamente l
 ### 0.2.1 — 2026-06-28
 
 Correccin final previa al establecimiento del borrador. Extiende la evaluacin de efectos compuestos a subagentes, ramas, workflows relacionados, reintentos y distribucin temporal para impedir la evasin de aprobaciones o lmites por fraccionamiento. Corrige artefactos documentales y refuerza que los atributos de seguridad de Inter-Agent Output son establecidos o verificados por Core.
+
+### Aceptado — 2026-06-28
+
+RFC-0010 se acepta tras revisión independiente, endurecimiento de la frontera de confianza inter-agente y verificación final. Establece el modelo fundacional de Agents, Workflows, Plans, Delegations y autonomía delegada de Kern, garantizando que la autonomía coordinada no cree autoridad nueva, no eluda Core, no amplíe permisos por delegación y no reduzca controles mediante fragmentación de efectos.
