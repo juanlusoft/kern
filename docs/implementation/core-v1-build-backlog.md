@@ -1248,7 +1248,7 @@ TASK-0701 a TASK-0708.
 - aprobación reutilizable fuera de alcance.
 
 ## 18. Primer milestone ejecutable
-Milestone M1 — Governed request skeleton
+## Milestone M1 — Governed request skeleton
 
 Debe incluir:
 
