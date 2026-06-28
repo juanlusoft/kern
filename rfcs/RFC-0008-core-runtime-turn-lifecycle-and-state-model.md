@@ -1,6 +1,6 @@
 # RFC-0008 — Core Runtime, Turn Lifecycle and State Model
 
-- **Estado:** Draft
+- **Estado:** Accepted
 - **Versión:** 0.2.1
 - **Fecha:** 2026-06-27
 
@@ -433,3 +433,7 @@ Endurecimiento del modelo de estados tras revisión independiente. Unifica nombr
 ### 0.2.1 — 2026-06-27
 
 Endurecimiento previo al establecimiento del borrador. Exige fallo cerrado ante contexto ambiguo o conflictivo y define liveness, detección y escalado gobernado para Turns que permanecen esperando aprobación, resultado externo o reconciliación.
+
+### Aceptado — 2026-06-27
+
+RFC-0008 se acepta tras revisión independiente y verificación final. Establece el contrato fundacional del Core Runtime de Kern: Turns con contexto verificable, estados explícitos, revalidación de ejecuciones diferidas, aislamiento multi-tenant y tratamiento de resultados externos inciertos sin rutas alternativas de autoridad.
