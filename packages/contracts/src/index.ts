@@ -4,6 +4,27 @@ export type PrincipalType = 'human' | 'service' | 'agent';
 export type OrganizationState = 'active' | 'inactive' | 'failed_closed';
 export type ResolutionState = 'resolved' | 'failed_closed';
 export type BindingState = 'created' | 'validated' | 'consumed' | 'revoked' | 'expired' | 'rejected';
+export type TurnState =
+  | 'created'
+  | 'evaluating'
+  | 'waiting_for_approval'
+  | 'executing'
+  | 'waiting_for_external_result'
+  | 'waiting_for_reconciliation'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'expired';
+export type TurnEffectState =
+  | 'planned'
+  | 'binding_created'
+  | 'executing'
+  | 'point_of_no_return'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown_outcome'
+  | 'cancelled';
+export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
 export type EvidenceRecordType =
   | 'intent'
   | 'organization_resolved'
@@ -13,7 +34,16 @@ export type EvidenceRecordType =
   | 'binding_validated'
   | 'binding_rejected'
   | 'execution_blocked'
-  | 'failed_closed';
+  | 'failed_closed'
+  | 'turn_created'
+  | 'turn_transitioned'
+  | 'effect_registered'
+  | 'point_of_no_return_reached'
+  | 'unknown_outcome_detected'
+  | 'reconciliation_requested'
+  | 'reconciliation_completed'
+  | 'turn_completed'
+  | 'turn_blocked';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -135,6 +165,72 @@ export interface DecisionBinding {
   evidence_reference: string;
 }
 
+export interface TurnActor {
+  principal_id: string;
+  principal_type: PrincipalType | null;
+  delegated_identity: string | null;
+}
+
+export interface TurnExecutionContext {
+  request_id: string;
+  request_fingerprint: string;
+  policy_decision_id: string | null;
+  binding_id: string | null;
+  requires_binding: boolean;
+}
+
+export interface TurnEffect {
+  effect_id: string;
+  binding_id: string | null;
+  state: TurnEffectState;
+  point_of_no_return_reached: boolean;
+  evidence_reference: string | null;
+}
+
+export interface UnknownOutcome {
+  unknown_outcome_id: string;
+  effect_id: string;
+  reason: string;
+  detected_at: string;
+  evidence_reference: string | null;
+  requires_reconciliation: boolean;
+}
+
+export interface TurnTransition {
+  transition_id: string;
+  turn_id: string;
+  from_state: TurnState;
+  to_state: TurnState;
+  reason: string;
+  effect_id: string | null;
+  created_at: string;
+}
+
+export interface Turn {
+  turn_id: string;
+  organization_id: string;
+  correlation_id: string;
+  actor: TurnActor;
+  state: TurnState;
+  execution_context: TurnExecutionContext;
+  pending_effects: TurnEffect[];
+  unknown_outcomes: UnknownOutcome[];
+  evidence_links: string[];
+  reconciliation_state: ReconciliationState;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TurnTransitionResult {
+  valid: boolean;
+  invalid: boolean;
+  reason: string | null;
+  turn: Turn;
+  transition: TurnTransition | null;
+  evidence_record: EvidenceRecord | null;
+  record_type: EvidenceRecordType | null;
+}
+
 export interface GovernedExecutionResult {
   status: GovernedExecutionStatus;
   correlation_id: string;
@@ -143,6 +239,7 @@ export interface GovernedExecutionResult {
   policy_decision: PolicyDecision;
   evidence_records: EvidenceRecord[];
   binding: DecisionBinding | null;
+  turn_id?: string | null;
   reason: string;
 }
 
