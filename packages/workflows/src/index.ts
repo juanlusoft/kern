@@ -5,26 +5,32 @@ import {
   fingerprintCapabilityInvocation,
   fingerprintCoreRequest,
   normalizeCorrelationId,
+  normalizeResourceQuery,
   type CapabilityDefinition,
   type CapabilityInvocationRequest,
   type CapabilityInvocationResult,
   type CoreRequest,
+  type ExternalReadAdapter,
   type GovernedWorkflowRequest,
   type GovernedWorkflowResult,
   type GovernedWorkflowResponse,
   type GovernedWorkflowKind,
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
+  type PrincipalType,
+  type ResourceQuery,
+  type ResourceResult,
   type WorkflowEvidenceTrace,
   type WorkflowExecutionStatus,
   type WorkflowStep
 } from '../../contracts/src/index';
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
-import { InMemoryCapabilityRuntime } from '../../capabilities/src/index';
+import { InMemoryCapabilityRuntime, createMockResourceReadCapability } from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 import { evaluatePolicy } from '../../policy/src/index';
 import { InMemoryTurnRuntime } from '../../turns/src/index';
+import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
 
 const WORKFLOW_FLAGS = {
   force_policy_deny: false,
@@ -269,6 +275,40 @@ function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record
   };
 }
 
+function createMockResourceQuery(input: {
+  workflow_id: string;
+  correlation_id: string;
+  organization_id: string;
+  principal_id: string;
+  principal_type: PrincipalType | null;
+  delegated_identity: string | null;
+  estimate_id: string;
+  customer_id?: string | null;
+  claimed_result?: unknown;
+  caller_result?: unknown;
+  assistant_result?: unknown;
+  model_claimed_result?: unknown;
+}): ResourceQuery {
+  return normalizeResourceQuery({
+    query_id: input.workflow_id,
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    actor: {
+      principal_id: input.principal_id,
+      principal_type: input.principal_type,
+      delegated_identity: input.delegated_identity
+    },
+    resource_type: 'estimate',
+    resource_id: input.estimate_id,
+    filters: input.customer_id ? { customer_id: input.customer_id } : null,
+    requested_fields: ['estimate_id', 'customer_name', 'description', 'base_amount', 'tax_amount', 'total_amount', 'currency', 'source'],
+    claimed_result: input.claimed_result ?? null,
+    model_claimed_result: input.model_claimed_result ?? null,
+    caller_result: input.caller_result ?? null,
+    assistant_result: input.assistant_result ?? null
+  });
+}
+
 function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<string, unknown> {
   return {
     to: input.to,
@@ -417,6 +457,7 @@ export interface GovernedWorkflowRuntimeOptions {
   bindingStore?: InMemoryDecisionBindingStore;
   capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
+  externalReadAdapter?: ExternalReadAdapter;
   now?: () => Date;
 }
 
@@ -425,18 +466,21 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly bindingStore: InMemoryDecisionBindingStore;
   private readonly capabilityRuntime: InMemoryCapabilityRuntime;
   private readonly turnRuntime: InMemoryTurnRuntime;
+  private readonly externalReadAdapter: ExternalReadAdapter;
   private readonly now: () => Date;
   private readonly workflowRecords = new Map<string, GovernedWorkflowResult>();
 
   constructor(options: GovernedWorkflowRuntimeOptions = {}) {
     this.evidenceLedger = options.evidenceLedger ?? new InMemoryEvidenceLedger();
     this.bindingStore = options.bindingStore ?? new InMemoryDecisionBindingStore();
+    this.externalReadAdapter = options.externalReadAdapter ?? createMockExternalReadAdapter({ now: options.now });
     this.capabilityRuntime =
       options.capabilityRuntime ?? new InMemoryCapabilityRuntime({ evidenceLedger: this.evidenceLedger, bindingStore: this.bindingStore, now: options.now });
     this.turnRuntime = options.turnRuntime ?? new InMemoryTurnRuntime({ evidenceLedger: this.evidenceLedger, now: options.now });
     this.now = options.now ?? (() => new Date());
 
     if (!options.capabilityRuntime) {
+      this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter));
       this.registerCapability(createMockEstimateReadCapability());
       this.registerCapability(createMockEmailPreviewCapability());
       this.registerCapability(createMockEmailSendCapability());
@@ -480,7 +524,7 @@ export class InMemoryGovernedWorkflowRuntime {
       correlation_id: input.correlation_id ?? null
     });
     const requested_at = input.requested_at?.trim() || this.now().toISOString();
-    const capabilityId = input.capability_id ?? 'mock.estimate.read';
+    const capabilityId = input.capability_id ?? 'mock.resource.read';
     const coreRequest = createWorkflowCoreRequest({
       workflow_id: input.workflow_id,
       correlation_id,
@@ -576,6 +620,20 @@ export class InMemoryGovernedWorkflowRuntime {
     }
 
     const identityContext = resolveIdentityContext(coreRequest, organizationContext);
+    const governedResourceQuery = createMockResourceQuery({
+      workflow_id: input.workflow_id,
+      correlation_id,
+      organization_id: organizationContext.organization_id ?? 'unknown',
+      principal_id: identityContext.principal_id ?? 'unknown',
+      principal_type: identityContext.principal_type,
+      delegated_identity: identityContext.delegated_identity,
+      estimate_id: input.estimate_id,
+      customer_id: input.customer_id ?? null,
+      claimed_result: input.claimed_result ?? null,
+      caller_result: input.caller_result ?? null,
+      assistant_result: input.assistant_result ?? null,
+      model_claimed_result: input.model_claimed_result ?? null
+    });
     if (identityContext.resolution_state !== 'resolved' || !identityContext.principal_id) {
       const deniedEvidence = this.appendWorkflowEvidence({
         organization_id: organizationContext.organization_id,
@@ -732,7 +790,7 @@ export class InMemoryGovernedWorkflowRuntime {
       input: {
         purpose: `Read estimate ${input.estimate_id}`,
         requested_scope: ['read:knowledge'],
-        payload: createMockEstimatePayload(input)
+        payload: governedResourceQuery as unknown as Record<string, unknown>
       },
       decision_binding_id: null,
       binding_id: null,
@@ -756,8 +814,21 @@ export class InMemoryGovernedWorkflowRuntime {
       }
     });
     evidenceRecords.push(capabilityInvocationEvidence);
+    evidenceRecords.push(
+      this.appendWorkflowEvidence({
+        organization_id: organizationContext.organization_id,
+        correlation_id,
+        record_type: 'external_read_requested',
+        subject: capabilityId,
+        data: {
+          workflow_id: input.workflow_id,
+          resource_query: governedResourceQuery
+        }
+      })
+    );
 
     const capability_result = this.capabilityRuntime.invokeCapability(capabilityInvocation);
+    const resourceResult = capability_result.output?.result as unknown as ResourceResult | null;
     steps.push(buildWorkflowStep({
       step_kind: 'capability',
       status: capability_result.status === 'executed' ? 'completed' : capability_result.status,
@@ -770,6 +841,34 @@ export class InMemoryGovernedWorkflowRuntime {
     }));
 
     if (capability_result.status === 'executed') {
+      if (resourceResult?.status === 'found') {
+        evidenceRecords.push(
+          this.appendWorkflowEvidence({
+            organization_id: organizationContext.organization_id,
+            correlation_id,
+            record_type: 'source_evidence_recorded',
+            subject: capabilityId,
+            data: {
+              workflow_id: input.workflow_id,
+              resource_type: resourceResult.resource_type,
+              resource_id: resourceResult.resource_id,
+              source_evidence: resourceResult.source_evidence
+            }
+          })
+        );
+        evidenceRecords.push(
+          this.appendWorkflowEvidence({
+            organization_id: organizationContext.organization_id,
+            correlation_id,
+            record_type: 'external_read_found',
+            subject: capabilityId,
+            data: {
+              workflow_id: input.workflow_id,
+              resource_result: resourceResult
+            }
+          })
+        );
+      }
       this.turnRuntime.transitionTurn({
         turn_id: turn.turn_id,
         to_state: 'completed',
@@ -806,7 +905,11 @@ export class InMemoryGovernedWorkflowRuntime {
 
     const responseData =
       capability_result.status === 'executed'
-        ? capability_result.output?.result ?? null
+        ? resourceResult?.status === 'found'
+          ? resourceResult.data
+          : capability_result.output?.result && typeof capability_result.output.result === 'object'
+            ? (capability_result.output.result as { data?: Record<string, unknown> | null }).data ?? null
+            : null
         : null;
     const response = createRuntimeResponse({
       kind: workflowKind,
@@ -833,6 +936,71 @@ export class InMemoryGovernedWorkflowRuntime {
       data: responseData,
       runtimeDriven: true
     });
+    const externalReadResultBoundEvidence = this.appendWorkflowEvidence({
+      organization_id: organizationContext.organization_id,
+      correlation_id,
+      record_type: 'external_read_result_bound',
+      subject: capabilityId,
+      data: {
+        workflow_id: input.workflow_id,
+        status: capability_result.status,
+        resource_result: resourceResult
+      }
+    });
+    evidenceRecords.push(externalReadResultBoundEvidence);
+    if (capability_result.status === 'not_found') {
+      evidenceRecords.push(
+        this.appendWorkflowEvidence({
+          organization_id: organizationContext.organization_id,
+          correlation_id,
+          record_type: 'external_read_not_found',
+          subject: capabilityId,
+          data: {
+            workflow_id: input.workflow_id,
+            resource_result: resourceResult
+          }
+        })
+      );
+    } else if (capability_result.status === 'unavailable') {
+      evidenceRecords.push(
+        this.appendWorkflowEvidence({
+          organization_id: organizationContext.organization_id,
+          correlation_id,
+          record_type: 'external_read_unavailable',
+          subject: capabilityId,
+          data: {
+            workflow_id: input.workflow_id,
+            resource_result: resourceResult
+          }
+        })
+      );
+    } else if (capability_result.status === 'error') {
+      evidenceRecords.push(
+        this.appendWorkflowEvidence({
+          organization_id: organizationContext.organization_id,
+          correlation_id,
+          record_type: 'external_read_error',
+          subject: capabilityId,
+          data: {
+            workflow_id: input.workflow_id,
+            resource_result: resourceResult
+          }
+        })
+      );
+    } else if (capability_result.status === 'denied') {
+      evidenceRecords.push(
+        this.appendWorkflowEvidence({
+          organization_id: organizationContext.organization_id,
+          correlation_id,
+          record_type: 'external_read_denied',
+          subject: capabilityId,
+          data: {
+            workflow_id: input.workflow_id,
+            resource_result: resourceResult
+          }
+        })
+      );
+    }
     const responseEvidence = this.appendWorkflowEvidence({
       organization_id: organizationContext.organization_id,
       correlation_id,
@@ -1530,7 +1698,16 @@ export class InMemoryGovernedWorkflowRuntime {
       | 'workflow_response_created'
       | 'preview_created'
       | 'approval_requested'
-      | 'effect_blocked';
+      | 'effect_blocked'
+      | 'external_read_requested'
+      | 'external_read_denied'
+      | 'external_read_blocked'
+      | 'external_read_found'
+      | 'external_read_not_found'
+      | 'external_read_unavailable'
+      | 'external_read_error'
+      | 'source_evidence_recorded'
+      | 'external_read_result_bound';
     subject: string;
     data: Record<string, unknown>;
   }) {

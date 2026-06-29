@@ -3,6 +3,8 @@ import {
   createEvidenceRecord,
   fingerprintCapabilityInput,
   fingerprintCapabilityInvocation,
+  normalizeResourceQuery,
+  validateResourceResult,
   type CapabilityDefinition,
   type CapabilityInvocationRequest,
   type CapabilityInvocationResult,
@@ -11,8 +13,10 @@ import {
   type CapabilityRuntimeDecision,
   type CapabilityInput,
   type CapabilityOutput,
+  type ExternalReadAdapter,
   type DecisionBinding,
-  type EvidenceRecord
+  type EvidenceRecord,
+  type ResourceResult
 } from '../../contracts/src/index';
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
@@ -316,6 +320,7 @@ export class InMemoryCapabilityRuntime {
         deniedEvidence.evidence_id
       );
     }
+
 
     if (capability.organization_id !== normalizedRequest.organization_id) {
       const deniedEvidence = createInvocationEvidence(
@@ -807,4 +812,80 @@ export class InMemoryCapabilityRuntime {
       evidence_reference
     });
   }
+}
+
+function buildResourceCapabilityResult(
+  input: CapabilityInvocationRequest,
+  resourceResult: ResourceResult
+): CapabilityMockResult {
+  const reason = resourceResult.error ?? resourceResult.decision.reason;
+  switch (resourceResult.status) {
+    case 'found':
+      return {
+        status: 'executed',
+        output: {
+          capability_id: input.capability_id,
+          status: 'executed',
+          result: resourceResult as unknown as Record<string, unknown>,
+          processed_at: resourceResult.created_at
+        },
+        error: null
+      };
+    case 'not_found':
+      return { status: 'not_found', output: null, error: reason };
+    case 'unavailable':
+      return { status: 'unavailable', output: null, error: reason };
+    case 'error':
+      return { status: 'error', output: null, error: reason };
+    case 'denied':
+    case 'blocked':
+      return { status: 'denied', output: null, error: reason };
+  }
+}
+
+export function createMockResourceReadCapability(
+  adapter: ExternalReadAdapter,
+  overrides: Partial<CapabilityDefinition> = {},
+  organization_id = 'org-acme'
+): CapabilityDefinition {
+  return {
+    capability_id: 'mock.resource.read',
+    organization_id,
+    title: 'Mock resource read',
+    description: 'Read a governed resource through the generic external read adapter port.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: {
+      required: false,
+      reason: 'read only',
+      binding_required: false
+    },
+    mock: {
+      invoke(input) {
+        const query = normalizeResourceQuery(input.input.payload);
+        if (
+          query.organization_id === null ||
+          query.organization_id.trim().length === 0 ||
+          query.correlation_id === null ||
+          query.correlation_id.trim().length === 0 ||
+          query.actor === null ||
+          query.actor.principal_id.trim().length === 0 ||
+          query.resource_type.trim().length === 0
+        ) {
+          return { status: 'denied', output: null, error: 'resource query invalid' };
+        }
+
+        const authorization = adapter.authorize(query);
+        if (!authorization.authorized) {
+          return { status: 'denied', output: null, error: authorization.reason };
+        }
+
+        const resourceResult = adapter.read(query);
+        const validatedResult = validateResourceResult(resourceResult);
+        return buildResourceCapabilityResult(input, validatedResult);
+      }
+    },
+    ...overrides
+  };
 }

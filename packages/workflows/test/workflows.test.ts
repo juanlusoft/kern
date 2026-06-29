@@ -6,6 +6,7 @@ import {
   createMockEmailSendCapability,
   createMockEstimateReadCapability
 } from '../src/index';
+import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
 
 function buildRuntime(): InMemoryGovernedWorkflowRuntime {
   return new InMemoryGovernedWorkflowRuntime({
@@ -100,6 +101,33 @@ test('mock estimate read denies unknown and foreign organizations without invoki
       .some((record) => record.record_type === 'capability_invocation_denied'),
     true
   );
+});
+
+test('mock estimate read can route through the generic external read adapter port', () => {
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    externalReadAdapter: createMockExternalReadAdapter({
+      now: () => new Date('2026-06-29T00:00:00.000Z')
+    })
+  });
+
+  const result = runtime.executeWorkflow({
+    kind: 'mock.estimate.read',
+    workflow_id: 'workflow-read-adapter',
+    organization_hint: 'acme',
+    principal_hint: 'human-001',
+    correlation_id: 'corr-read-adapter',
+    estimate_id: 'estimate-123'
+  });
+  const records = runtime.getEvidenceLedger().listByCorrelation(result.correlation_id);
+
+  assert.equal(result.status, 'completed');
+  assert.equal(result.response.response_source, 'runtime_result');
+  assert.equal(result.response.data?.estimate_id, 'estimate-123');
+  assert.equal(records.some((record) => record.record_type === 'external_read_requested'), true);
+  assert.equal(records.some((record) => record.record_type === 'external_read_found'), true);
+  assert.equal(records.some((record) => record.record_type === 'source_evidence_recorded'), true);
+  assert.equal(records.some((record) => record.record_type === 'external_read_result_bound'), true);
 });
 
 test('mock email send completes with preview, binding and runtime result only', () => {
