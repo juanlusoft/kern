@@ -1,32 +1,68 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fingerprintCoreRequest, normalizeCorrelationId, stableStringify } from '../src/index';
+import {
+  fingerprintCoreRequest,
+  normalizeCorrelationId,
+  normalizeRequestedScope,
+  stableStringify,
+  toBindingPayloadReference,
+  toPolicyInputAttributes,
+  type CoreRequest
+} from '../src/index';
+
+const payload = {
+  resource: 'customers/42',
+  operation: 'read',
+  requested_scope: 'read:knowledge',
+  classification: 'internal',
+  destination: 'core',
+  amount: 1,
+  flags: {
+    force_policy_deny: false,
+    force_policy_defer: false
+  }
+} as const;
 
 test('normalizeCorrelationId prefers correlation_id when present', () => {
-  assert.equal(
-    normalizeCorrelationId({ request_id: 'req-1', correlation_id: 'corr-1' }),
-    'corr-1'
-  );
+  assert.equal(normalizeCorrelationId({ request_id: 'req-1', correlation_id: 'corr-1' }), 'corr-1');
 });
 
 test('normalizeCorrelationId falls back to request_id', () => {
   assert.equal(normalizeCorrelationId({ request_id: 'req-2', correlation_id: null }), 'req-2');
 });
 
-test('fingerprintCoreRequest is deterministic for equivalent payloads', () => {
-  const requestA = {
+test('normalizeRequestedScope converts scalar and array scopes into an explicit list', () => {
+  assert.deepEqual(normalizeRequestedScope('read:knowledge'), ['read:knowledge']);
+  assert.deepEqual(normalizeRequestedScope(['read:knowledge', 'audit:read']), ['read:knowledge', 'audit:read']);
+});
+
+test('typed payload helpers preserve M1 shape', () => {
+  const policyInput = toPolicyInputAttributes(payload);
+  const bindingReference = toBindingPayloadReference(payload);
+
+  assert.deepEqual(policyInput.requested_scope, ['read:knowledge']);
+  assert.deepEqual(bindingReference.requested_scope, ['read:knowledge']);
+  assert.equal(policyInput.resource, 'customers/42');
+  assert.equal(policyInput.operation, 'read');
+});
+
+test('fingerprintCoreRequest is deterministic for equivalent typed payloads', () => {
+  const requestA: CoreRequest = {
     request_id: 'req-3',
     organization_hint: 'acme',
     principal_hint: 'human-001',
-    action: 'governed.action',
+    action: 'governed.read',
     purpose: 'demo',
-    payload: { b: 2, a: 1 },
+    payload,
     requires_binding: true,
     correlation_id: 'corr-3'
   };
-  const requestB = {
+  const requestB: CoreRequest = {
     ...requestA,
-    payload: { a: 1, b: 2 }
+    payload: {
+      ...payload,
+      flags: { ...payload.flags }
+    }
   };
   assert.equal(
     fingerprintCoreRequest({ request: requestA, organization_id: 'org-acme', principal_id: 'human-001' }),

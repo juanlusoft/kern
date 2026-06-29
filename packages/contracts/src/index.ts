@@ -6,13 +6,53 @@ export type ResolutionState = 'resolved' | 'failed_closed';
 export type BindingState = 'active' | 'consumed' | 'revoked' | 'expired';
 export type EvidenceRecordType = 'intent' | 'policy_decision' | 'binding_created' | 'execution_blocked' | 'failed_closed';
 
+export interface CoreRequestFlags {
+  force_policy_deny?: boolean;
+  force_policy_defer?: boolean;
+  missing_critical_attribute?: boolean;
+  obligation_incomplete?: boolean;
+  attempt_human_impersonation?: boolean;
+  delegated_identity_exceeds_principal?: boolean;
+  agent_selected_organization?: boolean;
+}
+
+export interface CoreRequestPayload {
+  resource: string;
+  operation: string;
+  requested_scope: string | string[] | null;
+  classification: string | null;
+  destination: string | null;
+  amount: number | null;
+  flags: CoreRequestFlags;
+}
+
+export interface PolicyInputAttributes {
+  resource: string;
+  operation: string;
+  requested_scope: string[];
+  classification: string | null;
+  destination: string | null;
+  amount: number | null;
+  flags: CoreRequestFlags;
+}
+
+export interface BindingPayloadReference {
+  resource: string;
+  operation: string;
+  requested_scope: string[];
+  classification: string | null;
+  destination: string | null;
+  amount: number | null;
+  flags: CoreRequestFlags;
+}
+
 export interface CoreRequest {
   request_id: string;
   organization_hint?: string | null;
   principal_hint?: string | null;
   action: string;
   purpose: string;
-  payload: Record<string, unknown>;
+  payload: CoreRequestPayload;
   requires_binding: boolean;
   correlation_id?: string | null;
 }
@@ -101,6 +141,40 @@ export function normalizeCorrelationId(request: Pick<CoreRequest, 'request_id' |
   return candidate && candidate.length > 0 ? candidate : request.request_id.trim();
 }
 
+export function normalizeRequestedScope(requested_scope: CoreRequestPayload['requested_scope']): string[] {
+  if (Array.isArray(requested_scope)) {
+    return requested_scope.filter((scope): scope is string => typeof scope === 'string' && scope.trim().length > 0);
+  }
+  if (typeof requested_scope === 'string' && requested_scope.trim().length > 0) {
+    return [requested_scope];
+  }
+  return [];
+}
+
+export function toPolicyInputAttributes(payload: CoreRequestPayload): PolicyInputAttributes {
+  return {
+    resource: payload.resource,
+    operation: payload.operation,
+    requested_scope: normalizeRequestedScope(payload.requested_scope),
+    classification: payload.classification,
+    destination: payload.destination,
+    amount: payload.amount,
+    flags: { ...payload.flags }
+  };
+}
+
+export function toBindingPayloadReference(payload: CoreRequestPayload): BindingPayloadReference {
+  return {
+    resource: payload.resource,
+    operation: payload.operation,
+    requested_scope: normalizeRequestedScope(payload.requested_scope),
+    classification: payload.classification,
+    destination: payload.destination,
+    amount: payload.amount,
+    flags: { ...payload.flags }
+  };
+}
+
 export function stableStringify(value: unknown): string {
   return serialize(value);
 }
@@ -129,7 +203,7 @@ export function fingerprintCoreRequest(input: {
     principal_id: input.principal_id,
     action: input.request.action,
     purpose: input.request.purpose,
-    payload: input.request.payload,
+    payload: toBindingPayloadReference(input.request.payload),
     requires_binding: input.request.requires_binding,
     correlation_id: normalizeCorrelationId(input.request)
   });
