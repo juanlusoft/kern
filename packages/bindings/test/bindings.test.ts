@@ -4,9 +4,6 @@ import { InMemoryDecisionBindingStore } from '../src/index';
 import { createPolicyDecision, type CoreRequest } from '../../contracts/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 
-const organizationContext = resolveOrganizationContext({ organization_hint: 'acme' });
-const identityContext = resolveIdentityContext({ principal_hint: 'human-001', payload: {} }, organizationContext);
-
 function createRequest(overrides: Partial<CoreRequest> = {}): CoreRequest {
   return {
     request_id: 'req-binding',
@@ -14,12 +11,41 @@ function createRequest(overrides: Partial<CoreRequest> = {}): CoreRequest {
     principal_hint: 'human-001',
     action: 'governed.read',
     purpose: 'binding test',
-    payload: {},
+    payload: {
+      resource: 'documents/quarterly',
+      operation: 'read',
+      requested_scope: 'read:knowledge',
+      classification: 'internal',
+      destination: 'core',
+      amount: 1,
+      flags: {
+        force_policy_deny: false,
+        force_policy_defer: false,
+        missing_critical_attribute: false,
+        obligation_incomplete: false,
+        attempt_human_impersonation: false,
+        delegated_identity_exceeds_principal: false,
+        agent_selected_organization: false
+      }
+    },
     requires_binding: true,
     correlation_id: 'corr-binding',
     ...overrides
   };
 }
+
+const organizationContext = resolveOrganizationContext({
+  organization_hint: 'acme',
+  principal_hint: 'human-001',
+  payload: createRequest().payload
+});
+const identityContext = resolveIdentityContext(
+  {
+    principal_hint: 'human-001',
+    payload: createRequest().payload
+  },
+  organizationContext
+);
 
 test('binding store creates and validates a governed binding', () => {
   const store = new InMemoryDecisionBindingStore();
@@ -59,7 +85,11 @@ test('binding store rejects a binding from another organization', () => {
     policyDecision,
     evidence_reference: 'evidence-1'
   });
-  const otherOrganization = resolveOrganizationContext({ organization_hint: 'archived' });
+  const otherOrganization = resolveOrganizationContext({
+    organization_hint: 'foreign',
+    principal_hint: 'human-foreign',
+    payload: createRequest().payload
+  });
   const validation = store.validateBinding({
     binding,
     request: createRequest(),
@@ -77,19 +107,16 @@ test('binding store rejects expired bindings', () => {
     decision_reason: 'allow',
     seed: 'binding-expired'
   });
-  const binding = {
-    ...store.createBinding({
-      request: createRequest(),
-      organizationContext,
-      identityContext,
-      policyDecision,
-      evidence_reference: 'evidence-1',
-      now: () => new Date('2026-06-28T00:00:00.000Z')
-    }),
-    expires_at: '2020-01-01T00:00:00.000Z'
-  };
+  const binding = store.createBinding({
+    request: createRequest(),
+    organizationContext,
+    identityContext,
+    policyDecision,
+    evidence_reference: 'evidence-1',
+    now: () => new Date('2026-06-28T00:00:00.000Z')
+  });
   const validation = store.validateBinding({
-    binding,
+    binding: { ...binding, expires_at: '2020-01-01T00:00:00.000Z' },
     request: createRequest(),
     organizationContext,
     identityContext,
@@ -140,7 +167,12 @@ test('binding store rejects payload and fingerprint mismatch', () => {
   });
   const validation = store.validateBinding({
     binding,
-    request: createRequest({ payload: { changed: true } }),
+    request: createRequest({
+      payload: {
+        ...createRequest().payload,
+        amount: 2
+      }
+    }),
     organizationContext,
     identityContext
   });

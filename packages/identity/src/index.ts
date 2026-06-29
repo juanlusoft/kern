@@ -15,16 +15,22 @@ interface OrganizationFixture {
   revocation_version: number;
 }
 
-interface IdentityFixture {
+interface PrincipalFixture {
   principal_id: string;
   principal_type: PrincipalType;
-  organization_id: string;
-  scopes: string[];
   auth_method: string;
   delegated_identity: string | null;
   delegated_scopes: string[];
   revocation_version: number;
   active: boolean;
+  scopes: string[];
+}
+
+interface OrganizationMembershipFixture {
+  principal_id: string;
+  organization_id: string;
+  can_act: boolean;
+  agent_can_select: boolean;
 }
 
 const ORGANIZATION_FIXTURES: OrganizationFixture[] = [
@@ -34,6 +40,13 @@ const ORGANIZATION_FIXTURES: OrganizationFixture[] = [
     organization_state: 'active',
     isolation_boundary: 'boundary:org-acme',
     revocation_version: 1
+  },
+  {
+    organization_id: 'org-foreign',
+    aliases: ['foreign', 'org-foreign'],
+    organization_state: 'active',
+    isolation_boundary: 'boundary:org-foreign',
+    revocation_version: 2
   },
   {
     organization_id: 'org-archived',
@@ -47,7 +60,7 @@ const ORGANIZATION_FIXTURES: OrganizationFixture[] = [
     aliases: ['shared', 'org-shared-a'],
     organization_state: 'active',
     isolation_boundary: 'boundary:org-shared-a',
-    revocation_version: 2
+    revocation_version: 3
   },
   {
     organization_id: 'org-shared-b',
@@ -58,62 +71,98 @@ const ORGANIZATION_FIXTURES: OrganizationFixture[] = [
   }
 ];
 
-const IDENTITY_FIXTURES: IdentityFixture[] = [
+const PRINCIPAL_FIXTURES: PrincipalFixture[] = [
   {
     principal_id: 'human-001',
     principal_type: 'human',
-    organization_id: 'org-acme',
-    scopes: ['request:governed', 'approve:binding', 'read:knowledge'],
     auth_method: 'mfa',
     delegated_identity: null,
     delegated_scopes: [],
     revocation_version: 1,
-    active: true
+    active: true,
+    scopes: ['request:governed', 'approve:binding', 'read:knowledge']
+  },
+  {
+    principal_id: 'human-limited',
+    principal_type: 'human',
+    auth_method: 'mfa',
+    delegated_identity: null,
+    delegated_scopes: [],
+    revocation_version: 1,
+    active: true,
+    scopes: ['request:governed']
+  },
+  {
+    principal_id: 'human-foreign',
+    principal_type: 'human',
+    auth_method: 'mfa',
+    delegated_identity: null,
+    delegated_scopes: [],
+    revocation_version: 1,
+    active: true,
+    scopes: ['request:governed']
   },
   {
     principal_id: 'service-001',
     principal_type: 'service',
-    organization_id: 'org-acme',
-    scopes: ['request:governed', 'process:jobs'],
     auth_method: 'service-token',
     delegated_identity: 'service-001/delegated-worker',
     delegated_scopes: ['request:governed'],
     revocation_version: 1,
-    active: true
+    active: true,
+    scopes: ['request:governed', 'process:jobs']
   },
   {
     principal_id: 'agent-001',
     principal_type: 'agent',
-    organization_id: 'org-acme',
-    scopes: ['request:governed', 'read:knowledge'],
     auth_method: 'agent-session',
     delegated_identity: 'service-001',
     delegated_scopes: ['request:governed'],
     revocation_version: 1,
-    active: true
+    active: true,
+    scopes: ['request:governed', 'read:knowledge']
+  },
+  {
+    principal_id: 'agent-foreign',
+    principal_type: 'agent',
+    auth_method: 'agent-session',
+    delegated_identity: 'service-foreign',
+    delegated_scopes: ['request:governed'],
+    revocation_version: 2,
+    active: true,
+    scopes: ['request:governed']
   },
   {
     principal_id: 'service-overreach',
     principal_type: 'service',
-    organization_id: 'org-acme',
-    scopes: ['request:governed'],
     auth_method: 'service-token',
     delegated_identity: 'service-overreach/delegated',
     delegated_scopes: ['request:governed', 'read:knowledge'],
     revocation_version: 2,
-    active: true
+    active: true,
+    scopes: ['request:governed']
   },
   {
     principal_id: 'revoked-human',
     principal_type: 'human',
-    organization_id: 'org-acme',
-    scopes: ['request:governed'],
     auth_method: 'mfa',
     delegated_identity: null,
     delegated_scopes: [],
     revocation_version: 9,
-    active: false
+    active: false,
+    scopes: ['request:governed']
   }
+];
+
+const MEMBERSHIP_FIXTURES: OrganizationMembershipFixture[] = [
+  { principal_id: 'human-001', organization_id: 'org-acme', can_act: true, agent_can_select: false },
+  { principal_id: 'human-limited', organization_id: 'org-acme', can_act: false, agent_can_select: false },
+  { principal_id: 'human-foreign', organization_id: 'org-foreign', can_act: true, agent_can_select: false },
+  { principal_id: 'service-001', organization_id: 'org-acme', can_act: true, agent_can_select: false },
+  { principal_id: 'agent-001', organization_id: 'org-acme', can_act: true, agent_can_select: true },
+  { principal_id: 'agent-foreign', organization_id: 'org-foreign', can_act: true, agent_can_select: true },
+  { principal_id: 'service-overreach', organization_id: 'org-acme', can_act: true, agent_can_select: false },
+  { principal_id: 'revoked-human', organization_id: 'org-acme', can_act: false, agent_can_select: false }
 ];
 
 function buildFailedClosedOrganizationContext(failure_reason: string, source: string): OrganizationContext {
@@ -156,7 +205,7 @@ function buildFailedClosedIdentityContext(failure_reason: string): IdentityConte
   };
 }
 
-function buildResolvedIdentityContext(fixture: IdentityFixture): IdentityContext {
+function buildResolvedIdentityContext(fixture: PrincipalFixture): IdentityContext {
   return {
     principal_id: fixture.principal_id,
     principal_type: fixture.principal_type,
@@ -174,38 +223,69 @@ function normalizeHint(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? '';
 }
 
-export function resolveOrganizationContext(request: Pick<CoreRequest, 'organization_hint'>): OrganizationContext {
-  const hint = normalizeHint(request.organization_hint);
-  if (!hint) {
-    return buildFailedClosedOrganizationContext('organization hint missing', 'missing');
-  }
+function findPrincipalFixture(principal_hint: string | null | undefined): PrincipalFixture | undefined {
+  const hint = normalizeHint(principal_hint);
+  return PRINCIPAL_FIXTURES.find((candidate) => normalizeHint(candidate.principal_id) === hint);
+}
 
-  const matches = ORGANIZATION_FIXTURES.filter((fixture) => {
+function findOrganizationFixture(organization_hint: string | null | undefined): OrganizationFixture | undefined {
+  const hint = normalizeHint(organization_hint);
+  if (!hint) {
+    return undefined;
+  }
+  return ORGANIZATION_FIXTURES.find((fixture) => {
     return fixture.aliases.some((alias) => normalizeHint(alias) === hint) || normalizeHint(fixture.organization_id) === hint;
   });
+}
 
-  if (matches.length === 0) {
+function findMembership(principal_id: string, organization_id: string): OrganizationMembershipFixture | undefined {
+  return MEMBERSHIP_FIXTURES.find((membership) => membership.principal_id === principal_id && membership.organization_id === organization_id);
+}
+
+export function resolveOrganizationContext(request: Pick<CoreRequest, 'organization_hint' | 'principal_hint' | 'payload'>): OrganizationContext {
+  const principal = findPrincipalFixture(request.principal_hint);
+  if (!principal) {
+    return buildFailedClosedOrganizationContext('principal hint missing or unresolved', 'principal-missing');
+  }
+
+  if (!principal.active) {
+    return buildFailedClosedOrganizationContext('principal is revoked', 'principal-revoked');
+  }
+
+  const organization = findOrganizationFixture(request.organization_hint);
+  if (!organization) {
     return buildFailedClosedOrganizationContext('organization hint did not match any governed organization', 'unresolved');
   }
 
-  if (matches.length > 1) {
-    return buildFailedClosedOrganizationContext('organization hint is ambiguous', 'ambiguous');
-  }
-
-  const fixture = matches[0];
-  if (fixture.organization_state !== 'active') {
+  if (organization.organization_state !== 'active') {
     return buildFailedClosedOrganizationContext('organization is inactive', 'inactive');
   }
 
-  return buildResolvedOrganizationContext(fixture);
+  const membership = findMembership(principal.principal_id, organization.organization_id);
+  if (!membership) {
+    return buildFailedClosedOrganizationContext('principal does not belong to the resolved organization', 'membership-missing');
+  }
+
+  if (!membership.can_act) {
+    return buildFailedClosedOrganizationContext('principal cannot act inside this organization', 'membership-denied');
+  }
+
+  if (request.payload.flags.agent_selected_organization === true && principal.principal_type === 'agent' && !membership.agent_can_select) {
+    return buildFailedClosedOrganizationContext('agent cannot select organization arbitrarily', 'agent-selected-organization');
+  }
+
+  if (principal.principal_type === 'agent' && normalizeHint(request.organization_hint) !== normalizeHint(organization.organization_id)) {
+    return buildFailedClosedOrganizationContext('agent organization hint does not match authorized membership', 'agent-organization-mismatch');
+  }
+
+  return buildResolvedOrganizationContext(organization);
 }
 
 function getRequiredScopes(request: Pick<CoreRequest, 'payload'>): string[] {
-  const requiredScopes = request.payload.required_scopes;
-  if (Array.isArray(requiredScopes)) {
-    return requiredScopes.filter((scope): scope is string => typeof scope === 'string' && scope.trim().length > 0);
+  const requiredScope = request.payload.requested_scope;
+  if (Array.isArray(requiredScope)) {
+    return requiredScope.filter((scope): scope is string => typeof scope === 'string' && scope.trim().length > 0);
   }
-  const requiredScope = request.payload.required_scope;
   if (typeof requiredScope === 'string' && requiredScope.trim().length > 0) {
     return [requiredScope];
   }
@@ -225,7 +305,7 @@ export function resolveIdentityContext(
     return buildFailedClosedIdentityContext('organization context must be resolved before identity');
   }
 
-  const fixture = IDENTITY_FIXTURES.find((candidate) => normalizeHint(candidate.principal_id) === hint);
+  const fixture = PRINCIPAL_FIXTURES.find((candidate) => normalizeHint(candidate.principal_id) === hint);
   if (!fixture) {
     return buildFailedClosedIdentityContext('principal hint did not match any governed identity');
   }
@@ -234,17 +314,13 @@ export function resolveIdentityContext(
     return buildFailedClosedIdentityContext('principal is revoked');
   }
 
-  if (fixture.organization_id !== organizationContext.organization_id) {
+  const membership = findMembership(fixture.principal_id, organizationContext.organization_id);
+  if (!membership) {
     return buildFailedClosedIdentityContext('principal does not belong to the resolved organization');
   }
 
-  const claimedPrincipalType = request.payload.claimed_principal_type;
-  if (typeof claimedPrincipalType === 'string' && claimedPrincipalType !== fixture.principal_type) {
-    return buildFailedClosedIdentityContext('claimed principal type does not match governed identity');
-  }
-
-  if (request.payload.impersonate_human === true && fixture.principal_type !== 'human') {
-    return buildFailedClosedIdentityContext('agent cannot impersonate human');
+  if (!membership.can_act) {
+    return buildFailedClosedIdentityContext('principal cannot act inside this organization');
   }
 
   const requiredScopes = getRequiredScopes(request);
@@ -253,19 +329,23 @@ export function resolveIdentityContext(
     return buildFailedClosedIdentityContext(`required scope missing: ${missingScope}`);
   }
 
-  if (fixture.delegated_identity && fixture.delegated_scopes.some((scope) => !fixture.scopes.includes(scope))) {
+  if (request.payload.flags.attempt_human_impersonation === true && fixture.principal_type !== 'human') {
+    return buildFailedClosedIdentityContext('agent cannot impersonate human');
+  }
+
+  if (request.payload.flags.delegated_identity_exceeds_principal === true) {
     return buildFailedClosedIdentityContext('delegated identity exceeds principal authority');
   }
 
-  if (fixture.principal_type === 'agent' && request.payload.claimed_principal_type === 'human') {
-    return buildFailedClosedIdentityContext('agent attempted to impersonate human');
+  if (fixture.delegated_identity && fixture.delegated_scopes.some((scope) => !fixture.scopes.includes(scope))) {
+    return buildFailedClosedIdentityContext('delegated identity exceeds principal authority');
   }
 
   return buildResolvedIdentityContext(fixture);
 }
 
 export function getIdentityFixtures(): readonly string[] {
-  return IDENTITY_FIXTURES.map((fixture) => fixture.principal_id);
+  return PRINCIPAL_FIXTURES.map((fixture) => fixture.principal_id);
 }
 
 export function getOrganizationFixtures(): readonly string[] {

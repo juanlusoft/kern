@@ -1,6 +1,8 @@
 import {
   createDeterministicId,
   fingerprintCoreRequest,
+  toBindingPayloadReference,
+  type BindingPayloadReference,
   type CoreRequest,
   type DecisionBinding,
   type IdentityContext,
@@ -14,8 +16,21 @@ export interface BindingValidationResult {
   binding?: DecisionBinding;
 }
 
+function createBindingFingerprint(input: {
+  request: CoreRequest;
+  organization_id: string;
+  principal_id: string;
+}): string {
+  return fingerprintCoreRequest({
+    request: input.request,
+    organization_id: input.organization_id,
+    principal_id: input.principal_id
+  });
+}
+
 export class InMemoryDecisionBindingStore {
   private readonly bindings = new Map<string, DecisionBinding>();
+  private readonly payloadReferences = new Map<string, BindingPayloadReference>();
 
   createBinding(input: {
     request: CoreRequest;
@@ -25,8 +40,13 @@ export class InMemoryDecisionBindingStore {
     evidence_reference: string;
     now?: () => Date;
   }): DecisionBinding {
+    if (!input.evidence_reference.trim()) {
+      throw new Error('binding requires evidence reference');
+    }
+
     const now = input.now ?? (() => new Date());
-    const request_fingerprint = fingerprintCoreRequest({
+    const payloadReference = toBindingPayloadReference(input.request.payload);
+    const request_fingerprint = createBindingFingerprint({
       request: input.request,
       organization_id: input.organizationContext.organization_id ?? 'unknown',
       principal_id: input.identityContext.principal_id ?? 'unknown'
@@ -50,6 +70,7 @@ export class InMemoryDecisionBindingStore {
       evidence_reference: input.evidence_reference
     };
     this.bindings.set(binding.binding_id, binding);
+    this.payloadReferences.set(binding.binding_id, payloadReference);
     return binding;
   }
 
@@ -60,15 +81,23 @@ export class InMemoryDecisionBindingStore {
     identityContext: IdentityContext;
     now?: () => Date;
   }): BindingValidationResult {
-    const stored = this.bindings.get(input.binding.binding_id);
     const now = input.now ?? (() => new Date());
+    if (new Date(input.binding.expires_at).getTime() < now().getTime()) {
+      return { valid: false, reason: 'binding expired', binding: { ...input.binding, binding_state: 'expired' } };
+    }
+
+    const stored = this.bindings.get(input.binding.binding_id);
     const activeBinding = stored ?? input.binding;
 
     if (!activeBinding) {
       return { valid: false, reason: 'binding missing' };
     }
 
-    if (new Date(input.binding.expires_at).getTime() < now().getTime()) {
+    if (!activeBinding.evidence_reference.trim()) {
+      return { valid: false, reason: 'binding missing evidence reference', binding: activeBinding };
+    }
+
+    if (new Date(activeBinding.expires_at).getTime() < now().getTime()) {
       return { valid: false, reason: 'binding expired', binding: { ...activeBinding, binding_state: 'expired' } };
     }
 
@@ -76,8 +105,8 @@ export class InMemoryDecisionBindingStore {
       return { valid: false, reason: 'binding already consumed or revoked', binding: activeBinding };
     }
 
-    if (activeBinding.binding_state === 'expired' || new Date(activeBinding.expires_at).getTime() < now().getTime()) {
-      return { valid: false, reason: 'binding expired', binding: { ...activeBinding, binding_state: 'expired' } };
+    if (activeBinding.binding_state === 'expired') {
+      return { valid: false, reason: 'binding expired', binding: activeBinding };
     }
 
     if (activeBinding.organization_id !== (input.organizationContext.organization_id ?? 'unknown')) {
@@ -88,7 +117,13 @@ export class InMemoryDecisionBindingStore {
       return { valid: false, reason: 'binding belongs to another principal', binding: activeBinding };
     }
 
-    const expectedFingerprint = fingerprintCoreRequest({
+    const storedReference = this.payloadReferences.get(activeBinding.binding_id);
+    const currentReference = toBindingPayloadReference(input.request.payload);
+    if (storedReference && JSON.stringify(storedReference) !== JSON.stringify(currentReference)) {
+      return { valid: false, reason: 'binding payload reference mismatch', binding: activeBinding };
+    }
+
+    const expectedFingerprint = createBindingFingerprint({
       request: input.request,
       organization_id: input.organizationContext.organization_id ?? 'unknown',
       principal_id: input.identityContext.principal_id ?? 'unknown'
