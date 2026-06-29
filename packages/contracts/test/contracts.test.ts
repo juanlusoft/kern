@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  createEvidenceRecord,
   fingerprintCoreRequest,
   normalizeCorrelationId,
   normalizeRequestedScope,
@@ -72,4 +73,27 @@ test('fingerprintCoreRequest is deterministic for equivalent typed payloads', ()
 
 test('stableStringify sorts object keys', () => {
   assert.equal(stableStringify({ z: 1, a: 2 }), '{"a":2,"z":1}');
+});
+
+test('createEvidenceRecord accepts explicit sequence and defaults safely', () => {
+  const record = createEvidenceRecord({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-sequence',
+    record_type: 'intent',
+    subject: 'governed.read',
+    data: { request_id: 'req-sequence' },
+    sequence: 7
+  });
+
+  assert.equal(record.sequence, 7);
+  assert.equal(
+    createEvidenceRecord({
+      organization_id: 'org-acme',
+      correlation_id: 'corr-sequence',
+      record_type: 'intent',
+      subject: 'governed.read',
+      data: { request_id: 'req-sequence' }
+    }).sequence,
+    0
+  );
 });

@@ -111,6 +111,29 @@ function recordOrganizationFailure(input: {
   );
 }
 
+function recordOrganizationResolved(input: {
+  organizationContext: OrganizationContext;
+  correlation_id: string;
+  evidenceLedger: InMemoryEvidenceLedger;
+  now: () => Date;
+}): void {
+  input.evidenceLedger.append(
+    createEvidenceRecord({
+      organization_id: input.organizationContext.organization_id ?? 'unknown',
+      correlation_id: input.correlation_id,
+      record_type: 'organization_resolved',
+      subject: input.organizationContext.organization_id ?? 'organization',
+      data: {
+        organization_state: input.organizationContext.organization_state,
+        source: input.organizationContext.source,
+        isolation_boundary: input.organizationContext.isolation_boundary,
+        resolution_state: input.organizationContext.resolution_state
+      },
+      created_at: input.now().toISOString()
+    })
+  );
+}
+
 function recordIdentityFailure(input: {
   organizationContext: OrganizationContext;
   correlation_id: string;
@@ -125,6 +148,31 @@ function recordIdentityFailure(input: {
       record_type: 'failed_closed',
       subject: 'identity_resolution_failed',
       data: { reason: input.identityContext.failure_reason ?? 'identity unresolved' },
+      created_at: input.now().toISOString()
+    })
+  );
+}
+
+function recordIdentityResolved(input: {
+  organizationContext: OrganizationContext;
+  correlation_id: string;
+  identityContext: IdentityContext;
+  evidenceLedger: InMemoryEvidenceLedger;
+  now: () => Date;
+}): void {
+  input.evidenceLedger.append(
+    createEvidenceRecord({
+      organization_id: input.organizationContext.organization_id ?? 'unknown',
+      correlation_id: input.correlation_id,
+      record_type: 'identity_resolved',
+      subject: input.identityContext.principal_id ?? 'principal',
+      data: {
+        principal_type: input.identityContext.principal_type,
+        delegated_identity: input.identityContext.delegated_identity,
+        scopes: input.identityContext.scopes,
+        auth_method: input.identityContext.auth_method,
+        resolution_state: input.identityContext.resolution_state
+      },
       created_at: input.now().toISOString()
     })
   );
@@ -246,6 +294,7 @@ export function executeGovernedRequest(
     });
   }
 
+  recordOrganizationResolved({ organizationContext, correlation_id, evidenceLedger: environment.evidenceLedger, now });
   recordIntentEvidence({ request, organizationContext, correlation_id, evidenceLedger: environment.evidenceLedger, now });
 
   const identityContext = environment.resolveIdentityContext(request, organizationContext);
@@ -264,6 +313,8 @@ export function executeGovernedRequest(
       binding: null
     });
   }
+
+  recordIdentityResolved({ organizationContext, correlation_id, identityContext, evidenceLedger: environment.evidenceLedger, now });
 
   const policyDecision = environment.evaluatePolicy({
     request,

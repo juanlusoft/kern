@@ -3,8 +3,17 @@ export type GovernedExecutionStatus = 'allowed' | 'denied' | 'deferred' | 'faile
 export type PrincipalType = 'human' | 'service' | 'agent';
 export type OrganizationState = 'active' | 'inactive' | 'failed_closed';
 export type ResolutionState = 'resolved' | 'failed_closed';
-export type BindingState = 'active' | 'consumed' | 'revoked' | 'expired';
-export type EvidenceRecordType = 'intent' | 'policy_decision' | 'binding_created' | 'execution_blocked' | 'failed_closed';
+export type BindingState = 'created' | 'validated' | 'consumed' | 'revoked' | 'expired' | 'rejected';
+export type EvidenceRecordType =
+  | 'intent'
+  | 'organization_resolved'
+  | 'identity_resolved'
+  | 'policy_decision'
+  | 'binding_created'
+  | 'binding_validated'
+  | 'binding_rejected'
+  | 'execution_blocked'
+  | 'failed_closed';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -109,6 +118,7 @@ export interface EvidenceRecord {
   record_type: EvidenceRecordType;
   subject: string;
   created_at: string;
+  sequence: number;
   data: Record<string, unknown>;
 }
 
@@ -216,21 +226,25 @@ export function createEvidenceRecord(input: {
   subject: string;
   data: Record<string, unknown>;
   created_at?: string;
+  sequence?: number;
 }): EvidenceRecord {
   const created_at = input.created_at ?? new Date().toISOString();
+  const sequence = input.sequence ?? 0;
   return {
     evidence_id: createDeterministicId('evidence', {
       organization_id: input.organization_id,
       correlation_id: input.correlation_id,
       record_type: input.record_type,
       subject: input.subject,
-      created_at
+      created_at,
+      sequence
     }),
     organization_id: input.organization_id,
     correlation_id: input.correlation_id,
     record_type: input.record_type,
     subject: input.subject,
     created_at,
+    sequence,
     data: input.data
   };
 }
