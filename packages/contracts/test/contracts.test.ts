@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createEvidenceRecord,
+  fingerprintCapabilityInput,
+  fingerprintCapabilityInvocation,
   fingerprintCoreRequest,
   normalizeCorrelationId,
   normalizeRequestedScope,
   stableStringify,
   toBindingPayloadReference,
   toPolicyInputAttributes,
+  type CapabilityInvocationRequest,
   type CoreRequest
 } from '../src/index';
 
@@ -95,5 +98,47 @@ test('createEvidenceRecord accepts explicit sequence and defaults safely', () =>
       data: { request_id: 'req-sequence' }
     }).sequence,
     0
+  );
+});
+
+test('capability fingerprint helpers remain deterministic', () => {
+  const capabilityInput = {
+    purpose: 'governed capability',
+    payload: { nested: { b: 2, a: 1 } },
+    requested_scope: ['scope:b', 'scope:a']
+  };
+
+  const capabilityInvocation: CapabilityInvocationRequest = {
+    capability_id: 'cap-1',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    correlation_id: 'corr-cap',
+    input: capabilityInput,
+    binding_id: 'binding-1',
+    policy_decision_id: 'decision-1',
+    approval_requirement: {
+      required: true,
+      reason: 'binding required',
+      binding_required: true
+    },
+    evidence_reference: 'evidence-1',
+    requested_at: '2026-06-29T00:00:00.000Z'
+  };
+
+  assert.equal(fingerprintCapabilityInput(capabilityInput), fingerprintCapabilityInput({
+    ...capabilityInput,
+    payload: { nested: { a: 1, b: 2 } },
+    requested_scope: ['scope:a', 'scope:b']
+  }));
+  assert.equal(
+    fingerprintCapabilityInvocation(capabilityInvocation),
+    fingerprintCapabilityInvocation({
+      ...capabilityInvocation,
+      input: {
+        ...capabilityInvocation.input,
+        payload: { nested: { a: 1, b: 2 } },
+        requested_scope: ['scope:a', 'scope:b']
+      }
+    })
   );
 });

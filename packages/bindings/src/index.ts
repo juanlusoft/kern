@@ -1,10 +1,12 @@
 import {
   createDeterministicId,
+  fingerprintCapabilityInput,
   fingerprintCoreRequest,
   normalizeCorrelationId,
   toBindingPayloadReference,
   type BindingPayloadReference,
   type CoreRequest,
+  type CapabilityInvocationRequest,
   type DecisionBinding,
   type IdentityContext,
   type OrganizationContext,
@@ -54,6 +56,7 @@ export class InMemoryDecisionBindingStore {
     policyDecision: PolicyDecision;
     evidence_reference: string;
     now?: () => Date;
+    capabilityInvocation?: CapabilityInvocationRequest | null;
   }): DecisionBinding {
     if (!input.evidence_reference.trim()) {
       throw new Error('binding requires evidence reference');
@@ -61,6 +64,10 @@ export class InMemoryDecisionBindingStore {
 
     const now = input.now ?? (() => new Date());
     const payloadReference = toBindingPayloadReference(input.request.payload);
+    const approved_capability_id = input.capabilityInvocation?.capability_id ?? null;
+    const approved_input_fingerprint = input.capabilityInvocation
+      ? fingerprintCapabilityInput(input.capabilityInvocation.input)
+      : null;
     const request_fingerprint = createBindingFingerprint({
       request: input.request,
       organization_id: input.organizationContext.organization_id ?? 'unknown',
@@ -82,7 +89,10 @@ export class InMemoryDecisionBindingStore {
       obligations: input.policyDecision.obligations,
       expires_at: new Date(now().getTime() + 5 * 60_000).toISOString(),
       binding_state: 'created',
-      evidence_reference: input.evidence_reference
+      evidence_reference: input.evidence_reference,
+      approved_capability_id,
+      approved_input_fingerprint,
+      approval_requirement: input.capabilityInvocation?.approval_requirement ?? null
     };
     this.bindings.set(binding.binding_id, binding);
     this.payloadReferences.set(binding.binding_id, payloadReference);
@@ -94,6 +104,7 @@ export class InMemoryDecisionBindingStore {
     request: CoreRequest;
     organizationContext: OrganizationContext;
     identityContext: IdentityContext;
+    capabilityInvocation?: CapabilityInvocationRequest | null;
     now?: () => Date;
   }): BindingValidationResult {
     const now = input.now ?? (() => new Date());
@@ -142,6 +153,18 @@ export class InMemoryDecisionBindingStore {
 
     if (activeBinding.correlation_id !== normalizeCorrelationId(input.request)) {
       return this.rejectBinding(activeBinding, 'wrong_correlation');
+    }
+
+    if (input.capabilityInvocation) {
+      if (activeBinding.approved_capability_id !== input.capabilityInvocation.capability_id) {
+        return this.rejectBinding(activeBinding, 'fingerprint_mismatch');
+      }
+
+      const approvedFingerprint = activeBinding.approved_input_fingerprint;
+      const currentFingerprint = fingerprintCapabilityInput(input.capabilityInvocation.input);
+      if (approvedFingerprint && approvedFingerprint !== currentFingerprint) {
+        return this.rejectBinding(activeBinding, 'fingerprint_mismatch');
+      }
     }
 
     if (activeBinding.binding_state === 'revoked') {
