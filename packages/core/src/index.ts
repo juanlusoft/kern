@@ -1,5 +1,6 @@
 import {
   createEvidenceRecord,
+  fingerprintCoreRequest,
   normalizeCorrelationId,
   type CoreRequest,
   type DecisionBinding,
@@ -12,10 +13,12 @@ import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 import { createFailedClosedPolicyDecision, evaluatePolicy } from '../../policy/src/index';
+import { InMemoryTurnRuntime } from '../../turns/src/index';
 
 export interface CoreM1Environment {
   evidenceLedger: InMemoryEvidenceLedger;
   bindingStore: InMemoryDecisionBindingStore;
+  turnRuntime?: InMemoryTurnRuntime;
   resolveOrganizationContext: typeof resolveOrganizationContext;
   resolveIdentityContext: typeof resolveIdentityContext;
   evaluatePolicy: typeof evaluatePolicy;
@@ -26,6 +29,7 @@ export function createCoreM1Environment(overrides: Partial<CoreM1Environment> = 
   return {
     evidenceLedger: overrides.evidenceLedger ?? new InMemoryEvidenceLedger(),
     bindingStore: overrides.bindingStore ?? new InMemoryDecisionBindingStore(),
+    turnRuntime: overrides.turnRuntime,
     resolveOrganizationContext: overrides.resolveOrganizationContext ?? resolveOrganizationContext,
     resolveIdentityContext: overrides.resolveIdentityContext ?? resolveIdentityContext,
     evaluatePolicy: overrides.evaluatePolicy ?? evaluatePolicy,
@@ -68,6 +72,7 @@ function buildFailedClosedResult(input: {
     policy_decision: input.policyDecision,
     evidence_records: input.evidenceLedger.listByCorrelation(normalizeCorrelationId(input.request)),
     binding: input.binding,
+    turn_id: null,
     reason: input.reason
   };
 }
@@ -88,6 +93,7 @@ function buildBlockedResult(input: {
     policy_decision: input.policyDecision,
     evidence_records: input.evidenceLedger.listByCorrelation(normalizeCorrelationId(input.request)),
     binding: null,
+    turn_id: null,
     reason: input.policyDecision.decision_reason
   };
 }
@@ -405,6 +411,28 @@ export function executeGovernedRequest(
     environment
   });
 
+  const turn = environment.turnRuntime?.createTurn({
+    organization_id: organizationContext.organization_id ?? 'unknown',
+    correlation_id,
+    actor: {
+      principal_id: identityContext.principal_id ?? 'unknown',
+      principal_type: identityContext.principal_type,
+      delegated_identity: identityContext.delegated_identity
+    },
+    execution_context: {
+      request_id: request.request_id,
+      request_fingerprint: fingerprintCoreRequest({
+        request,
+        organization_id: organizationContext.organization_id ?? 'unknown',
+        principal_id: identityContext.principal_id ?? 'unknown'
+      }),
+      policy_decision_id: policyDecision.decision_id,
+      binding_id: binding?.binding_id ?? null,
+      requires_binding: request.requires_binding
+    },
+    now
+  });
+
   return {
     status: 'allowed',
     correlation_id,
@@ -413,6 +441,7 @@ export function executeGovernedRequest(
     policy_decision: policyDecision,
     evidence_records: environment.evidenceLedger.listByCorrelation(correlation_id),
     binding,
+    turn_id: turn?.turn_id ?? null,
     reason: policyDecision.decision_reason
   };
 }
