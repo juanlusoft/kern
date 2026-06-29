@@ -68,6 +68,14 @@ export type EvidenceRecordType =
   | 'preview_created'
   | 'approval_requested'
   | 'effect_blocked'
+  | 'orchestration_requested'
+  | 'orchestration_proposal_created'
+  | 'orchestration_no_proposal'
+  | 'orchestration_proposal_denied'
+  | 'orchestration_proposal_blocked'
+  | 'orchestration_proposal_validated'
+  | 'orchestration_claimed_result_ignored'
+  | 'workflow_invocation_requested'
   | 'external_read_requested'
   | 'external_read_denied'
   | 'external_read_blocked'
@@ -470,6 +478,80 @@ export interface MockEmailSendWorkflowInput extends GovernedWorkflowRequestBase 
 }
 
 export type GovernedWorkflowRequest = MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput;
+
+export type OrchestrationStatus = 'proposal' | 'no_proposal' | 'denied' | 'blocked' | 'error';
+
+export interface OrchestrationContext {
+  installation_id: string | null;
+  active_capabilities: string[];
+  metadata: Record<string, unknown>;
+  force_capability_key?: string | null;
+  force_params?: Record<string, unknown> | null;
+}
+
+export interface OrchestrationRequest {
+  request_id: string;
+  user_message: string;
+  organization_id: string | null;
+  principal_id: string | null;
+  actor: TurnActor | null;
+  correlation_id: string;
+  installation_id?: string | null;
+  context?: OrchestrationContext | null;
+  claimed_result?: unknown;
+  model_claimed_result?: unknown;
+  caller_result?: unknown;
+  assistant_result?: unknown;
+  claimed_output?: unknown;
+}
+
+export interface OrchestrationProposal {
+  proposal_id: string;
+  capability_key: string;
+  params: Record<string, unknown>;
+  confidence: number | null;
+  reason: string | null;
+}
+
+export interface OrchestrationValidationResult {
+  valid: boolean;
+  status: OrchestrationStatus;
+  reason: string;
+  capability_key: string | null;
+  params: Record<string, unknown> | null;
+  capability_active: boolean;
+  capability_known: boolean;
+}
+
+export interface OrchestrationResponse {
+  response_source: 'runtime_result' | 'workflow_blocked';
+  workflow_kind: GovernedWorkflowKind | null;
+  status: OrchestrationStatus | WorkflowExecutionStatus;
+  message: string;
+  data: Record<string, unknown> | null;
+}
+
+export interface OrchestrationOutcome {
+  request_id: string;
+  organization_id: string | null;
+  principal_id: string | null;
+  correlation_id: string;
+  installation_id: string | null;
+  status: OrchestrationStatus;
+  proposal: OrchestrationProposal | null;
+  validation: OrchestrationValidationResult | null;
+  workflow_kind: GovernedWorkflowKind | null;
+  workflow_result: GovernedWorkflowResult | null;
+  response: OrchestrationResponse;
+  evidence_links: string[];
+  created_at: string;
+  updated_at: string;
+  reason: string;
+}
+
+export interface OrchestratorPort {
+  propose(request: OrchestrationRequest): OrchestrationOutcome;
+}
 
 export interface CapabilityRegistry {
   register(capability: CapabilityDefinition): CapabilityDefinition;
