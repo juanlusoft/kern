@@ -317,6 +317,44 @@ export class InMemoryCapabilityRuntime {
       );
     }
 
+    if (capability.organization_id !== normalizedRequest.organization_id) {
+      const deniedEvidence = createInvocationEvidence(
+        {
+          organization_id: normalizedRequest.organization_id,
+          correlation_id,
+          record_type: 'capability_invocation_denied',
+          subject: normalizedRequest.capability_id,
+          data: {
+            capability_id: normalizedRequest.capability_id,
+            reason: 'capability not authorized for organization'
+          }
+        },
+        this.now,
+        this.evidenceLedger
+      );
+      return this.cacheInvocation(
+        buildInvocationResult({
+          invocation_id,
+          capability_id: normalizedRequest.capability_id,
+          organization_id: normalizedRequest.organization_id,
+          principal_id: normalizedRequest.principal_id,
+          correlation_id,
+          status: 'denied',
+          binding_id: normalizedRequest.decision_binding_id ?? normalizedRequest.binding_id ?? null,
+          policy_decision_id: normalizedRequest.policy_decision_id ?? null,
+          executed_by_runtime: true,
+          evidence_reference: deniedEvidence.evidence_id,
+          evidence_links: [requestedEvidence.evidence_id, deniedEvidence.evidence_id],
+          created_at: this.now().toISOString(),
+          reason: 'capability not authorized for organization',
+          error: 'capability not authorized for organization',
+          output: null
+        }),
+        normalizedRequest,
+        deniedEvidence.evidence_id
+      );
+    }
+
     if (!capability.mock) {
       const unavailableEvidence = createInvocationEvidence(
         {

@@ -28,6 +28,16 @@ export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
 export type CapabilityKind = 'read_only' | 'effectful';
 export type CapabilityInvocationStatus = 'executed' | 'unavailable' | 'error' | 'not_found' | 'denied';
 export type CapabilityRuntimeDecision = CapabilityInvocationStatus;
+export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send';
+export type WorkflowExecutionStatus =
+  | 'completed'
+  | 'blocked'
+  | 'failed'
+  | 'denied'
+  | 'unavailable'
+  | 'not_found'
+  | 'error'
+  | 'requires_approval';
 export type EvidenceRecordType =
   | 'intent'
   | 'organization_resolved'
@@ -54,7 +64,11 @@ export type EvidenceRecordType =
   | 'capability_invocation_unavailable'
   | 'capability_invocation_error'
   | 'capability_invocation_not_found'
-  | 'capability_result_bound';
+  | 'capability_result_bound'
+  | 'preview_created'
+  | 'approval_requested'
+  | 'effect_blocked'
+  | 'workflow_response_created';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -259,6 +273,77 @@ export interface CapabilityInvocationResult {
   evidence_reference: string | null;
   reason: string;
 }
+
+export interface WorkflowStep {
+  step_id: string;
+  step_kind: 'intent' | 'policy' | 'turn' | 'preview' | 'approval_requested' | 'binding' | 'capability' | 'response';
+  status: WorkflowExecutionStatus;
+  evidence_reference: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface WorkflowEvidenceTrace {
+  evidence_ids: string[];
+  record_types: EvidenceRecordType[];
+}
+
+export interface GovernedWorkflowResponse {
+  response_source: 'runtime_result' | 'workflow_blocked';
+  workflow_kind: GovernedWorkflowKind;
+  status: WorkflowExecutionStatus;
+  message: string;
+  data: Record<string, unknown> | null;
+}
+
+export interface GovernedWorkflowResult {
+  workflow_id: string;
+  workflow_kind: GovernedWorkflowKind;
+  organization_id: string | null;
+  correlation_id: string;
+  turn_id: string | null;
+  status: WorkflowExecutionStatus;
+  response: GovernedWorkflowResponse;
+  capability_result: CapabilityInvocationResult | null;
+  evidence_links: string[];
+  created_at: string;
+  updated_at: string;
+  steps: WorkflowStep[];
+  evidence_trace: WorkflowEvidenceTrace;
+}
+
+export interface GovernedWorkflowRequestBase {
+  workflow_id: string;
+  organization_hint?: string | null;
+  principal_hint?: string | null;
+  correlation_id?: string | null;
+  requested_at?: string | null;
+  claimed_result?: unknown;
+  claimed_output?: unknown;
+  caller_result?: unknown;
+  assistant_result?: unknown;
+  model_claimed_result?: unknown;
+}
+
+export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBase {
+  kind: 'mock.estimate.read';
+  estimate_id: string;
+  customer_id?: string | null;
+  capability_id?: string | null;
+}
+
+export interface MockEmailSendWorkflowInput extends GovernedWorkflowRequestBase {
+  kind: 'mock.email.send';
+  to: string;
+  subject: string;
+  body: string;
+  approval_decision?: 'approved' | 'denied' | null;
+  approval_binding_id?: string | null;
+  capability_preview_id?: string | null;
+  preview_note?: string | null;
+  capability_id?: string | null;
+}
+
+export type GovernedWorkflowRequest = MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput;
 
 export interface CapabilityRegistry {
   register(capability: CapabilityDefinition): CapabilityDefinition;
