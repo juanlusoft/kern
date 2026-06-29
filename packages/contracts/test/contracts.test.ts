@@ -6,10 +6,12 @@ import {
   fingerprintCapabilityInvocation,
   fingerprintCoreRequest,
   normalizeCorrelationId,
+  normalizeResourceQuery,
   normalizeRequestedScope,
   stableStringify,
   toBindingPayloadReference,
   toPolicyInputAttributes,
+  validateResourceResult,
   type CapabilityInvocationRequest,
   type CoreRequest
 } from '../src/index';
@@ -141,4 +143,129 @@ test('capability fingerprint helpers remain deterministic', () => {
       }
     })
   );
+});
+
+test('normalizeResourceQuery preserves query shape while ignoring claimed results', () => {
+  const query = normalizeResourceQuery({
+    query_id: 'query-1',
+    organization_id: 'org-acme',
+    correlation_id: 'corr-resource',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    resource_type: 'estimate',
+    resource_id: 'estimate-123',
+    filters: { status: 'open' },
+    requested_fields: ['estimate_id', 'customer_name'],
+    claimed_result: { injected: true },
+    model_claimed_result: { injected: true },
+    caller_result: { injected: true },
+    assistant_result: { injected: true }
+  });
+
+  assert.equal(query.query_id, 'query-1');
+  assert.equal(query.organization_id, 'org-acme');
+  assert.equal(query.actor?.principal_id, 'human-001');
+  assert.equal(query.claimed_result && typeof query.claimed_result === 'object', true);
+  assert.equal(query.model_claimed_result && typeof query.model_claimed_result === 'object', true);
+  assert.equal(query.caller_result && typeof query.caller_result === 'object', true);
+  assert.equal(query.assistant_result && typeof query.assistant_result === 'object', true);
+});
+
+test('validateResourceResult rejects found results without source evidence', () => {
+  const result = validateResourceResult({
+    query_id: 'query-1',
+    organization_id: 'org-acme',
+    correlation_id: 'corr-resource',
+    resource_type: 'estimate',
+    resource_id: 'estimate-123',
+    created_at: '2026-06-29T00:00:00.000Z',
+    evidence_links: [],
+    produced_by_adapter: true,
+    status: 'found',
+    data: { estimate_id: 'estimate-123' },
+    source_evidence: [] as unknown as [never, ...never[]],
+    error: null,
+    decision: {
+      query_id: 'query-1',
+      adapter_id: 'mock.external.read',
+      source_system: 'mock.external.system',
+      status: 'found',
+      reason: 'resource found',
+      authorization: {
+        adapter_id: 'mock.external.read',
+        source_system: 'mock.external.system',
+        organization_id: 'org-acme',
+        correlation_id: 'corr-resource',
+        actor: {
+          principal_id: 'human-001',
+          principal_type: 'human',
+          delegated_identity: null
+        },
+        authorized: true,
+        reason: 'resource found'
+      }
+    }
+  });
+
+  assert.equal(result.status, 'error');
+  assert.equal(result.data, null);
+});
+
+test('validateResourceResult preserves valid found results and clones source evidence', () => {
+  const found = validateResourceResult({
+    query_id: 'query-2',
+    organization_id: 'org-acme',
+    correlation_id: 'corr-resource-2',
+    resource_type: 'estimate',
+    resource_id: 'estimate-456',
+    created_at: '2026-06-29T00:00:00.000Z',
+    evidence_links: ['source-1'],
+    produced_by_adapter: true,
+    status: 'found',
+    data: {
+      estimate_id: 'estimate-456',
+      source: 'mock_runtime'
+    },
+    source_evidence: [
+      {
+        source_id: 'source-1',
+        source_type: 'record',
+        source_system: 'mock.external.system',
+        resource_id: 'estimate-456',
+        record_id: 'estimate-456#1',
+        field_path: 'estimate_id',
+        observed_at: '2026-06-29T00:00:00.000Z',
+        correlation_id: 'corr-resource-2'
+      }
+    ],
+    error: null,
+    decision: {
+      query_id: 'query-2',
+      adapter_id: 'mock.external.read',
+      source_system: 'mock.external.system',
+      status: 'found',
+      reason: 'resource found',
+      authorization: {
+        adapter_id: 'mock.external.read',
+        source_system: 'mock.external.system',
+        organization_id: 'org-acme',
+        correlation_id: 'corr-resource-2',
+        actor: {
+          principal_id: 'human-001',
+          principal_type: 'human',
+          delegated_identity: null
+        },
+        authorized: true,
+        reason: 'resource found'
+      }
+    }
+  });
+
+  assert.equal(found.status, 'found');
+  assert.equal(found.produced_by_adapter, true);
+  assert.equal(found.source_evidence?.[0].source_id, 'source-1');
+  assert.notEqual(found.source_evidence?.[0], undefined);
 });

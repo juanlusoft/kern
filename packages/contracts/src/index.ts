@@ -68,7 +68,18 @@ export type EvidenceRecordType =
   | 'preview_created'
   | 'approval_requested'
   | 'effect_blocked'
+  | 'external_read_requested'
+  | 'external_read_denied'
+  | 'external_read_blocked'
+  | 'external_read_found'
+  | 'external_read_not_found'
+  | 'external_read_unavailable'
+  | 'external_read_error'
+  | 'source_evidence_recorded'
+  | 'external_read_result_bound'
   | 'workflow_response_created';
+
+export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -287,6 +298,121 @@ export interface WorkflowEvidenceTrace {
   record_types: EvidenceRecordType[];
 }
 
+export interface SourceEvidence {
+  source_id: string;
+  source_type: string;
+  source_system: string;
+  resource_id: string;
+  record_id: string;
+  field_path: string;
+  observed_at: string;
+  correlation_id: string;
+}
+
+export interface ExternalReadAdapterAuthorization {
+  adapter_id: string;
+  source_system: string;
+  organization_id: string | null;
+  correlation_id: string;
+  actor: TurnActor | null;
+  authorized: boolean;
+  reason: string;
+}
+
+export interface ExternalReadAdapterDecision {
+  query_id: string;
+  adapter_id: string;
+  source_system: string;
+  status: ResourceReadStatus;
+  reason: string;
+  authorization: ExternalReadAdapterAuthorization;
+}
+
+interface ResourceResultBase {
+  query_id: string;
+  organization_id: string;
+  correlation_id: string;
+  resource_type: string;
+  resource_id: string | null;
+  created_at: string;
+  evidence_links: string[];
+  produced_by_adapter: boolean;
+  decision: ExternalReadAdapterDecision;
+}
+
+export interface ResourceFoundResult extends ResourceResultBase {
+  status: 'found';
+  data: Record<string, unknown>;
+  source_evidence: [SourceEvidence, ...SourceEvidence[]];
+  error: null;
+  produced_by_adapter: true;
+}
+
+export interface ExternalResourceNotFound extends ResourceResultBase {
+  status: 'not_found';
+  data: null;
+  source_evidence: null;
+  error: string;
+}
+
+export interface ExternalSystemUnavailable extends ResourceResultBase {
+  status: 'unavailable';
+  data: null;
+  source_evidence: null;
+  error: string;
+}
+
+export interface ExternalSystemError extends ResourceResultBase {
+  status: 'error';
+  data: null;
+  source_evidence: null;
+  error: string;
+}
+
+export interface ExternalReadAdapterDeniedResult extends ResourceResultBase {
+  status: 'denied';
+  data: null;
+  source_evidence: null;
+  error: string;
+}
+
+export interface ExternalReadAdapterBlockedResult extends ResourceResultBase {
+  status: 'blocked';
+  data: null;
+  source_evidence: null;
+  error: string;
+}
+
+export type ResourceResult =
+  | ResourceFoundResult
+  | ExternalResourceNotFound
+  | ExternalSystemUnavailable
+  | ExternalSystemError
+  | ExternalReadAdapterDeniedResult
+  | ExternalReadAdapterBlockedResult;
+
+export interface ResourceQuery {
+  query_id: string;
+  organization_id: string | null;
+  correlation_id: string | null;
+  actor: TurnActor | null;
+  resource_type: string;
+  resource_id: string | null;
+  filters: Record<string, unknown> | null;
+  requested_fields: string[] | null;
+  claimed_result?: unknown;
+  model_claimed_result?: unknown;
+  caller_result?: unknown;
+  assistant_result?: unknown;
+}
+
+export interface ExternalReadAdapter {
+  adapter_id: string;
+  source_system: string;
+  authorize(query: ResourceQuery): ExternalReadAdapterAuthorization;
+  read(query: ResourceQuery): ResourceResult;
+}
+
 export interface GovernedWorkflowResponse {
   response_source: 'runtime_result' | 'workflow_blocked';
   workflow_kind: GovernedWorkflowKind;
@@ -445,6 +571,123 @@ export function normalizeRequestedScope(requested_scope: CoreRequestPayload['req
     return [requested_scope];
   }
   return [];
+}
+
+export function normalizeResourceQuery(input: unknown): ResourceQuery {
+  const candidate = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  const actorCandidate = candidate.actor && typeof candidate.actor === 'object' ? (candidate.actor as Record<string, unknown>) : null;
+  const requestedFields = Array.isArray(candidate.requested_fields)
+    ? candidate.requested_fields.filter((field): field is string => typeof field === 'string' && field.trim().length > 0)
+    : null;
+  return {
+    query_id: typeof candidate.query_id === 'string' ? candidate.query_id : '',
+    organization_id: typeof candidate.organization_id === 'string' ? candidate.organization_id : null,
+    correlation_id: typeof candidate.correlation_id === 'string' ? candidate.correlation_id : null,
+    actor: actorCandidate
+      ? {
+          principal_id: typeof actorCandidate.principal_id === 'string' ? actorCandidate.principal_id : '',
+          principal_type:
+            actorCandidate.principal_type === 'human' ||
+            actorCandidate.principal_type === 'service' ||
+            actorCandidate.principal_type === 'agent'
+              ? actorCandidate.principal_type
+              : null,
+          delegated_identity: typeof actorCandidate.delegated_identity === 'string' ? actorCandidate.delegated_identity : null
+        }
+      : null,
+    resource_type: typeof candidate.resource_type === 'string' ? candidate.resource_type : '',
+    resource_id: typeof candidate.resource_id === 'string' ? candidate.resource_id : null,
+    filters: candidate.filters && typeof candidate.filters === 'object' ? (candidate.filters as Record<string, unknown>) : null,
+    requested_fields: requestedFields,
+    claimed_result: candidate.claimed_result ?? null,
+    model_claimed_result: candidate.model_claimed_result ?? null,
+    caller_result: candidate.caller_result ?? null,
+    assistant_result: candidate.assistant_result ?? null
+  };
+}
+
+export function fingerprintResourceQuery(query: ResourceQuery): string {
+  return stableStringify({
+    query_id: query.query_id,
+    organization_id: query.organization_id,
+    correlation_id: query.correlation_id,
+    actor: query.actor,
+    resource_type: query.resource_type,
+    resource_id: query.resource_id,
+    filters: query.filters,
+    requested_fields: query.requested_fields ? [...query.requested_fields].sort() : null
+  });
+}
+
+export function createSourceEvidence(input: {
+  source_id: string;
+  source_type: string;
+  source_system: string;
+  resource_id: string;
+  record_id: string;
+  field_path: string;
+  observed_at: string;
+  correlation_id: string;
+}): SourceEvidence {
+  return {
+    source_id: input.source_id,
+    source_type: input.source_type,
+    source_system: input.source_system,
+    resource_id: input.resource_id,
+    record_id: input.record_id,
+    field_path: input.field_path,
+    observed_at: input.observed_at,
+    correlation_id: input.correlation_id
+  };
+}
+
+export function validateResourceResult(result: ResourceResult): ResourceResult {
+  if (result.status === 'found') {
+    const hasSourceEvidence = Array.isArray(result.source_evidence) && result.source_evidence.length > 0;
+    const hasData = result.data && typeof result.data === 'object' && !Array.isArray(result.data);
+    if (!hasSourceEvidence || !hasData) {
+      return {
+        query_id: result.query_id,
+        organization_id: result.organization_id,
+        correlation_id: result.correlation_id,
+        resource_type: result.resource_type,
+        resource_id: result.resource_id,
+        created_at: result.created_at,
+        evidence_links: [...result.evidence_links],
+        produced_by_adapter: false,
+        status: 'error',
+        data: null,
+        source_evidence: null,
+        error: 'found result requires source evidence and data',
+        decision: {
+          ...result.decision,
+          status: 'error',
+          reason: 'found result requires source evidence and data'
+        }
+      };
+    }
+  }
+
+  return {
+    ...result,
+    evidence_links: [...result.evidence_links],
+    decision: {
+      ...result.decision,
+      authorization: {
+        ...result.decision.authorization,
+        actor: result.decision.authorization.actor
+          ? {
+              ...result.decision.authorization.actor
+            }
+          : null
+      }
+    },
+    source_evidence:
+      result.status === 'found' && result.source_evidence
+        ? result.source_evidence.map((sourceEvidence) => ({ ...sourceEvidence }))
+        : null,
+    data: result.status === 'found' ? structuredClone(result.data) : null
+  } as ResourceResult;
 }
 
 export function toPolicyInputAttributes(payload: CoreRequestPayload): PolicyInputAttributes {

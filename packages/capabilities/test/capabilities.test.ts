@@ -4,11 +4,13 @@ import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import {
   InMemoryCapabilityRegistry,
-  InMemoryCapabilityRuntime
+  InMemoryCapabilityRuntime,
+  createMockResourceReadCapability
 } from '../src/index';
+import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
 import { evaluatePolicy } from '../../policy/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
-import type { CapabilityDefinition, CapabilityInvocationRequest, CoreRequest } from '../../contracts/src/index';
+import type { CapabilityDefinition, CapabilityInvocationRequest, CoreRequest, ResourceResult } from '../../contracts/src/index';
 
 function createRequest(overrides: Partial<CoreRequest> = {}): CoreRequest {
   return {
@@ -188,6 +190,48 @@ function createEffectfulCapabilityDefinition(overrides: Partial<CapabilityDefini
   };
 }
 
+function createResourceInvocation(overrides: Partial<CapabilityInvocationRequest> = {}): CapabilityInvocationRequest {
+  return {
+    capability_id: 'mock.resource.read',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    correlation_id: 'corr-resource',
+    input: {
+      purpose: 'read governed resource',
+      requested_scope: ['read:knowledge'],
+      payload: {
+        query_id: 'query-1',
+        organization_id: 'org-acme',
+        correlation_id: 'corr-resource',
+        actor: {
+          principal_id: 'human-001',
+          principal_type: 'human',
+          delegated_identity: null
+        },
+        resource_type: 'estimate',
+        resource_id: 'estimate-123',
+        filters: null,
+        requested_fields: ['estimate_id', 'customer_name'],
+        claimed_result: { injected: true },
+        model_claimed_result: { injected: true },
+        caller_result: { injected: true },
+        assistant_result: { injected: true }
+      }
+    },
+    binding_id: null,
+    decision_binding_id: null,
+    policy_decision_id: null,
+    approval_requirement: {
+      required: false,
+      reason: 'read only',
+      binding_required: false
+    },
+    evidence_reference: 'evidence-resource-1',
+    requested_at: '2026-06-29T00:00:00.000Z',
+    ...overrides
+  };
+}
+
 function buildRuntime(): {
   ledger: InMemoryEvidenceLedger;
   bindingStore: InMemoryDecisionBindingStore;
@@ -273,6 +317,47 @@ test('capability invocation ignores caller claimed results and uses the register
   assert.equal(result.output?.result.resource, 'documents/quarterly');
   assert.equal(result.output?.result.mode, 'default');
   assert.equal((result as { claimed_result?: unknown }).claimed_result, undefined);
+});
+
+test('generic resource read capability uses the external read adapter and rejects invalid found results', () => {
+  const { runtime } = buildRuntime();
+  const adapter = createMockExternalReadAdapter();
+  runtime.registerCapability(createMockResourceReadCapability(adapter));
+
+  const result = runtime.invokeCapability(createResourceInvocation());
+  const resourceResult = result.output?.result as ResourceResult | undefined;
+  const sourceEvidence = (resourceResult as { source_evidence?: unknown[] } | undefined)?.source_evidence;
+  assert.equal(result.status, 'executed');
+  assert.equal(resourceResult?.status, 'found');
+  assert.equal((resourceResult as { data?: { estimate_id?: string } } | undefined)?.data?.estimate_id, 'estimate-123');
+  assert.equal((sourceEvidence?.length ?? 0) > 0, true);
+
+  const denied = runtime.invokeCapability(
+    createResourceInvocation({
+      input: {
+        purpose: 'read governed resource',
+        requested_scope: ['read:knowledge'],
+        payload: {
+          query_id: 'query-2',
+          organization_id: 'org-acme',
+          correlation_id: 'corr-resource-2',
+          actor: {
+            principal_id: 'human-001',
+            principal_type: 'human',
+            delegated_identity: null
+          },
+          resource_type: 'estimate',
+          resource_id: 'estimate-missing-source-evidence',
+          filters: null,
+          requested_fields: ['estimate_id']
+        }
+      }
+    })
+  );
+
+  assert.equal(denied.status, 'error');
+  assert.equal(denied.output, null);
+  assert.equal(denied.error, 'found result requires source evidence and data');
 });
 
 test('unknown capability is denied without calling any mock', () => {
