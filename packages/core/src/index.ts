@@ -1,8 +1,11 @@
 import {
   createEvidenceRecord,
+  createDeterministicId,
   fingerprintCoreRequest,
   normalizeCorrelationId,
   type CoreRequest,
+  type CapabilityInvocationRequest,
+  type CapabilityInvocationResult,
   type DecisionBinding,
   type GovernedExecutionResult,
   type IdentityContext,
@@ -10,6 +13,7 @@ import {
   type PolicyDecision
 } from '../../contracts/src/index';
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
+import { InMemoryCapabilityRuntime } from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 import { createFailedClosedPolicyDecision, evaluatePolicy } from '../../policy/src/index';
@@ -18,6 +22,7 @@ import { InMemoryTurnRuntime } from '../../turns/src/index';
 export interface CoreM1Environment {
   evidenceLedger: InMemoryEvidenceLedger;
   bindingStore: InMemoryDecisionBindingStore;
+  capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
   resolveOrganizationContext: typeof resolveOrganizationContext;
   resolveIdentityContext: typeof resolveIdentityContext;
@@ -29,6 +34,7 @@ export function createCoreM1Environment(overrides: Partial<CoreM1Environment> = 
   return {
     evidenceLedger: overrides.evidenceLedger ?? new InMemoryEvidenceLedger(),
     bindingStore: overrides.bindingStore ?? new InMemoryDecisionBindingStore(),
+    capabilityRuntime: overrides.capabilityRuntime,
     turnRuntime: overrides.turnRuntime,
     resolveOrganizationContext: overrides.resolveOrganizationContext ?? resolveOrganizationContext,
     resolveIdentityContext: overrides.resolveIdentityContext ?? resolveIdentityContext,
@@ -96,6 +102,70 @@ function buildBlockedResult(input: {
     turn_id: null,
     reason: input.policyDecision.decision_reason
   };
+}
+
+function buildCapabilityUnavailableResult(input: {
+  request: CoreRequest;
+  organizationContext: OrganizationContext;
+  identityContext: IdentityContext;
+  policyDecision: PolicyDecision;
+  capability_invocation: CapabilityInvocationRequest;
+  now: () => Date;
+  reason: string;
+  evidence_id?: string | null;
+}): CapabilityInvocationResult {
+  const correlation_id = normalizeCorrelationId(input.request);
+  const created_at = input.now().toISOString();
+  const evidence_links = input.evidence_id ? [input.evidence_id] : [];
+  return {
+    invocation_id: createDeterministicId('capability-invocation', {
+      capability_id: input.capability_invocation.capability_id,
+      organization_id: input.organizationContext.organization_id,
+      principal_id: input.identityContext.principal_id,
+      correlation_id,
+      requested_at: created_at
+    }),
+    capability_id: input.capability_invocation.capability_id,
+    organization_id: input.organizationContext.organization_id ?? input.capability_invocation.organization_id,
+    principal_id: input.identityContext.principal_id ?? input.capability_invocation.principal_id,
+    correlation_id,
+    status: 'unavailable',
+    runtime_decision: 'unavailable',
+    binding_id: input.capability_invocation.binding_id ?? null,
+    decision_binding_id: input.capability_invocation.decision_binding_id ?? input.capability_invocation.binding_id ?? null,
+    policy_decision_id: input.policyDecision.decision_id,
+    executed_by_runtime: false,
+    output: null,
+    error: input.reason,
+    evidence_links,
+    created_at,
+    evidence_reference: input.evidence_id ?? null,
+    reason: input.reason,
+  };
+}
+
+function recordCapabilityUnavailable(input: {
+  request: CoreRequest;
+  organizationContext: OrganizationContext;
+  capabilityInvocation: CapabilityInvocationRequest;
+  evidenceLedger: InMemoryEvidenceLedger;
+  now: () => Date;
+  reason: string;
+}): string {
+  return input.evidenceLedger.append(
+    createEvidenceRecord({
+      organization_id: input.organizationContext.organization_id ?? 'unknown',
+      correlation_id: normalizeCorrelationId(input.request),
+      record_type: 'capability_invocation_unavailable',
+      subject: input.capabilityInvocation.capability_id,
+      data: {
+        capability_id: input.capabilityInvocation.capability_id,
+        reason: input.reason,
+        capability_invocation: input.capabilityInvocation
+      },
+      created_at: input.now().toISOString()
+    })
+  ).evidence_id;
 }
 
 function recordOrganizationFailure(input: {
@@ -255,7 +325,8 @@ function createBindingIfRequired(input: {
     identityContext: input.identityContext,
     policyDecision: input.policyDecision,
     evidence_reference: input.evidence_reference,
-    now: input.environment.now
+    now: input.environment.now,
+    capabilityInvocation: input.request.capability_invocation ?? null
   });
 
   input.environment.evidenceLedger.append(
@@ -411,6 +482,61 @@ export function executeGovernedRequest(
     environment
   });
 
+  const capabilityInvocation = request.capability_invocation
+    ? {
+        capability_id: request.capability_invocation.capability_id,
+        organization_id: organizationContext.organization_id ?? request.capability_invocation.organization_id,
+        principal_id: identityContext.principal_id ?? request.capability_invocation.principal_id,
+        correlation_id,
+        binding_id: binding?.binding_id ?? request.capability_invocation.binding_id ?? null,
+        decision_binding_id: binding?.binding_id ?? request.capability_invocation.decision_binding_id ?? request.capability_invocation.binding_id ?? null,
+        policy_decision_id: policyDecision.decision_id,
+        approval_requirement: request.capability_invocation.approval_requirement ?? null,
+        requested_at: request.capability_invocation.requested_at ?? null,
+        evidence_reference: request.capability_invocation.evidence_reference ?? policyDecisionEvidenceId,
+        input: {
+          purpose: request.capability_invocation.input.purpose,
+          requested_scope: [...request.capability_invocation.input.requested_scope],
+          payload: structuredClone(request.capability_invocation.input.payload)
+        },
+        claimed_result: undefined,
+        claimed_output: undefined,
+        caller_result: undefined,
+        assistant_result: undefined,
+        model_claimed_result: undefined
+      }
+    : null;
+
+  let capability_invocation_id: string | null = null;
+  let capability_result: CapabilityInvocationResult | null = null;
+  if (capabilityInvocation) {
+    if (!environment.capabilityRuntime) {
+      const evidence_id = recordCapabilityUnavailable({
+        request,
+        organizationContext,
+        capabilityInvocation,
+        evidenceLedger: environment.evidenceLedger,
+        now,
+        reason: 'capability runtime unavailable'
+      });
+      const unavailableResult = buildCapabilityUnavailableResult({
+        request,
+        organizationContext,
+        identityContext,
+        policyDecision,
+        capability_invocation: capabilityInvocation,
+        now,
+        reason: 'capability runtime unavailable',
+        evidence_id
+      });
+      capability_invocation_id = unavailableResult.invocation_id;
+      capability_result = unavailableResult;
+    } else {
+      capability_result = environment.capabilityRuntime.invokeCapability(capabilityInvocation);
+      capability_invocation_id = capability_result.invocation_id;
+    }
+  }
+
   const turn = environment.turnRuntime?.createTurn({
     organization_id: organizationContext.organization_id ?? 'unknown',
     correlation_id,
@@ -433,6 +559,41 @@ export function executeGovernedRequest(
     now
   });
 
+  if (turn && capabilityInvocation) {
+    const pendingEffect = environment.turnRuntime?.addPendingEffect({
+      turn_id: turn.turn_id,
+      binding_id: capability_result?.binding_id ?? capabilityInvocation.binding_id ?? null,
+      evidence_reference: capability_result?.evidence_reference ?? policyDecisionEvidenceId,
+      now
+    });
+    const effect_id = pendingEffect?.effect?.effect_id ?? null;
+    if (effect_id && capability_result) {
+      if (capability_result.status === 'executed') {
+        environment.turnRuntime?.markEffectSucceeded({
+          turn_id: turn.turn_id,
+          effect_id,
+          evidence_reference: capability_result.evidence_reference,
+          now
+        });
+      } else if (capability_result.status === 'unavailable' || capability_result.status === 'error') {
+        environment.turnRuntime?.markEffectUnknownOutcome({
+          turn_id: turn.turn_id,
+          effect_id,
+          reason: capability_result.reason,
+          evidence_reference: capability_result.evidence_reference,
+          now
+        });
+      } else if (capability_result.status === 'not_found' || capability_result.status === 'denied') {
+        environment.turnRuntime?.markEffectFailed({
+          turn_id: turn.turn_id,
+          effect_id,
+          evidence_reference: capability_result.evidence_reference,
+          now
+        });
+      }
+    }
+  }
+
   return {
     status: 'allowed',
     correlation_id,
@@ -442,6 +603,8 @@ export function executeGovernedRequest(
     evidence_records: environment.evidenceLedger.listByCorrelation(correlation_id),
     binding,
     turn_id: turn?.turn_id ?? null,
+    capability_invocation_id,
+    capability_result,
     reason: policyDecision.decision_reason
   };
 }

@@ -25,6 +25,9 @@ export type TurnEffectState =
   | 'unknown_outcome'
   | 'cancelled';
 export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
+export type CapabilityKind = 'read_only' | 'effectful';
+export type CapabilityInvocationStatus = 'executed' | 'unavailable' | 'error' | 'not_found' | 'denied';
+export type CapabilityRuntimeDecision = CapabilityInvocationStatus;
 export type EvidenceRecordType =
   | 'intent'
   | 'organization_resolved'
@@ -43,7 +46,15 @@ export type EvidenceRecordType =
   | 'reconciliation_requested'
   | 'reconciliation_completed'
   | 'turn_completed'
-  | 'turn_blocked';
+  | 'turn_blocked'
+  | 'capability_invocation_requested'
+  | 'capability_invocation_denied'
+  | 'capability_invocation_started'
+  | 'capability_invocation_completed'
+  | 'capability_invocation_unavailable'
+  | 'capability_invocation_error'
+  | 'capability_invocation_not_found'
+  | 'capability_result_bound';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -94,6 +105,7 @@ export interface CoreRequest {
   payload: CoreRequestPayload;
   requires_binding: boolean;
   correlation_id?: string | null;
+  capability_invocation?: CapabilityInvocationRequest | null;
 }
 
 export interface OrganizationContext {
@@ -163,6 +175,96 @@ export interface DecisionBinding {
   expires_at: string;
   binding_state: BindingState;
   evidence_reference: string;
+  approved_capability_id: string | null;
+  approved_input_fingerprint: string | null;
+  approval_requirement?: CapabilityApprovalRequirement | null;
+}
+
+export interface CapabilityApprovalRequirement {
+  required: boolean;
+  reason: string;
+  binding_required: boolean;
+}
+
+export interface CapabilityMockResult {
+  status: CapabilityInvocationStatus;
+  output: CapabilityOutput | null;
+  error: string | null;
+}
+
+export interface CapabilityMock {
+  invoke(input: CapabilityInvocationRequest): CapabilityMockResult;
+}
+
+export interface CapabilityInput {
+  purpose: string;
+  payload: Record<string, unknown>;
+  requested_scope: string[];
+}
+
+export interface CapabilityOutput {
+  capability_id: string;
+  status: CapabilityRuntimeDecision;
+  result: Record<string, unknown>;
+  processed_at: string;
+}
+
+export interface CapabilityDefinition {
+  capability_id: string;
+  organization_id: string;
+  title: string;
+  description: string;
+  kind: CapabilityKind;
+  version: string;
+  enabled: boolean;
+  approval_requirement: CapabilityApprovalRequirement | null;
+  mock: CapabilityMock | null;
+}
+
+export interface CapabilityInvocationRequest {
+  capability_id: string;
+  organization_id: string;
+  principal_id: string;
+  correlation_id: string;
+  input: CapabilityInput;
+  binding_id?: string | null;
+  decision_binding_id?: string | null;
+  policy_decision_id?: string | null;
+  approval_requirement?: CapabilityApprovalRequirement | null;
+  evidence_reference?: string | null;
+  requested_at?: string | null;
+  claimed_result?: unknown;
+  claimed_output?: unknown;
+  caller_result?: unknown;
+  assistant_result?: unknown;
+  model_claimed_result?: unknown;
+}
+
+export interface CapabilityInvocationResult {
+  invocation_id: string;
+  capability_id: string;
+  organization_id: string;
+  principal_id: string;
+  correlation_id: string;
+  status: CapabilityInvocationStatus;
+  runtime_decision: CapabilityRuntimeDecision;
+  binding_id: string | null;
+  decision_binding_id: string | null;
+  policy_decision_id: string | null;
+  executed_by_runtime: boolean;
+  output: CapabilityOutput | null;
+  error: string | null;
+  evidence_links: string[];
+  created_at: string;
+  evidence_reference: string | null;
+  reason: string;
+}
+
+export interface CapabilityRegistry {
+  register(capability: CapabilityDefinition): CapabilityDefinition;
+  get(capability_id: string): CapabilityDefinition | undefined;
+  list(): CapabilityDefinition[];
+  has(capability_id: string): boolean;
 }
 
 export interface TurnActor {
@@ -240,6 +342,8 @@ export interface GovernedExecutionResult {
   evidence_records: EvidenceRecord[];
   binding: DecisionBinding | null;
   turn_id?: string | null;
+  capability_invocation_id?: string | null;
+  capability_result?: CapabilityInvocationResult | null;
   reason: string;
 }
 
@@ -313,6 +417,29 @@ export function fingerprintCoreRequest(input: {
     payload: toBindingPayloadReference(input.request.payload),
     requires_binding: input.request.requires_binding,
     correlation_id: normalizeCorrelationId(input.request)
+  });
+}
+
+export function fingerprintCapabilityInput(input: CapabilityInput): string {
+  return stableStringify({
+    purpose: input.purpose,
+    payload: input.payload,
+    requested_scope: [...input.requested_scope].sort()
+  });
+}
+
+export function fingerprintCapabilityInvocation(input: CapabilityInvocationRequest): string {
+  return stableStringify({
+    capability_id: input.capability_id,
+    organization_id: input.organization_id,
+    principal_id: input.principal_id,
+    correlation_id: input.correlation_id,
+    binding_id: input.binding_id ?? null,
+    policy_decision_id: input.policy_decision_id ?? null,
+    approval_requirement: input.approval_requirement ?? null,
+    evidence_reference: input.evidence_reference ?? null,
+    input: fingerprintCapabilityInput(input.input),
+    requested_at: input.requested_at ?? null
   });
 }
 
