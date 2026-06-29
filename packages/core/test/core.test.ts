@@ -41,8 +41,12 @@ test('core orchestrator allows a valid governed request and creates a binding', 
   assert.equal(result.organization_context.organization_id, 'org-acme');
   assert.equal(result.correlation_id, 'corr-core');
   assert.equal(result.binding?.organization_id, 'org-acme');
+  assert.equal(result.binding?.binding_state, 'created');
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'organization_resolved'), true);
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'identity_resolved'), true);
   assert.equal(result.evidence_records.some((record) => record.record_type === 'intent'), true);
   assert.equal(result.evidence_records.some((record) => record.record_type === 'policy_decision'), true);
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'binding_created'), true);
 });
 
 test('core orchestrator fails closed when organization is missing', () => {
@@ -99,4 +103,5 @@ test('core orchestrator denies explicit deny actions', () => {
 
   assert.equal(result.status, 'denied');
   assert.equal(result.binding, null);
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'execution_blocked'), true);
 });

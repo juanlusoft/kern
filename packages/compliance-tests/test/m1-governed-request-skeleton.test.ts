@@ -51,9 +51,12 @@ test('M1 positive governed request returns allowed', () => {
   assert.equal(result.status, 'allowed');
   assert.equal(result.organization_context.organization_id, 'org-acme');
   assert.equal(result.identity_context.principal_id, 'human-001');
-  assert.equal(result.binding?.binding_state, 'active');
+  assert.equal(result.binding?.binding_state, 'created');
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'organization_resolved'), true);
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'identity_resolved'), true);
   assert.equal(result.evidence_records.some((record) => record.record_type === 'intent'), true);
   assert.equal(result.evidence_records.some((record) => record.record_type === 'policy_decision'), true);
+  assert.equal(result.evidence_records.some((record) => record.record_type === 'binding_created'), true);
 });
 
 test('M1 fails closed when organization is absent', () => {
