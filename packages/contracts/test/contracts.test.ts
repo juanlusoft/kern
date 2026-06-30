@@ -103,6 +103,21 @@ test('createEvidenceRecord accepts explicit sequence and defaults safely', () =>
   );
 });
 
+test('createEvidenceRecord accepts orchestration evidence types', () => {
+  const record = createEvidenceRecord({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-orchestration',
+    record_type: 'orchestration_requested',
+    subject: 'mock.orchestrator',
+    data: {
+      user_message: 'presupuesto estimate-123'
+    }
+  });
+
+  assert.equal(record.record_type, 'orchestration_requested');
+  assert.equal(record.subject, 'mock.orchestrator');
+});
+
 test('capability fingerprint helpers remain deterministic', () => {
   const capabilityInput = {
     purpose: 'governed capability',
