@@ -85,7 +85,16 @@ export type EvidenceRecordType =
   | 'external_read_error'
   | 'source_evidence_recorded'
   | 'external_read_result_bound'
-  | 'workflow_response_created';
+  | 'workflow_response_created'
+  | 'channel_message_received'
+  | 'channel_identity_resolved'
+  | 'channel_identity_denied'
+  | 'channel_message_denied'
+  | 'channel_message_blocked'
+  | 'channel_orchestration_requested'
+  | 'channel_response_prepared'
+  | 'channel_message_sent'
+  | 'channel_message_send_error';
 
 export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
 
@@ -547,6 +556,96 @@ export interface OrchestrationOutcome {
   created_at: string;
   updated_at: string;
   reason: string;
+}
+
+export type ChannelDeliveryStatus = 'sent' | 'denied' | 'blocked' | 'error' | 'skipped';
+
+export interface InboundMessage {
+  channel: string;
+  message_id: string;
+  chat_id: string;
+  user_id: string;
+  text: string;
+  received_at: string;
+  raw?: unknown;
+}
+
+export interface OutboundMessage {
+  channel: string;
+  chat_id: string;
+  text: string;
+  reply_to_message_id?: string | null;
+  correlation_id: string;
+  raw?: unknown;
+}
+
+export interface TelegramChannelUpdateMessage {
+  message_id: number;
+  chat: {
+    id: string;
+    type: string;
+  };
+  from?: {
+    id: string;
+    username?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
+  text?: string | null;
+  date?: number | null;
+  raw?: unknown;
+}
+
+export interface TelegramChannelUpdate {
+  update_id: number;
+  message: TelegramChannelUpdateMessage | null;
+  raw?: unknown;
+}
+
+export interface TelegramOutboundMessage extends OutboundMessage {
+  update_id?: number | null;
+  parse_mode?: 'Markdown' | 'HTML' | null;
+  source_evidence?: string[] | null;
+  data?: Record<string, unknown> | null;
+}
+
+export interface ChannelIdentityMapping {
+  channel: 'telegram';
+  telegram_user_id: string;
+  telegram_chat_id: string;
+  organization_id: string;
+  principal_id: string;
+  installation_id: string;
+  principal_type?: PrincipalType | null;
+  active: boolean;
+  display_name?: string | null;
+}
+
+export interface ChannelInstallationConfig {
+  channel: 'telegram';
+  installation_id: string;
+  active: boolean;
+  bot_token: string | null;
+  identity_mappings: ChannelIdentityMapping[];
+}
+
+export interface ChannelMessageResult {
+  channel: 'telegram';
+  status: ChannelDeliveryStatus;
+  reason: string;
+  correlation_id: string;
+  inbound_message: InboundMessage | null;
+  outbound_message: TelegramOutboundMessage | null;
+  organization_id: string | null;
+  principal_id: string | null;
+  installation_id: string | null;
+  orchestration_outcome: OrchestrationOutcome | null;
+  evidence_links: string[];
+}
+
+export interface ChannelAdapter {
+  channel: string;
+  handleInboundMessage(message: InboundMessage): ChannelMessageResult;
 }
 
 export interface OrchestratorPort {
