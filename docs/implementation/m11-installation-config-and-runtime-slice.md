@@ -43,6 +43,8 @@ The configuration can be loaded from:
 
 No checked-in `.env` file is required.
 
+`KERN_MODEL_BASE_URL` is treated as a base URL compatible with OpenAI-style chat-completions endpoints. The runtime appends `/chat/completions` when needed and does not duplicate that path when it is already present.
+
 ## 3. Module registry and composition
 
 M11 adds a small in-memory module registry used to compose the runtime slice.
@@ -79,6 +81,8 @@ The slice keeps the same policy order already established by earlier milestones:
 4. the workflow runtime only executes when the proposal is valid;
 5. the external read adapter stays behind the governed port;
 6. evidence is recorded for startup, module activation, message receipt, processing, and failure.
+
+Telegram channel updates are normalized so that numeric real-world Telegram identifiers are accepted and converted into internal string identifiers before identity resolution.
 
 If a required module or secret is missing, startup is blocked and evidence is recorded.
 

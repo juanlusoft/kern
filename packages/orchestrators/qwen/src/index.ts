@@ -66,6 +66,14 @@ export interface QwenChatCompletionChoice {
   finish_reason?: string | null;
 }
 
+export function resolveChatCompletionsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (trimmed.endsWith('/chat/completions')) {
+    return trimmed;
+  }
+  return `${trimmed}/chat/completions`;
+}
+
 export interface QwenChatCompletionsResponse {
   id?: string | null;
   model?: string | null;
@@ -376,6 +384,7 @@ function buildProposalOutcome(input: {
 }
 
 function defaultTransportFactory(options: { baseUrl: string; apiKey: string | null; requestTimeoutMs: number }): QwenChatCompletionsTransport {
+  const completionsUrl = resolveChatCompletionsUrl(options.baseUrl);
   const script = `
 import { readFileSync } from 'node:fs';
 
@@ -424,7 +433,7 @@ try {
         ['--input-type=module', '--eval', script],
         {
           input: JSON.stringify({
-            url: options.baseUrl,
+            url: completionsUrl,
             apiKey: options.apiKey,
             timeoutMs: options.requestTimeoutMs,
             body: request
@@ -771,6 +780,7 @@ export function createNodeFetchChatCompletionsTransport(options: {
   apiKey?: string | null;
   timeoutMs?: number;
 }): QwenChatCompletionsTransport {
+  const completionsUrl = resolveChatCompletionsUrl(options.baseUrl);
   return {
     chatCompletions(request: QwenChatCompletionsRequest): QwenChatCompletionsResponse {
       const script = `
@@ -817,7 +827,7 @@ try {
         ['--input-type=module', '--eval', script],
         {
           input: JSON.stringify({
-            url: options.baseUrl,
+            url: completionsUrl,
             apiKey: normalizeOptionalString(options.apiKey ?? null),
             timeoutMs: options.timeoutMs ?? 30_000,
             request

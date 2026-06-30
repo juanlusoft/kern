@@ -597,13 +597,13 @@ export interface OutboundMessage {
 }
 
 export interface TelegramChannelUpdateMessage {
-  message_id: number;
+  message_id: string | number;
   chat: {
-    id: string;
+    id: string | number;
     type: string;
   };
   from?: {
-    id: string;
+    id: string | number;
     username?: string | null;
     first_name?: string | null;
     last_name?: string | null;

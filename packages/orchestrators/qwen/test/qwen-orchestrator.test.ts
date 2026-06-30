@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createNodeFetchChatCompletionsTransport,
   createQwenOrchestrator,
+  resolveChatCompletionsUrl,
   type QwenChatCompletionsRequest,
   type QwenChatCompletionsResponse,
   type QwenToolDefinition
@@ -70,8 +71,65 @@ function buildRequest(overrides: Partial<QwenChatCompletionsRequest> = {}) {
       }
     ],
     ...overrides
-  };
+  } satisfies QwenChatCompletionsRequest;
 }
+
+test('Qwen transport appends chat/completions to a base URL', () => {
+  assert.equal(resolveChatCompletionsUrl('http://localhost:8002/v1'), 'http://localhost:8002/v1/chat/completions');
+});
+
+test('Qwen transport keeps a full completions URL stable and does not duplicate the path', () => {
+  assert.equal(resolveChatCompletionsUrl('http://localhost:8002/v1/'), 'http://localhost:8002/v1/chat/completions');
+  assert.equal(
+    resolveChatCompletionsUrl('http://localhost:8002/v1/chat/completions'),
+    'http://localhost:8002/v1/chat/completions'
+  );
+});
+
+test('Qwen transport fails closed on transport errors without leaking the API key', () => {
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    apiKey: 'model-secret',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        throw new Error('qwen transport failed with status 404: Not Found');
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-transport-failure',
+    user_message: 'Necesito el presupuesto estimate-123 del cliente customer-001',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-transport-failure',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(outcome.status, 'error');
+  assert.equal(JSON.stringify(outcome).includes('model-secret'), false);
+  assert.equal(
+    orchestrator
+      .getEvidenceLedger()
+      .listByCorrelation('corr-transport-failure')
+      .some((record) => JSON.stringify(record).includes('model-secret')),
+    false
+  );
+});
 
 test('Qwen orchestrator proposes only active capabilities and parses tool calls', () => {
   const requests: QwenChatCompletionsRequest[] = [];
