@@ -37,8 +37,8 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
     identity_mappings: [
       {
         channel: 'telegram',
-        telegram_user_id: 'telegram-gema',
-        telegram_chat_id: 'telegram-chat-pacoprint',
+        telegram_user_id: '146574793',
+        telegram_chat_id: '146574793',
         organization_id: 'org-acme',
         principal_id: 'human-001',
         installation_id: 'install-acme',
@@ -138,17 +138,17 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   telegramTransport.seedUpdates([
     {
       update_id: 2,
-      message: {
-        message_id: 200,
-        chat: {
-          id: 'telegram-chat-pacoprint',
-          type: 'private'
-        },
-        from: {
-          id: 'telegram-gema',
-          username: 'gema',
-          first_name: 'Gema',
-          last_name: 'Print'
+    message: {
+      message_id: 200,
+      chat: {
+        id: 146574793,
+        type: 'private'
+      },
+      from: {
+        id: 146574793,
+        username: 'gema',
+        first_name: 'Gema',
+        last_name: 'Print'
         },
         text: 'Necesito el presupuesto estimate-123 del cliente customer-001',
         date: 1_751_472_000,
@@ -180,6 +180,9 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.status, 'sent');
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  assert.equal(result.inbound_message?.message_id, '200');
+  assert.equal(result.inbound_message?.chat_id, '146574793');
+  assert.equal(result.inbound_message?.user_id, '146574793');
   assert.equal(JSON.stringify(result).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(result).includes('holded-secret'), false);
   assert.equal(
@@ -189,7 +192,7 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(
     runtime.orchestrationBoundary
       .getEvidenceLedger()
-      .listByCorrelation('telegram:install-acme:telegram-chat-pacoprint:200')
+      .listByCorrelation('telegram:install-acme:146574793:200')
       .some((record) => record.record_type === 'workflow_response_created'),
     true
   );

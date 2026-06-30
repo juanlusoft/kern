@@ -41,13 +41,13 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
       }
     ],
     identity_mappings: [
-      {
-        channel: 'telegram',
-        telegram_user_id: 'telegram-gema',
-        telegram_chat_id: 'telegram-chat-pacoprint',
-        organization_id: 'org-acme',
-        principal_id: 'human-001',
-        installation_id: 'install-acme',
+        {
+          channel: 'telegram',
+          telegram_user_id: '146574793',
+          telegram_chat_id: '146574793',
+          organization_id: 'org-acme',
+          principal_id: 'human-001',
+          installation_id: 'install-acme',
         principal_type: 'human',
         active: true,
         display_name: 'Gema'
@@ -144,11 +144,11 @@ function buildTelegramUpdate() {
     message: {
       message_id: 200,
       chat: {
-        id: 'telegram-chat-pacoprint',
+        id: 146574793,
         type: 'private' as const
       },
       from: {
-        id: 'telegram-gema',
+        id: 146574793,
         username: 'gema',
         first_name: 'Gema',
         last_name: 'Print'
@@ -193,7 +193,7 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   const [channelResult] = runtime.pollOnce();
   const runtimeRecords = runtime.evidenceLedger.listByCorrelation('runtime:install-acme:2');
   const orchestrationRecords = runtime.orchestrationBoundary.getEvidenceLedger().listByCorrelation(
-    'telegram:install-acme:telegram-chat-pacoprint:200'
+    'telegram:install-acme:146574793:200'
   );
 
   assert.equal(qwenCalls.length > 0, true);
@@ -201,6 +201,9 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   assert.equal(channelResult.status, 'sent');
   assert.equal(channelResult.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
+  assert.equal(channelResult.inbound_message?.message_id, '200');
+  assert.equal(channelResult.inbound_message?.chat_id, '146574793');
+  assert.equal(channelResult.inbound_message?.user_id, '146574793');
   assert.equal(channelResult.orchestration_outcome?.response.data?.estimate_id, 'estimate-123');
   assert.equal(JSON.stringify(channelResult).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(channelResult).includes('holded-secret'), false);

@@ -19,8 +19,76 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeTelegramId(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value.trim().length > 0 ? value.trim() : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function normalizeTelegramNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeTelegramUpdateMessage(message: unknown): TelegramChannelUpdate['message'] {
+  if (!isPlainObject(message)) {
+    return null;
+  }
+  const chat = isPlainObject(message.chat) ? message.chat : null;
+  const from = isPlainObject(message.from) ? message.from : null;
+  const messageId = normalizeTelegramId(message.message_id);
+  const chatId = normalizeTelegramId(chat?.id);
+  const chatType = normalizeOptionalString(chat?.type ?? null);
+  const userId = normalizeTelegramId(from?.id ?? null);
+  const text = normalizeOptionalString(message.text ?? null);
+  if (!messageId || !chatId || !chatType || !userId || !text) {
+    return null;
+  }
+  return {
+    message_id: messageId,
+    chat: {
+      id: chatId,
+      type: chatType
+    },
+    from: {
+      id: userId,
+      username: normalizeOptionalString(from?.username ?? null),
+      first_name: normalizeOptionalString(from?.first_name ?? null),
+      last_name: normalizeOptionalString(from?.last_name ?? null)
+    },
+    text,
+    date: normalizeTelegramNumber(message.date),
+    raw: structuredClone(message)
+  };
+}
+
+export function normalizeTelegramUpdate(update: unknown): TelegramChannelUpdate | null {
+  if (!isPlainObject(update)) {
+    return null;
+  }
+  const updateId = normalizeTelegramNumber(update.update_id);
+  if (updateId === null) {
+    return null;
+  }
+  return {
+    update_id: updateId,
+    message: update.message == null ? null : normalizeTelegramUpdateMessage(update.message),
+    raw: structuredClone(update)
+  };
 }
 
 function createSyncJsonTransport(script: string): (input: Record<string, unknown>) => Record<string, unknown> {
@@ -182,7 +250,7 @@ try {
       }
       const payload = output.json;
       const updates = isPlainObject(payload) && Array.isArray(payload.result) ? payload.result : Array.isArray(payload) ? payload : [];
-      return updates as TelegramChannelUpdate[];
+      return updates.map(normalizeTelegramUpdate).filter((update): update is TelegramChannelUpdate => Boolean(update));
     },
     sendMessage(message: TelegramOutboundMessage): TelegramOutboundMessage {
       const url = `${baseUrl.replace(/\/+$/, '')}/bot${options.botToken}/sendMessage`;

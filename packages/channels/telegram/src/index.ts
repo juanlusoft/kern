@@ -70,6 +70,16 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeTelegramId(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value.trim().length > 0 ? value.trim() : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
 function messageText(message: TelegramChannelUpdateMessage): string | null {
   return normalizeOptionalString(message.text ?? null);
 }
@@ -83,14 +93,15 @@ function buildInboundMessage(update: TelegramChannelUpdate, installation_id: str
     return null;
   }
   const text = messageText(update.message);
-  const chatId = normalizeOptionalString(update.message.chat.id);
-  const userId = normalizeOptionalString(update.message.from?.id ?? null);
-  if (!text || !chatId || !userId) {
+  const chatId = normalizeTelegramId(update.message.chat.id);
+  const userId = normalizeTelegramId(update.message.from?.id ?? null);
+  const messageId = normalizeTelegramId(update.message.message_id);
+  if (!text || !chatId || !userId || !messageId) {
     return null;
   }
   return {
     channel: 'telegram',
-    message_id: String(update.message.message_id),
+    message_id: messageId,
     chat_id: chatId,
     user_id: userId,
     text,

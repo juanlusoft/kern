@@ -33,8 +33,8 @@ function buildAdapter() {
       identity_mappings: [
         {
           channel: 'telegram',
-          telegram_user_id: 'user-acme',
-          telegram_chat_id: 'chat-acme',
+          telegram_user_id: '146574793',
+          telegram_chat_id: '146574793',
           organization_id: 'org-acme',
           principal_id: 'human-001',
           installation_id: 'telegram-installation',
@@ -63,11 +63,11 @@ test('M9 keeps Telegram out of Core and remains offline/deterministic', () => {
       message: {
         message_id: 101,
         chat: {
-          id: 'chat-acme',
+          id: 146574793,
           type: 'private'
         },
         from: {
-          id: 'user-acme',
+          id: 146574793,
           username: 'acme-user',
           first_name: 'Acme',
           last_name: 'User'
@@ -86,6 +86,9 @@ test('M9 keeps Telegram out of Core and remains offline/deterministic', () => {
   assert.equal(result.status, 'sent');
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  assert.equal(result.inbound_message?.message_id, '101');
+  assert.equal(result.inbound_message?.chat_id, '146574793');
+  assert.equal(result.inbound_message?.user_id, '146574793');
   assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'estimate-123');
   assert.equal(JSON.stringify(result).includes('invented'), false);
   assert.equal(JSON.stringify(result).includes('telegram-secret-token'), false);

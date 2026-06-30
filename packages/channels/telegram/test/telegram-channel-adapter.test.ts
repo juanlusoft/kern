@@ -12,11 +12,11 @@ function buildUpdate(overrides: Partial<TelegramChannelUpdate> = {}): TelegramCh
     message: {
       message_id: 101,
       chat: {
-        id: 'chat-acme',
+        id: 146574793,
         type: 'private'
       },
       from: {
-        id: 'user-acme',
+        id: 146574793,
         username: 'acme-user',
         first_name: 'Acme',
         last_name: 'User'
@@ -56,6 +56,17 @@ function buildAdapter(options: Partial<TelegramChannelAdapterOptions> = {}) {
     identity_mappings: [
       {
         channel: 'telegram' as const,
+        telegram_user_id: '146574793',
+        telegram_chat_id: '146574793',
+        organization_id: 'org-acme',
+        principal_id: 'human-001',
+        installation_id: 'telegram-installation',
+        principal_type: 'human' as const,
+        active: true,
+        display_name: 'Acme Human'
+      },
+      {
+        channel: 'telegram' as const,
         telegram_user_id: 'user-acme',
         telegram_chat_id: 'chat-acme',
         organization_id: 'org-acme',
@@ -63,7 +74,18 @@ function buildAdapter(options: Partial<TelegramChannelAdapterOptions> = {}) {
         installation_id: 'telegram-installation',
         principal_type: 'human' as const,
         active: true,
-        display_name: 'Acme Human'
+        display_name: 'Acme Human Legacy'
+      },
+      {
+        channel: 'telegram' as const,
+        telegram_user_id: '146574794',
+        telegram_chat_id: '146574794',
+        organization_id: 'org-acme',
+        principal_id: 'human-001',
+        installation_id: 'telegram-installation',
+        principal_type: 'human' as const,
+        active: true,
+        display_name: 'Secondary Acme Human'
       },
       {
         channel: 'telegram' as const,
@@ -74,7 +96,7 @@ function buildAdapter(options: Partial<TelegramChannelAdapterOptions> = {}) {
         installation_id: 'telegram-installation',
         principal_type: 'human' as const,
         active: true,
-        display_name: 'Secondary Acme Human'
+        display_name: 'Secondary Acme Human Legacy'
       }
     ]
   };
@@ -101,11 +123,11 @@ test('Telegram adapter resolves Telegram identity and sends runtime-only respons
       message: {
         message_id: 102,
         chat: {
-          id: 'chat-foreign',
+          id: 146574794,
           type: 'private'
         },
         from: {
-          id: 'user-foreign',
+          id: 146574794,
           username: 'foreign-user',
           first_name: 'Foreign',
           last_name: 'Agent'
@@ -125,6 +147,9 @@ test('Telegram adapter resolves Telegram identity and sends runtime-only respons
   assert.equal(results.length, 2);
   assert.equal(results[0].status, 'sent');
   assert.equal(results[1].status, 'sent');
+  assert.equal(results[0].inbound_message?.message_id, '101');
+  assert.equal(results[0].inbound_message?.chat_id, '146574793');
+  assert.equal(results[0].inbound_message?.user_id, '146574793');
   assert.equal(results[0].organization_id, 'org-acme');
   assert.equal(results[0].principal_id, 'human-001');
   assert.equal(results[1].organization_id, 'org-acme');
