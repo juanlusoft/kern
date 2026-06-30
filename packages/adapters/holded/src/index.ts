@@ -145,7 +145,20 @@ function validateQuery(input: ResourceQuery): string | null {
   if (normalizeOptionalString(input.resource_type) !== 'estimate') return 'resource query invalid';
   const resource_id = normalizeOptionalString(input.resource_id);
   const customer_id = input.filters && typeof input.filters.customer_id === 'string' ? normalizeOptionalString(input.filters.customer_id) : null;
-  if (!resource_id && !customer_id) return 'resource query invalid';
+  const contact_id = input.filters && typeof input.filters.contact_id === 'string' ? normalizeOptionalString(input.filters.contact_id) : null;
+  const contact_name =
+    input.filters && typeof input.filters.contact_name === 'string'
+      ? normalizeOptionalString(input.filters.contact_name)
+      : input.filters && typeof input.filters.contactName === 'string'
+        ? normalizeOptionalString(input.filters.contactName)
+        : null;
+  const customer_name =
+    input.filters && typeof input.filters.customer_name === 'string'
+      ? normalizeOptionalString(input.filters.customer_name)
+      : input.filters && typeof input.filters.customerName === 'string'
+        ? normalizeOptionalString(input.filters.customerName)
+        : null;
+  if (!resource_id && !customer_id && !contact_id && !contact_name && !customer_name) return 'resource query invalid';
   return null;
 }
 
@@ -154,12 +167,7 @@ function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' {
 }
 
 function buildEndpoint(baseUrl: string, query: ResourceQuery): string {
-  const resource_id = normalizeOptionalString(query.resource_id);
-  const customer_id = query.filters && typeof query.filters.customer_id === 'string' ? normalizeOptionalString(query.filters.customer_id) : null;
-  if (resource_id) {
-    return `${baseUrl}/estimates/${encodeURIComponent(resource_id)}`;
-  }
-  return `${baseUrl}/estimates?customer_id=${encodeURIComponent(customer_id ?? '')}`;
+  return `${baseUrl}/api/invoicing/v1/documents/estimate`;
 }
 
 function collectFieldPaths(record: Record<string, unknown>): string[] {
@@ -172,41 +180,133 @@ function extractRecordId(record: Record<string, unknown>, fallback: string | nul
   return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : fallback ?? 'unknown';
 }
 
-function normalizePayload(payload: unknown, fallbackResourceId: string | null): { record: Record<string, unknown> | null; empty: boolean; record_id: string | null } {
+function normalizePayload(payload: unknown): { records: Record<string, unknown>[]; empty: boolean } {
   if (payload === null || payload === undefined) {
-    return { record: null, empty: true, record_id: fallbackResourceId };
+    return { records: [], empty: true };
   }
   if (Array.isArray(payload)) {
-    const first = payload.find(isRecord) ?? null;
-    return first
-      ? { record: first, empty: false, record_id: extractRecordId(first, fallbackResourceId) }
-      : { record: null, empty: payload.length === 0, record_id: fallbackResourceId };
+    const records = payload.filter(isRecord);
+    return {
+      records,
+      empty: payload.length === 0
+    };
   }
   if (!isRecord(payload)) {
-    return { record: null, empty: false, record_id: fallbackResourceId };
+    return { records: [], empty: false };
   }
   if (Array.isArray(payload.items)) {
-    const first = payload.items.find(isRecord) ?? null;
-    return first
-      ? { record: first, empty: false, record_id: extractRecordId(first, fallbackResourceId) }
-      : { record: null, empty: payload.items.length === 0, record_id: fallbackResourceId };
+    const records = payload.items.filter(isRecord);
+    return { records, empty: payload.items.length === 0 };
   }
   if (Array.isArray(payload.estimates)) {
-    const first = payload.estimates.find(isRecord) ?? null;
-    return first
-      ? { record: first, empty: false, record_id: extractRecordId(first, fallbackResourceId) }
-      : { record: null, empty: payload.estimates.length === 0, record_id: fallbackResourceId };
+    const records = payload.estimates.filter(isRecord);
+    return { records, empty: payload.estimates.length === 0 };
   }
   if (isRecord(payload.data)) {
-    return { record: payload.data, empty: Object.keys(payload.data).length === 0, record_id: extractRecordId(payload.data, fallbackResourceId) };
+    return { records: [payload.data], empty: Object.keys(payload.data).length === 0 };
   }
   if (isRecord(payload.estimate)) {
-    return { record: payload.estimate, empty: Object.keys(payload.estimate).length === 0, record_id: extractRecordId(payload.estimate, fallbackResourceId) };
+    return { records: [payload.estimate], empty: Object.keys(payload.estimate).length === 0 };
   }
   if (typeof payload.estimate_id === 'string' || typeof payload.id === 'string') {
-    return { record: payload, empty: Object.keys(payload).length === 0, record_id: extractRecordId(payload, fallbackResourceId) };
+    return { records: [payload], empty: Object.keys(payload).length === 0 };
   }
-  return { record: null, empty: false, record_id: fallbackResourceId };
+  return { records: [], empty: false };
+}
+
+function normalizeDateCandidate(record: Record<string, unknown>): number | null {
+  const candidates = [record.date, record.created_at, record.updated_at, record.issued_at, record.observed_at];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const parsed = Date.parse(candidate);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery): boolean {
+  const resource_id = normalizeOptionalString(query.resource_id);
+  if (resource_id) {
+    const candidate = extractRecordId(record, null);
+    return normalizeOptionalString(candidate) === resource_id;
+  }
+
+  const filters = query.filters && isRecord(query.filters) ? query.filters : null;
+  const customer_id = filters && typeof filters.customer_id === 'string' ? normalizeOptionalString(filters.customer_id) : null;
+  const contact_id = filters && typeof filters.contact_id === 'string' ? normalizeOptionalString(filters.contact_id) : null;
+  const contact_name =
+    filters && typeof filters.contact_name === 'string'
+      ? normalizeOptionalString(filters.contact_name)
+      : filters && typeof filters.contactName === 'string'
+        ? normalizeOptionalString(filters.contactName)
+        : null;
+  const customer_name =
+    filters && typeof filters.customer_name === 'string'
+      ? normalizeOptionalString(filters.customer_name)
+      : filters && typeof filters.customerName === 'string'
+        ? normalizeOptionalString(filters.customerName)
+        : null;
+
+  if (customer_id) {
+    const candidates = [
+      record.customer_id,
+      isRecord(record.customer) ? record.customer.id : null,
+      isRecord(record.customer) ? record.customer.customer_id : null
+    ];
+    return candidates.some((candidate) => normalizeOptionalString(candidate) === customer_id);
+  }
+
+  if (contact_id) {
+    const candidates = [
+      record.contact_id,
+      isRecord(record.contact) ? record.contact.id : null,
+      isRecord(record.contact) ? record.contact.contact_id : null
+    ];
+    return candidates.some((candidate) => normalizeOptionalString(candidate) === contact_id);
+  }
+
+  const lookupNames = [contact_name, customer_name].filter((candidate): candidate is string => Boolean(candidate));
+  if (lookupNames.length === 0) {
+    return false;
+  }
+
+  const candidateNames = [
+    record.contact_name,
+    record.customer_name,
+    isRecord(record.contact) ? record.contact.name : null,
+    isRecord(record.customer) ? record.customer.name : null
+  ]
+    .map((candidate) => normalizeOptionalString(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
+
+  return candidateNames.some((candidateName) =>
+    lookupNames.some((lookupName) => candidateName.toLowerCase() === lookupName.toLowerCase())
+  );
+}
+
+function selectMatchingRecord(records: Record<string, unknown>[], query: ResourceQuery): Record<string, unknown> | null {
+  const matches = records.filter((record) => recordMatchesQuery(record, query));
+  if (matches.length === 0) {
+    return null;
+  }
+  const ranked = matches
+    .map((record) => ({ record, timestamp: normalizeDateCandidate(record) }))
+    .sort((left, right) => {
+      if (left.timestamp === null && right.timestamp === null) {
+        return 0;
+      }
+      if (left.timestamp === null) {
+        return 1;
+      }
+      if (right.timestamp === null) {
+        return -1;
+      }
+      return right.timestamp - left.timestamp;
+    });
+  return ranked[0]?.record ?? null;
 }
 
 function createSourceEvidenceForRecord(input: {
@@ -475,12 +575,15 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     const endpoint = buildEndpoint(this.baseUrl, normalized);
     let response: HoldedFetchResponse;
     try {
+      const headers: Record<string, string> = {
+        Accept: 'application/json'
+      };
+      if (this.apiKey) {
+        headers.key = this.apiKey;
+      }
       response = this.fetch(endpoint, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          Accept: 'application/json'
-        }
+        headers
       });
     } catch {
       return cloneResourceResult(
@@ -497,19 +600,6 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     }
 
     const responseText = readResponseText(response);
-    if (response.status === 404 || response.status === 204) {
-      return cloneResourceResult(
-        createTerminalResult({
-          query: normalized,
-          adapter_id: this.adapter_id,
-          status: 'not_found',
-          reason: 'Holded estimate not found',
-          authorization,
-          resource_id,
-          produced_by_adapter: true
-        })
-      );
-    }
     if (response.status === 401 || response.status === 403) {
       return cloneResourceResult(
         createTerminalResult({
@@ -517,6 +607,19 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
           adapter_id: this.adapter_id,
           status: 'denied',
           reason: 'Holded authorization denied',
+          authorization,
+          resource_id,
+          produced_by_adapter: true
+        })
+      );
+    }
+    if (response.status === 404) {
+      return cloneResourceResult(
+        createTerminalResult({
+          query: normalized,
+          adapter_id: this.adapter_id,
+          status: 'error',
+          reason: 'Holded endpoint not available',
           authorization,
           resource_id,
           produced_by_adapter: true
@@ -552,8 +655,22 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       );
     }
 
-    const payload = normalizePayload(parsed.value, resource_id);
+    const payload = normalizePayload(parsed.value);
     if (payload.empty) {
+      return cloneResourceResult(
+        createTerminalResult({
+          query: normalized,
+          adapter_id: this.adapter_id,
+          status: 'not_found',
+          reason: 'Holded estimate list empty',
+          authorization,
+          resource_id,
+          produced_by_adapter: true
+        })
+      );
+    }
+    const record = selectMatchingRecord(payload.records, normalized);
+    if (!record) {
       return cloneResourceResult(
         createTerminalResult({
           query: normalized,
@@ -566,27 +683,15 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
         })
       );
     }
-    if (!payload.record) {
-      return cloneResourceResult(
-        createTerminalResult({
-          query: normalized,
-          adapter_id: this.adapter_id,
-          status: 'error',
-          reason: 'Holded response payload missing estimate record',
-          authorization,
-          resource_id,
-          produced_by_adapter: true
-        })
-      );
-    }
+    const record_id = extractRecordId(record, resource_id);
 
     const found = buildFoundResult({
       query: normalized,
       adapter_id: this.adapter_id,
       authorization,
       resource_id,
-      record: payload.record,
-      record_id: payload.record_id ?? resource_id ?? 'unknown',
+      record,
+      record_id,
       observed_at: this.now().toISOString()
     });
     return cloneResourceResult(found);

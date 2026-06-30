@@ -11,6 +11,7 @@ import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
 import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
 import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
+import { createMockResourceReadCapability } from '../../capabilities/src/index';
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
 import {
   createNodeFetchHoldedTransport,
@@ -30,6 +31,10 @@ import {
   type RuntimePrincipalConfig,
   RuntimeConfigError
 } from './config';
+import {
+  resolveIdentityContext,
+  resolveOrganizationContext
+} from '../../identity/src/index';
 
 const REQUIRED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
 const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
@@ -226,6 +231,122 @@ function buildHoldedInstallation(config: RuntimeInstallationConfig) {
   };
 }
 
+function normalizeRuntimeHint(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function matchesRuntimeHint(hint: string | null | undefined, candidates: string[]): boolean {
+  const normalizedHint = normalizeRuntimeHint(hint);
+  if (!normalizedHint) {
+    return false;
+  }
+  return candidates.some((candidate) => normalizeRuntimeHint(candidate) === normalizedHint);
+}
+
+function buildOrganizationResolver(config: RuntimeInstallationConfig, now: () => Date) {
+  return (request: Parameters<typeof resolveOrganizationContext>[0]) => {
+    const candidateHints = [config.organization.organization_id, config.organization.name];
+    if (!matchesRuntimeHint(request.organization_hint ?? null, candidateHints)) {
+      return {
+        organization_id: null,
+        organization_state: 'failed_closed' as const,
+        source: 'installation_config',
+        resolved_at: now().toISOString(),
+        isolation_boundary: null,
+        revocation_version: null,
+        resolution_state: 'failed_closed' as const,
+        failure_reason: 'organization could not be resolved from installation config'
+      };
+    }
+
+    return {
+      organization_id: config.organization.organization_id,
+      organization_state: config.organization.active ? ('active' as const) : ('inactive' as const),
+      source: 'installation_config',
+      resolved_at: now().toISOString(),
+      isolation_boundary: config.organization.isolation_boundary,
+      revocation_version: 1,
+      resolution_state: 'resolved' as const,
+      failure_reason: config.organization.active ? null : 'organization is inactive'
+    };
+  };
+}
+
+function buildIdentityResolver(config: RuntimeInstallationConfig, now: () => Date) {
+  return (
+    request: Parameters<typeof resolveIdentityContext>[0],
+    organizationContext: Parameters<typeof resolveIdentityContext>[1]
+  ) => {
+    if (
+      organizationContext.resolution_state !== 'resolved' ||
+      !organizationContext.organization_id ||
+      organizationContext.organization_state !== 'active'
+    ) {
+      return {
+        principal_id: null,
+        principal_type: null,
+        delegated_identity: null,
+        scopes: [],
+        auth_method: null,
+        resolved_at: now().toISOString(),
+        revocation_version: null,
+        resolution_state: 'failed_closed' as const,
+        failure_reason: 'organization could not be resolved'
+      };
+    }
+
+    const principal = config.principals.find((candidate) =>
+      matchesRuntimeHint(request.principal_hint ?? null, [candidate.principal_id, candidate.name])
+    );
+    if (!principal || !principal.active) {
+      return {
+        principal_id: null,
+        principal_type: null,
+        delegated_identity: null,
+        scopes: [],
+        auth_method: null,
+        resolved_at: now().toISOString(),
+        revocation_version: null,
+        resolution_state: 'failed_closed' as const,
+        failure_reason: 'principal could not be resolved from installation config'
+      };
+    }
+
+    const mapping = config.identity_mappings.find(
+      (candidate) =>
+        candidate.active &&
+        candidate.organization_id === organizationContext.organization_id &&
+        candidate.principal_id === principal.principal_id &&
+        matchesRuntimeHint(request.principal_hint ?? null, [candidate.principal_id, candidate.display_name ?? ''])
+    );
+    if (!mapping) {
+      return {
+        principal_id: null,
+        principal_type: null,
+        delegated_identity: null,
+        scopes: [],
+        auth_method: null,
+        resolved_at: now().toISOString(),
+        revocation_version: null,
+        resolution_state: 'failed_closed' as const,
+        failure_reason: 'identity mapping could not be resolved from installation config'
+      };
+    }
+
+    return {
+      principal_id: principal.principal_id,
+      principal_type: principal.principal_type,
+      delegated_identity: null,
+      scopes: [...principal.scopes],
+      auth_method: 'installation-config',
+      resolved_at: now().toISOString(),
+      revocation_version: 1,
+      resolution_state: 'resolved' as const,
+      failure_reason: null
+    };
+  };
+}
+
 function buildOrchestrationBoundary(options: {
   config: RuntimeInstallationConfig;
   secrets: ResolvedRuntimeSecrets;
@@ -233,16 +354,22 @@ function buildOrchestrationBoundary(options: {
   holdedFetch: HoldedFetch;
   now: () => Date;
 }) {
+  const externalReadAdapter = createHoldedReadAdapter({
+    apiKey: options.secrets.HOLDED_API_KEY,
+    baseUrl: options.config.runtime_options.holded_base_url ?? undefined,
+    fetch: options.holdedFetch,
+    now: options.now,
+    installation: buildHoldedInstallation(options.config)
+  });
   const workflowRuntime = new InMemoryGovernedWorkflowRuntime({
     now: options.now,
-    externalReadAdapter: createHoldedReadAdapter({
-      apiKey: options.secrets.HOLDED_API_KEY,
-      baseUrl: options.config.runtime_options.holded_base_url ?? undefined,
-      fetch: options.holdedFetch,
-      now: options.now,
-      installation: buildHoldedInstallation(options.config)
-    })
+    resolveOrganizationContext: buildOrganizationResolver(options.config, options.now),
+    resolveIdentityContext: buildIdentityResolver(options.config, options.now),
+    externalReadAdapter
   });
+  workflowRuntime.registerCapability(
+    createMockResourceReadCapability(externalReadAdapter, {}, options.config.organization.organization_id)
+  );
 
   const orchestrator = createQwenOrchestrator({
     baseUrl: options.secrets.KERN_MODEL_BASE_URL,
@@ -260,7 +387,7 @@ function buildOrchestrationBoundary(options: {
     workflowRuntime,
     orchestrator,
     installationCapabilities: {
-      [options.config.installation_id]: ['mock.resource.read']
+      [options.config.installation_id]: [...options.config.active_capabilities]
     }
   });
 

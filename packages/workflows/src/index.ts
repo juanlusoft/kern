@@ -458,6 +458,8 @@ export interface GovernedWorkflowRuntimeOptions {
   capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
   externalReadAdapter?: ExternalReadAdapter;
+  resolveOrganizationContext?: typeof resolveOrganizationContext;
+  resolveIdentityContext?: typeof resolveIdentityContext;
   now?: () => Date;
 }
 
@@ -467,6 +469,8 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly capabilityRuntime: InMemoryCapabilityRuntime;
   private readonly turnRuntime: InMemoryTurnRuntime;
   private readonly externalReadAdapter: ExternalReadAdapter;
+  private readonly resolveOrganizationContext: typeof resolveOrganizationContext;
+  private readonly resolveIdentityContext: typeof resolveIdentityContext;
   private readonly now: () => Date;
   private readonly workflowRecords = new Map<string, GovernedWorkflowResult>();
 
@@ -474,6 +478,8 @@ export class InMemoryGovernedWorkflowRuntime {
     this.evidenceLedger = options.evidenceLedger ?? new InMemoryEvidenceLedger();
     this.bindingStore = options.bindingStore ?? new InMemoryDecisionBindingStore();
     this.externalReadAdapter = options.externalReadAdapter ?? createMockExternalReadAdapter({ now: options.now });
+    this.resolveOrganizationContext = options.resolveOrganizationContext ?? resolveOrganizationContext;
+    this.resolveIdentityContext = options.resolveIdentityContext ?? resolveIdentityContext;
     this.capabilityRuntime =
       options.capabilityRuntime ?? new InMemoryCapabilityRuntime({ evidenceLedger: this.evidenceLedger, bindingStore: this.bindingStore, now: options.now });
     this.turnRuntime = options.turnRuntime ?? new InMemoryTurnRuntime({ evidenceLedger: this.evidenceLedger, now: options.now });
@@ -574,7 +580,7 @@ export class InMemoryGovernedWorkflowRuntime {
       details: { estimate_id: input.estimate_id }
     }));
 
-    const organizationContext = resolveOrganizationContext(coreRequest);
+    const organizationContext = this.resolveOrganizationContext(coreRequest);
     if (organizationContext.resolution_state !== 'resolved' || !organizationContext.organization_id) {
       const deniedEvidence = this.appendWorkflowEvidence({
         organization_id: input.organization_hint?.trim() || 'unknown',
@@ -619,7 +625,7 @@ export class InMemoryGovernedWorkflowRuntime {
       });
     }
 
-    const identityContext = resolveIdentityContext(coreRequest, organizationContext);
+    const identityContext = this.resolveIdentityContext(coreRequest, organizationContext);
     const governedResourceQuery = createMockResourceQuery({
       workflow_id: input.workflow_id,
       correlation_id,
@@ -1102,7 +1108,7 @@ export class InMemoryGovernedWorkflowRuntime {
       details: { to: input.to, subject: input.subject }
     }));
 
-    const organizationContext = resolveOrganizationContext(coreRequest);
+    const organizationContext = this.resolveOrganizationContext(coreRequest);
     if (organizationContext.resolution_state !== 'resolved' || !organizationContext.organization_id) {
       const response = createRuntimeResponse({
         kind: workflowKind,
@@ -1127,7 +1133,7 @@ export class InMemoryGovernedWorkflowRuntime {
       });
     }
 
-    const identityContext = resolveIdentityContext(coreRequest, organizationContext);
+    const identityContext = this.resolveIdentityContext(coreRequest, organizationContext);
     if (identityContext.resolution_state !== 'resolved' || !identityContext.principal_id) {
       const response = createRuntimeResponse({
         kind: workflowKind,

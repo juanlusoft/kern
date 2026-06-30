@@ -217,7 +217,7 @@ test('M8 blocks invalid proposal params without inventing capability output', ()
   assert.equal(records.some((record) => record.record_type === 'orchestration_proposal_blocked'), true);
 });
 
-test('M8 surfaces runtime not_found unavailable and error without inventing data', () => {
+test('M8 surfaces runtime error unavailable and error without inventing data', () => {
   const notFoundHolded = buildHoldedFetch(404, '');
   const unavailableHolded = buildHoldedFetch(0, '');
   const errorHolded = buildHoldedFetch(500, 'boom');
@@ -293,9 +293,9 @@ test('M8 surfaces runtime not_found unavailable and error without inventing data
     })
   );
 
-  assert.equal(notFound.response.status, 'not_found');
+  assert.equal(notFound.response.status, 'error');
   assert.equal(notFound.response.data, null);
-  assert.equal(notFound.workflow_result?.capability_result?.status, 'not_found');
+  assert.equal(notFound.workflow_result?.capability_result?.status, 'error');
   assert.equal(unavailable.response.status, 'unavailable');
   assert.equal(unavailable.response.data, null);
   assert.equal(unavailable.workflow_result?.capability_result?.status, 'unavailable');

@@ -41,6 +41,7 @@ export interface RuntimeInstallationConfig {
   principals: RuntimePrincipalConfig[];
   identity_mappings: ChannelIdentityMapping[];
   active_modules: RuntimeModuleKey[];
+  active_capabilities: string[];
   secret_refs: RuntimeSecretRefs;
   runtime_options: RuntimeOptions;
 }
@@ -179,6 +180,7 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
       }
     ],
     active_modules: ['telegram-channel', 'qwen-orchestrator', 'holded-read'],
+    active_capabilities: ['mock.resource.read'],
     secret_refs: {
       HOLDED_API_KEY: 'HOLDED_API_KEY',
       KERN_TELEGRAM_BOT_TOKEN: 'KERN_TELEGRAM_BOT_TOKEN',
@@ -367,6 +369,11 @@ export function validateInstallationConfig(raw: unknown): RuntimeInstallationCon
   const active_modules = active_modules_raw.map((moduleKey, index) =>
     assertSupportedModule(moduleKey, `active_modules[${index}]`)
   );
+  const active_capabilities_raw = normalizeStringArray(raw.active_capabilities);
+  if (!active_capabilities_raw) {
+    fail('active_capabilities', 'active_capabilities must be an array');
+  }
+  const active_capabilities = active_capabilities_raw;
   const secret_refs = normalizeSecretRefs(raw.secret_refs);
   const runtime_options = normalizeRuntimeOptions(raw.runtime_options);
   return {
@@ -375,6 +382,7 @@ export function validateInstallationConfig(raw: unknown): RuntimeInstallationCon
     principals,
     identity_mappings,
     active_modules,
+    active_capabilities,
     secret_refs,
     runtime_options
   };

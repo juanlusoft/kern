@@ -25,6 +25,7 @@ test('runtime config sample validates and resolves secrets', () => {
 
   assert.equal(loaded.config.installation_id, 'paco-print-installation');
   assert.deepEqual(loaded.config.active_modules, ['telegram-channel', 'qwen-orchestrator', 'holded-read']);
+  assert.deepEqual(loaded.config.active_capabilities, ['mock.resource.read']);
   assert.equal(loaded.config.organization.organization_id, 'org-pacoprint');
   assert.equal(loaded.secrets.HOLDED_API_KEY, 'holded-secret');
   assert.equal(loaded.secrets.KERN_TELEGRAM_BOT_TOKEN, 'telegram-secret');

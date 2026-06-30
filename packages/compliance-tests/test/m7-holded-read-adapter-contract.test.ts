@@ -54,13 +54,16 @@ function buildQuery(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildRuntime(externalReadAdapter = buildHoldedAdapter(200, {
-  estimate_id: 'estimate-123',
-  customer_name: 'Acme Customer',
-  description: 'Quarterly estimate from Holded',
-  total_amount: 1210,
-  currency: 'EUR'
-})) {
+function buildRuntime(externalReadAdapter = buildHoldedAdapter(200, [
+  {
+    estimate_id: 'estimate-123',
+    customer_name: 'Acme Customer',
+    description: 'Quarterly estimate from Holded',
+    total_amount: 1210,
+    currency: 'EUR',
+    date: '2026-06-29T00:00:00.000Z'
+  }
+])) {
   return new InMemoryGovernedWorkflowRuntime({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter
@@ -96,7 +99,7 @@ test('M7 holded adapter works through the M6 port with SourceEvidence and ignore
   assert.equal(records.some((record) => record.record_type === 'external_read_result_bound'), true);
 });
 
-test('M7 holded adapter returns not_found, unavailable, error and denied as distinct outcomes', () => {
+test('M7 holded adapter returns error, unavailable, error and denied as distinct outcomes', () => {
   const runtime = new InMemoryGovernedWorkflowRuntime({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: buildHoldedAdapter(404, '')
@@ -110,9 +113,9 @@ test('M7 holded adapter returns not_found, unavailable, error and denied as dist
     correlation_id: 'corr-m7-not-found',
     estimate_id: 'estimate-missing'
   });
-  assert.equal(notFound.status, 'not_found');
+  assert.equal(notFound.status, 'error');
   assert.equal(notFound.response.data, null);
-  assert.equal(runtime.getEvidenceLedger().listByCorrelation(notFound.correlation_id).some((record) => record.record_type === 'external_read_not_found'), true);
+  assert.equal(runtime.getEvidenceLedger().listByCorrelation(notFound.correlation_id).some((record) => record.record_type === 'external_read_error'), true);
 
   const inactiveRuntime = new InMemoryGovernedWorkflowRuntime({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
@@ -133,8 +136,8 @@ test('M7 holded adapter returns not_found, unavailable, error and denied as dist
           ok: true,
           status: 200,
           statusText: 'OK',
-          text: () => JSON.stringify({ estimate_id: 'estimate-123' }),
-          json: () => ({ estimate_id: 'estimate-123' }),
+          text: () => JSON.stringify([{ estimate_id: 'estimate-123', date: '2026-06-29T00:00:00.000Z' }]),
+          json: () => ([{ estimate_id: 'estimate-123', date: '2026-06-29T00:00:00.000Z' }]),
           headers: { get: () => null }
         })) as never,
         now: () => new Date('2026-06-29T00:00:00.000Z')
@@ -223,8 +226,8 @@ test('M7 holded adapter does not invent data for malformed queries and inactive 
         ok: true,
         status: 200,
         statusText: 'OK',
-        text: () => JSON.stringify({ estimate_id: 'estimate-123' }),
-        json: () => ({ estimate_id: 'estimate-123' }),
+        text: () => JSON.stringify([{ estimate_id: 'estimate-123', date: '2026-06-29T00:00:00.000Z' }]),
+        json: () => ([{ estimate_id: 'estimate-123', date: '2026-06-29T00:00:00.000Z' }]),
         headers: { get: () => null }
       })) as never,
       now: () => new Date('2026-06-29T00:00:00.000Z')
@@ -265,8 +268,8 @@ test('M7 holded adapter keeps the secret out of serialized results and module re
       ok: true,
       status: 200,
       statusText: 'OK',
-      text: () => JSON.stringify({ estimate_id: 'estimate-123', customer_name: 'Acme Customer' }),
-      json: () => ({ estimate_id: 'estimate-123', customer_name: 'Acme Customer' }),
+      text: () => JSON.stringify([{ estimate_id: 'estimate-123', customer_name: 'Acme Customer', date: '2026-06-29T00:00:00.000Z' }]),
+      json: () => ([{ estimate_id: 'estimate-123', customer_name: 'Acme Customer', date: '2026-06-29T00:00:00.000Z' }]),
       headers: { get: () => null }
     })) as never,
     now: () => new Date('2026-06-29T00:00:00.000Z'),

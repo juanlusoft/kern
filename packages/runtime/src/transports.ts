@@ -122,7 +122,7 @@ import { readFileSync } from 'node:fs';
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const headers = { 'content-type': 'application/json' };
 if (input.apiKey) {
-  headers.authorization = \`Bearer \${input.apiKey}\`;
+  headers.key = input.apiKey;
 }
 
 const controller = new AbortController();
