@@ -54,13 +54,16 @@ test('Holded adapter returns found with SourceEvidence and hides API key from ou
   const sentinel = 'secret_test_token_must_not_leak';
   const { fetchStub, calls } = createFetchStub({
     status: 200,
-    body: {
-      estimate_id: 'estimate-123',
-      customer_id: 'customer-001',
-      customer_name: 'Acme Customer',
-      total_amount: 1210,
-      currency: 'EUR'
-    }
+    body: [
+      {
+        estimate_id: 'estimate-123',
+        customer_id: 'customer-001',
+        customer_name: 'Acme Customer',
+        total_amount: 1210,
+        currency: 'EUR',
+        date: '2026-06-29T00:00:00.000Z'
+      }
+    ]
   });
   const adapter = createHoldedReadAdapter({
     apiKey: sentinel,
@@ -77,7 +80,8 @@ test('Holded adapter returns found with SourceEvidence and hides API key from ou
   const serialized = JSON.stringify(result);
 
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /holded\.example\.test\/estimates\/estimate-123/);
+  assert.match(calls[0].url, /holded\.example\.test\/api\/invoicing\/v1\/documents\/estimate/);
+  assert.equal((calls[0].init?.headers as Record<string, string> | undefined)?.key, sentinel);
   assert.equal(result.status, 'found');
   assert.equal(result.produced_by_adapter, true);
   assert.equal(result.data?.estimate_id, 'estimate-123');
@@ -93,17 +97,24 @@ test('Holded adapter returns found with SourceEvidence and hides API key from ou
 test('Holded adapter supports customer lookup when the query fits ResourceQuery naturally', () => {
   const { fetchStub } = createFetchStub({
     status: 200,
-    body: {
-      items: [
-        {
-          estimate_id: 'estimate-456',
-          customer_id: 'customer-001',
-          customer_name: 'Acme Customer',
-          total_amount: 2100,
-          currency: 'EUR'
-        }
-      ]
-    }
+    body: [
+      {
+        estimate_id: 'estimate-456-old',
+        customer_id: 'customer-001',
+        customer_name: 'Acme Customer',
+        total_amount: 2100,
+        currency: 'EUR',
+        date: '2026-06-28T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-456',
+        customer_id: 'customer-001',
+        customer_name: 'Acme Customer',
+        total_amount: 2200,
+        currency: 'EUR',
+        date: '2026-06-29T00:00:00.000Z'
+      }
+    ]
   });
   const adapter = createHoldedReadAdapter({
     apiKey: 'token',
@@ -128,7 +139,52 @@ test('Holded adapter supports customer lookup when the query fits ResourceQuery 
   assert.equal(result.data?.customer_id, 'customer-001');
 });
 
-test('Holded adapter distinguishes not_found unavailable error denied and blocked', () => {
+test('Holded adapter supports contact lookup and chooses the latest estimate by date', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-contact-old',
+        contact_id: 'contact-001',
+        contact_name: 'Acme Contact',
+        total_amount: 1000,
+        currency: 'EUR',
+        date: '2026-06-28T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-contact-new',
+        contact_id: 'contact-001',
+        contact_name: 'Acme Contact',
+        total_amount: 1100,
+        currency: 'EUR',
+        date: '2026-06-29T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { contact_name: 'Acme Contact' }
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-contact-new');
+  assert.equal(result.data?.contact_name, 'Acme Contact');
+});
+
+test('Holded adapter distinguishes error unavailable error denied and blocked', () => {
   const notFound = createHoldedReadAdapter({
     apiKey: 'token',
     fetch: () => ({
@@ -194,7 +250,7 @@ test('Holded adapter distinguishes not_found unavailable error denied and blocke
     })
   );
 
-  assert.equal(notFoundResult.status, 'not_found');
+  assert.equal(notFoundResult.status, 'error');
   assert.equal(unavailableResult.status, 'unavailable');
   assert.equal(errorResult.status, 'error');
   assert.equal(blockedResult.status, 'blocked');
@@ -203,10 +259,13 @@ test('Holded adapter distinguishes not_found unavailable error denied and blocke
 test('Holded adapter rejects payloads without source evidence and caller/model claims are ignored', () => {
   const { fetchStub } = createFetchStub({
     status: 200,
-    body: {
-      estimate_id: 'estimate-123',
-      customer_name: 'Acme Customer'
-    }
+    body: [
+      {
+        estimate_id: 'estimate-123',
+        customer_name: 'Acme Customer',
+        date: '2026-06-29T00:00:00.000Z'
+      }
+    ]
   });
   const adapter = createHoldedReadAdapter({
     apiKey: 'token',
@@ -306,8 +365,8 @@ test('Holded adapter keeps the secret out of serialized results', () => {
       ok: true,
       status: 200,
       statusText: 'OK',
-      text: () => JSON.stringify({ estimate_id: 'estimate-123', customer_name: 'Acme Customer' }),
-      json: () => ({ estimate_id: 'estimate-123', customer_name: 'Acme Customer' }),
+      text: () => JSON.stringify([{ estimate_id: 'estimate-123', customer_name: 'Acme Customer', date: '2026-06-29T00:00:00.000Z' }]),
+      json: () => ([{ estimate_id: 'estimate-123', customer_name: 'Acme Customer', date: '2026-06-29T00:00:00.000Z' }]),
       headers: { get: () => null }
     }),
     now: () => new Date('2026-06-29T00:00:00.000Z'),

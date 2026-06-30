@@ -150,7 +150,7 @@ test('M8 capability inactive in the installation fails closed', () => {
   assert.equal(records.some((record) => record.record_type === 'orchestration_proposal_denied'), true);
 });
 
-test('M8 returns not_found unavailable and error without inventing data', () => {
+test('M8 returns error unavailable and error without inventing data', () => {
   const notFound = buildBoundary(404, '');
   const unavailable = buildBoundary(0, '');
   const error = buildBoundary(500, 'boom');
@@ -174,9 +174,9 @@ test('M8 returns not_found unavailable and error without inventing data', () => 
     })
   );
 
-  assert.equal(notFoundOutcome.response.status, 'not_found');
+  assert.equal(notFoundOutcome.response.status, 'error');
   assert.equal(notFoundOutcome.response.data, null);
-  assert.equal(notFoundOutcome.workflow_result?.capability_result?.status, 'not_found');
+  assert.equal(notFoundOutcome.workflow_result?.capability_result?.status, 'error');
   assert.equal(unavailableOutcome.response.status, 'unavailable');
   assert.equal(unavailableOutcome.response.data, null);
   assert.equal(unavailableOutcome.workflow_result?.capability_result?.status, 'unavailable');

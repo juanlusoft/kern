@@ -18,20 +18,27 @@ function buildEnv(): NodeJS.ProcessEnv {
 
 function buildInstallationConfig(): RuntimeInstallationConfig {
   return {
-    installation_id: 'install-acme',
+    installation_id: 'install-pacoprint-live-test',
     organization: {
-      organization_id: 'org-acme',
-      name: 'Acme',
+      organization_id: 'org-pacoprint-live-test',
+      name: 'PacoPrint Live Test',
       active: true,
-      isolation_boundary: 'Acme only'
+      isolation_boundary: 'PacoPrint live only'
     },
     principals: [
       {
-        principal_id: 'human-001',
-        name: 'Human One',
+        principal_id: 'principal-gema-live-test',
+        name: 'Gema Live Test',
         principal_type: 'human',
         active: true,
-        scopes: ['read:knowledge', 'read:estimate']
+        scopes: ['request:governed', 'read:knowledge', 'read:estimate']
+      },
+      {
+        principal_id: 'principal-juan-live-test',
+        name: 'Juan Live Test',
+        principal_type: 'human',
+        active: true,
+        scopes: ['request:governed']
       }
     ],
     identity_mappings: [
@@ -39,15 +46,16 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
         channel: 'telegram',
         telegram_user_id: '146574793',
         telegram_chat_id: '146574793',
-        organization_id: 'org-acme',
-        principal_id: 'human-001',
-        installation_id: 'install-acme',
+        organization_id: 'org-pacoprint-live-test',
+        principal_id: 'principal-gema-live-test',
+        installation_id: 'install-pacoprint-live-test',
         principal_type: 'human',
         active: true,
-        display_name: 'Gema'
+        display_name: 'Gema Live Test'
       }
     ],
     active_modules: ['telegram-channel', 'qwen-orchestrator', 'holded-read'],
+    active_capabilities: ['mock.resource.read'],
     secret_refs: {
       HOLDED_API_KEY: 'HOLDED_API_KEY',
       KERN_TELEGRAM_BOT_TOKEN: 'KERN_TELEGRAM_BOT_TOKEN',
@@ -69,24 +77,16 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
 
 function buildHoldedFetch(): HoldedFetch {
   return (_url: string, _init?: RequestInit): HoldedFetchResponse => {
-    const body = {
-      estimate_id: 'estimate-123',
-      customer_id: 'customer-001',
-      customer_name: 'Acme Customer',
-      total_amount: 1210,
-      currency: 'EUR',
-      source_evidence: [
-        {
-          source_id: 'holded-source-1',
-          source_system: 'holded',
-          resource_id: 'estimate-123',
-          record_id: 'estimate-123',
-          field_path: 'estimate_id',
-          observed_at: '2026-06-30T00:00:00.000Z',
-          correlation_id: 'runtime:paco-print-installation:2'
-        }
-      ]
-    };
+    const body = [
+      {
+        estimate_id: 'estimate-123',
+        customer_id: 'customer-001',
+        customer_name: 'Acme Customer',
+        total_amount: 1210,
+        currency: 'EUR',
+        date: '2026-06-30T00:00:00.000Z'
+      }
+    ];
     return {
       ok: true,
       status: 200,
@@ -134,6 +134,9 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
 
 test('M11 runtime slice keeps installation config, wiring and evidence isolated and fail-closed', () => {
   const config = buildInstallationConfig();
+  const serializedConfig = JSON.stringify(config);
+  assert.equal(serializedConfig.includes('org-acme'), false);
+  assert.equal(serializedConfig.includes('human-001'), false);
   const telegramTransport = new InMemoryTelegramTransport();
   telegramTransport.seedUpdates([
     {
@@ -183,6 +186,7 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.inbound_message?.message_id, '200');
   assert.equal(result.inbound_message?.chat_id, '146574793');
   assert.equal(result.inbound_message?.user_id, '146574793');
+  assert.equal(result.orchestration_outcome?.organization_id, 'org-pacoprint-live-test');
   assert.equal(JSON.stringify(result).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(result).includes('holded-secret'), false);
   assert.equal(
@@ -192,10 +196,104 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(
     runtime.orchestrationBoundary
       .getEvidenceLedger()
-      .listByCorrelation('telegram:install-acme:146574793:200')
+      .listByCorrelation('telegram:install-pacoprint-live-test:146574793:200')
       .some((record) => record.record_type === 'workflow_response_created'),
     true
   );
+});
+
+test('M11 runtime slice fails closed when live-like organization, principal, scope or capability is removed', () => {
+  const baseConfig = buildInstallationConfig();
+  const variants: Array<{ name: string; config: RuntimeInstallationConfig }> = [
+    {
+      name: 'organization inactive',
+      config: {
+        ...structuredClone(baseConfig),
+        organization: {
+          ...baseConfig.organization,
+          active: false
+        }
+      } satisfies RuntimeInstallationConfig
+    },
+    {
+      name: 'principal removed',
+      config: {
+        ...structuredClone(baseConfig),
+        principals: []
+      } satisfies RuntimeInstallationConfig
+    },
+    {
+      name: 'principal scope removed',
+      config: {
+        ...structuredClone(baseConfig),
+        principals: baseConfig.principals.map((principal) =>
+          principal.principal_id === 'principal-gema-live-test'
+            ? {
+                ...principal,
+                scopes: []
+              }
+            : principal
+        )
+      } satisfies RuntimeInstallationConfig
+    },
+    {
+      name: 'capability removed',
+      config: {
+        ...structuredClone(baseConfig),
+        active_capabilities: []
+      } satisfies RuntimeInstallationConfig
+    }
+  ];
+
+  for (const variant of variants) {
+    const telegramTransport = new InMemoryTelegramTransport();
+    telegramTransport.seedUpdates([
+      {
+        update_id: 2,
+        message: {
+          message_id: 200,
+          chat: {
+            id: 146574793,
+            type: 'private'
+          },
+          from: {
+            id: 146574793,
+            username: 'gema',
+            first_name: 'Gema',
+            last_name: 'Print'
+          },
+          text: 'Necesito el presupuesto estimate-123 del cliente customer-001',
+          date: 1_751_472_000,
+          raw: null
+        },
+        raw: null
+      }
+    ]);
+
+    const runtimeResult = startInstallationRuntime({
+      rawConfig: variant.config,
+      env: buildEnv(),
+      telegramTransport,
+      qwenTransport: buildQwenTransport(),
+      holdedFetch: buildHoldedFetch()
+    });
+
+    assert.equal(runtimeResult.status, 'started', `${variant.name} should start fail-closed, not crash`);
+    assert.ok(runtimeResult.runtime, `${variant.name} should still produce a runtime`);
+    const [result] = runtimeResult.runtime.pollOnce();
+    assert.ok(result, `${variant.name} should produce a channel result`);
+    assert.equal(result.inbound_message?.message_id, '200');
+    assert.equal(JSON.stringify(variant.config).includes('org-acme'), false);
+    assert.equal(JSON.stringify(variant.config).includes('human-001'), false);
+    if (variant.name === 'organization inactive') {
+      assert.equal(result.status, 'blocked');
+      assert.equal(result.orchestration_outcome, null);
+    } else {
+      assert.equal(result.status, 'sent');
+      assert.equal(result.orchestration_outcome?.response.status, 'denied');
+      assert.equal(result.orchestration_outcome?.response.response_source, 'workflow_blocked');
+    }
+  }
 });
 
 test('M11 runtime slice blocks when a required module is missing', () => {
