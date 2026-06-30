@@ -1,0 +1,851 @@
+import { spawnSync } from 'node:child_process';
+import {
+  createDeterministicId,
+  createEvidenceRecord,
+  normalizeCorrelationId,
+  type EvidenceRecord,
+  type OrchestratorPort,
+  type OrchestrationOutcome,
+  type OrchestrationProposal,
+  type OrchestrationRequest,
+  type OrchestrationResponse,
+  type OrchestrationStatus,
+  type OrchestrationValidationResult
+} from '../../../contracts/src/index';
+import { InMemoryEvidenceLedger } from '../../../evidence/src/index';
+
+export type QwenParameterType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
+
+export interface QwenParameterSchemaProperty {
+  type: QwenParameterType;
+  description?: string;
+  enum?: string[];
+}
+
+export interface QwenParameterSchema {
+  type: 'object';
+  description?: string;
+  required?: string[];
+  additionalProperties?: boolean;
+  properties?: Record<string, QwenParameterSchemaProperty>;
+}
+
+export interface QwenToolDefinition {
+  capability_key: string;
+  description: string;
+  parameters_schema: QwenParameterSchema;
+}
+
+export interface QwenChatTool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: QwenParameterSchema;
+  };
+}
+
+export interface QwenChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | null;
+  tool_calls?: QwenChatToolCall[] | null;
+}
+
+export interface QwenChatToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface QwenChatCompletionChoice {
+  index: number;
+  message: QwenChatMessage;
+  finish_reason?: string | null;
+}
+
+export interface QwenChatCompletionsResponse {
+  id?: string | null;
+  model?: string | null;
+  choices?: QwenChatCompletionChoice[] | null;
+  raw?: unknown;
+}
+
+export interface QwenChatCompletionsRequest {
+  model: string;
+  temperature: number;
+  messages: [QwenChatMessage, QwenChatMessage];
+  tools: QwenChatTool[];
+  tool_choice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
+}
+
+export interface QwenChatCompletionsTransport {
+  chatCompletions(request: QwenChatCompletionsRequest): QwenChatCompletionsResponse;
+}
+
+export interface QwenOrchestratorOptions {
+  baseUrl?: string | null;
+  model?: string | null;
+  apiKey?: string | null;
+  temperature?: number;
+  toolChoice?: QwenChatCompletionsRequest['tool_choice'] | null;
+  toolCatalog?: QwenToolDefinition[];
+  chatCompletionsTransport?: QwenChatCompletionsTransport | null;
+  now?: () => Date;
+  systemPrompt?: string | null;
+  requestTimeoutMs?: number;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneResponse(response: OrchestrationResponse): OrchestrationResponse {
+  return {
+    ...response,
+    data: response.data ? structuredClone(response.data) : null
+  };
+}
+
+function cloneProposal(proposal: OrchestrationProposal): OrchestrationProposal {
+  return {
+    ...proposal,
+    params: structuredClone(proposal.params)
+  };
+}
+
+function cloneValidation(validation: OrchestrationValidationResult): OrchestrationValidationResult {
+  return {
+    ...validation,
+    params: validation.params ? structuredClone(validation.params) : null
+  };
+}
+
+function cloneOutcome(outcome: OrchestrationOutcome): OrchestrationOutcome {
+  return {
+    ...outcome,
+    proposal: outcome.proposal ? cloneProposal(outcome.proposal) : null,
+    validation: outcome.validation ? cloneValidation(outcome.validation) : null,
+    response: cloneResponse(outcome.response),
+    workflow_result: outcome.workflow_result,
+    evidence_links: [...outcome.evidence_links]
+  };
+}
+
+function mergeLists(...lists: Array<string[] | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const list of lists) {
+    if (!list) {
+      continue;
+    }
+    for (const item of list) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+      const normalized = item.trim();
+      if (normalized.length === 0 || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      merged.push(normalized);
+    }
+  }
+  return merged;
+}
+
+function buildResponse(input: {
+  status: OrchestrationStatus;
+  message: string;
+}): OrchestrationResponse {
+  return {
+    response_source: 'workflow_blocked',
+    workflow_kind: null,
+    status: input.status,
+    message: input.message,
+    data: null
+  };
+}
+
+function appendEvidence(
+  ledger: InMemoryEvidenceLedger,
+  now: () => Date,
+  input: {
+    organization_id: string;
+    correlation_id: string;
+    record_type: EvidenceRecord['record_type'];
+    subject: string;
+    data: Record<string, unknown>;
+  }
+): EvidenceRecord {
+  return ledger.append(
+    createEvidenceRecord({
+      organization_id: input.organization_id,
+      correlation_id: input.correlation_id,
+      record_type: input.record_type,
+      subject: input.subject,
+      data: input.data,
+      created_at: now().toISOString()
+    })
+  );
+}
+
+function normalizeToolChoice(
+  input: QwenChatCompletionsRequest['tool_choice'] | null | undefined,
+  activeTool: QwenToolDefinition | null
+): QwenChatCompletionsRequest['tool_choice'] {
+  if (input) {
+    return input;
+  }
+  if (activeTool) {
+    return {
+      type: 'function',
+      function: {
+        name: activeTool.capability_key
+      }
+    };
+  }
+  return 'auto';
+}
+
+function buildSystemPrompt(input: {
+  organization_id: string | null;
+  principal_id: string | null;
+  installation_id: string | null;
+  correlation_id: string;
+  active_capabilities: string[];
+}): string {
+  return [
+    'You are Kern M10 orchestration.',
+    'The model proposes capability_key + params only.',
+    'The runtime disposes and produces the authoritative result.',
+    'Do not output business data, claims, answers, or results.',
+    `organization_id=${input.organization_id ?? 'null'}`,
+    `principal_id=${input.principal_id ?? 'null'}`,
+    `installation_id=${input.installation_id ?? 'null'}`,
+    `correlation_id=${input.correlation_id}`,
+    `active_capabilities=${JSON.stringify(input.active_capabilities)}`
+  ].join('\n');
+}
+
+function buildToolArguments(candidate: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(candidate)) {
+    return null;
+  }
+  return structuredClone(candidate);
+}
+
+function parseToolArguments(toolCall: QwenChatToolCall): Record<string, unknown> | null {
+  if (typeof toolCall.function.arguments !== 'string' || toolCall.function.arguments.trim().length === 0) {
+    return null;
+  }
+  try {
+    return buildToolArguments(JSON.parse(toolCall.function.arguments));
+  } catch {
+    return null;
+  }
+}
+
+function responseContainsClaimedResult(content: string | null | undefined): boolean {
+  if (!content || content.trim().length === 0) {
+    return false;
+  }
+  const lower = content.toLowerCase();
+  if (lower.trim().startsWith('{')) {
+    return true;
+  }
+  return [
+    'result',
+    'answer',
+    'output',
+    'data',
+    'value',
+    'price',
+    'amount',
+    'total',
+    'factura',
+    'invoice',
+    'presupuesto',
+    'estimate'
+  ].some((token) => lower.includes(token));
+}
+
+function validateToolArguments(definition: QwenToolDefinition, params: Record<string, unknown>): boolean {
+  const schema = definition.parameters_schema;
+  if (schema.type !== 'object') {
+    return false;
+  }
+  if (schema.required) {
+    for (const requiredKey of schema.required) {
+      if (!Object.prototype.hasOwnProperty.call(params, requiredKey)) {
+        return false;
+      }
+    }
+  }
+  if (schema.additionalProperties === false && schema.properties) {
+    for (const key of Object.keys(params)) {
+      if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) {
+        return false;
+      }
+    }
+  }
+  if (!schema.properties) {
+    return true;
+  }
+  for (const [key, property] of Object.entries(schema.properties)) {
+    if (!Object.prototype.hasOwnProperty.call(params, key)) {
+      continue;
+    }
+    const value = params[key];
+    if (property.type === 'string' && typeof value !== 'string') return false;
+    if (property.type === 'number' && typeof value !== 'number') return false;
+    if (property.type === 'integer' && (typeof value !== 'number' || !Number.isInteger(value))) return false;
+    if (property.type === 'boolean' && typeof value !== 'boolean') return false;
+    if (property.type === 'array' && !Array.isArray(value)) return false;
+    if (property.type === 'object' && !isPlainObject(value)) return false;
+    if (property.enum && typeof value === 'string' && !property.enum.includes(value)) return false;
+  }
+  return true;
+}
+
+function chooseActiveTool(
+  activeCapabilities: string[],
+  toolCatalog: QwenToolDefinition[],
+  force_capability_key: string | null
+): QwenToolDefinition | null {
+  if (force_capability_key) {
+    return toolCatalog.find((tool) => tool.capability_key === force_capability_key && activeCapabilities.includes(tool.capability_key)) ?? null;
+  }
+  if (toolCatalog.length === 1) {
+    return toolCatalog[0];
+  }
+  return null;
+}
+
+function buildProposalOutcome(input: {
+  request: OrchestrationRequest;
+  proposal: OrchestrationProposal | null;
+  status: OrchestrationStatus;
+  reason: string;
+  evidence_links: string[];
+}): OrchestrationOutcome {
+  return cloneOutcome({
+    request_id: input.request.request_id,
+    organization_id: input.request.organization_id,
+    principal_id: input.request.principal_id ?? input.request.actor?.principal_id ?? null,
+    correlation_id: input.request.correlation_id,
+    installation_id: input.request.installation_id ?? input.request.context?.installation_id ?? null,
+    status: input.status,
+    proposal: input.proposal,
+    validation: input.proposal
+      ? {
+          valid: input.status === 'proposal',
+          status: input.status,
+          reason: input.reason,
+          capability_key: input.proposal.capability_key,
+          params: structuredClone(input.proposal.params),
+          capability_active: input.status === 'proposal',
+          capability_known: true
+        }
+      : {
+          valid: false,
+          status: input.status,
+          reason: input.reason,
+          capability_key: null,
+          params: null,
+          capability_active: false,
+          capability_known: false
+        },
+    workflow_kind: null,
+    workflow_result: null,
+    response: buildResponse({
+      status: input.status,
+      message: input.reason
+    }),
+    evidence_links: input.evidence_links,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    reason: input.reason
+  });
+}
+
+function defaultTransportFactory(options: { baseUrl: string; apiKey: string | null; requestTimeoutMs: number }): QwenChatCompletionsTransport {
+  const script = `
+import { readFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
+const headers = { 'content-type': 'application/json' };
+if (input.apiKey) {
+  headers.authorization = \`Bearer \${input.apiKey}\`;
+}
+
+const controller = new AbortController();
+const timeout = Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? setTimeout(() => controller.abort(), input.timeoutMs) : null;
+
+try {
+  const response = await fetch(input.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input.body),
+    signal: controller.signal
+  });
+  const text = await response.text();
+  let json = null;
+  try {
+    json = text.length > 0 ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  process.stdout.write(JSON.stringify({
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    json,
+    text
+  }));
+} catch (error) {
+  process.stderr.write(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+} finally {
+  if (timeout) clearTimeout(timeout);
+}
+`;
+
+  return {
+    chatCompletions(request: QwenChatCompletionsRequest): QwenChatCompletionsResponse {
+      const child = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        {
+          input: JSON.stringify({
+            url: options.baseUrl,
+            apiKey: options.apiKey,
+            timeoutMs: options.requestTimeoutMs,
+            body: request
+          }),
+          encoding: 'utf8'
+        }
+      );
+      if (child.error) {
+        throw child.error;
+      }
+      if (child.status !== 0) {
+        throw new Error(child.stderr || `qwen transport failed with status ${child.status}`);
+      }
+      const output = child.stdout ? JSON.parse(child.stdout) as {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        json: unknown;
+        text: string;
+      } : null;
+      if (!output) {
+        throw new Error('qwen transport returned no output');
+      }
+      if (!output.ok) {
+        throw new Error(`qwen transport failed with status ${output.status}: ${output.statusText}`);
+      }
+      return {
+        raw: output.json ?? output.text,
+        ...(isPlainObject(output.json) ? output.json : {})
+      } as QwenChatCompletionsResponse;
+    }
+  };
+}
+
+export class QwenOrchestrator implements OrchestratorPort {
+  private readonly now: () => Date;
+  private readonly model: string;
+  private readonly baseUrl: string | null;
+  private readonly apiKey: string | null;
+  private readonly temperature: number;
+  private readonly toolChoice: QwenChatCompletionsRequest['tool_choice'] | null;
+  private readonly toolCatalog: QwenToolDefinition[];
+  private readonly transport: QwenChatCompletionsTransport;
+  private readonly systemPrompt: string | null;
+  private readonly evidenceLedger = new InMemoryEvidenceLedger();
+  private readonly requestTimeoutMs: number;
+
+  constructor(options: QwenOrchestratorOptions = {}) {
+    this.now = options.now ?? (() => new Date());
+    this.model = normalizeOptionalString(options.model) ?? 'kern-vl';
+    this.baseUrl = normalizeOptionalString(options.baseUrl ?? null);
+    this.apiKey = normalizeOptionalString(options.apiKey ?? null);
+    this.temperature = typeof options.temperature === 'number' ? options.temperature : 0.1;
+    this.toolChoice = options.toolChoice ?? null;
+    this.toolCatalog = options.toolCatalog ? options.toolCatalog.map((tool) => ({ ...tool, parameters_schema: structuredClone(tool.parameters_schema) })) : [];
+    this.transport =
+      options.chatCompletionsTransport ??
+      (this.baseUrl
+        ? defaultTransportFactory({
+            baseUrl: this.baseUrl,
+            apiKey: this.apiKey,
+            requestTimeoutMs: options.requestTimeoutMs ?? 30_000
+          })
+        : {
+            chatCompletions(): QwenChatCompletionsResponse {
+              throw new Error('qwen transport unavailable');
+            }
+          });
+    this.systemPrompt = options.systemPrompt ?? null;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+  }
+
+  getEvidenceLedger(): InMemoryEvidenceLedger {
+    return this.evidenceLedger;
+  }
+
+  propose(request: OrchestrationRequest): OrchestrationOutcome {
+    const now = this.now;
+    const correlation_id = normalizeCorrelationId({
+      request_id: request.request_id,
+      correlation_id: request.correlation_id
+    });
+    const request_id = request.request_id.trim();
+    const organization_id = normalizeOptionalString(request.organization_id);
+    const principal_id = normalizeOptionalString(request.principal_id ?? request.actor?.principal_id ?? null);
+    const installation_id = normalizeOptionalString(request.installation_id ?? request.context?.installation_id ?? null);
+    const user_message = request.user_message.trim();
+    const active_capabilities = mergeLists(request.context?.active_capabilities ?? []);
+
+    const requestedEvidence = appendEvidence(this.evidenceLedger, now, {
+      organization_id: organization_id ?? 'unknown',
+      correlation_id,
+      record_type: 'model_orchestration_requested',
+      subject: this.model,
+      data: {
+        request_id,
+        model: this.model,
+        base_url: this.baseUrl,
+        installation_id,
+        active_capabilities,
+        temperature: this.temperature,
+        tool_choice: this.toolChoice ?? 'auto'
+      }
+    });
+
+    if (!organization_id || !principal_id || user_message.length === 0) {
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'blocked',
+        reason: !organization_id ? 'organization required for orchestration' : !principal_id ? 'principal required for orchestration' : 'user message required for orchestration',
+        evidence_links: [requestedEvidence.evidence_id]
+      });
+    }
+
+    const availableTools = this.toolCatalog.filter((tool) => active_capabilities.includes(tool.capability_key));
+    const forcedCapabilityKey = normalizeOptionalString(request.context?.force_capability_key ?? null);
+    const forcedTool = chooseActiveTool(active_capabilities, this.toolCatalog, forcedCapabilityKey);
+    if (forcedCapabilityKey && !forcedTool) {
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'denied',
+        reason: 'forced capability unavailable',
+        evidence_links: [requestedEvidence.evidence_id]
+      });
+    }
+
+    const toolChoice = normalizeToolChoice(
+      forcedTool ? null : this.toolChoice,
+      forcedTool ?? (availableTools.length === 1 ? availableTools[0] : null)
+    );
+    const tools = (forcedTool ? [forcedTool] : availableTools).map<QwenChatTool>((tool) => ({
+      type: 'function',
+      function: {
+        name: tool.capability_key,
+        description: tool.description,
+        parameters: structuredClone(tool.parameters_schema)
+      }
+    }));
+
+    let completion: QwenChatCompletionsResponse;
+    try {
+      completion = this.transport.chatCompletions({
+        model: this.model,
+        temperature: this.temperature,
+        tool_choice: toolChoice,
+        tools,
+        messages: [
+          {
+            role: 'system',
+            content:
+              this.systemPrompt ??
+              buildSystemPrompt({
+                organization_id,
+                principal_id,
+                installation_id,
+                correlation_id,
+                active_capabilities
+              })
+          },
+          {
+            role: 'user',
+            content: user_message
+          }
+        ]
+      });
+    } catch (error) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_orchestration_error',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          error: error instanceof Error ? error.message : 'qwen transport failed'
+        }
+      });
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'error',
+        reason: error instanceof Error ? error.message : 'qwen transport failed',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    const choice = completion.choices?.[0] ?? null;
+    if (!choice) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_orchestration_error',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          error: 'completion missing choices'
+        }
+      });
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'error',
+        reason: 'completion missing choices',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    const assistantMessage = choice.message;
+    const toolCalls = assistantMessage.tool_calls ?? [];
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_no_tool_call',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          content: assistantMessage.content ?? null
+        }
+      });
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'no_proposal',
+        reason: 'no tool call',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    const toolCall = toolCalls.find((candidate) => candidate.type === 'function' && normalizeOptionalString(candidate.function?.name ?? null));
+    if (!toolCall) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_orchestration_error',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          error: 'tool call missing function name'
+        }
+      });
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'blocked',
+        reason: 'tool call missing function name',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    appendEvidence(this.evidenceLedger, now, {
+      organization_id: organization_id ?? 'unknown',
+      correlation_id,
+      record_type: 'model_tool_call_received',
+      subject: toolCall.function.name,
+      data: {
+        request_id,
+        model: this.model,
+        tool_call_id: toolCall.id,
+        capability_key: toolCall.function.name,
+        arguments_length: toolCall.function.arguments.length
+      }
+    });
+
+    const matchingTool = availableTools.find((tool) => tool.capability_key === toolCall.function.name);
+    if (!matchingTool) {
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: active_capabilities.includes(toolCall.function.name) ? 'blocked' : 'denied',
+        reason: active_capabilities.includes(toolCall.function.name) ? 'capability definition unavailable' : 'capability unknown or inactive',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    const parsedArguments = parseToolArguments(toolCall);
+    if (!parsedArguments || !validateToolArguments(matchingTool, parsedArguments)) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_orchestration_error',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          capability_key: matchingTool.capability_key,
+          error: 'tool arguments invalid'
+        }
+      });
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'blocked',
+        reason: 'tool arguments invalid',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    if (responseContainsClaimedResult(assistantMessage.content)) {
+      appendEvidence(this.evidenceLedger, now, {
+        organization_id: organization_id ?? 'unknown',
+        correlation_id,
+        record_type: 'model_claimed_result_ignored',
+        subject: this.model,
+        data: {
+          request_id,
+          model: this.model,
+          capability_key: matchingTool.capability_key
+        }
+      });
+    }
+
+    const proposal: OrchestrationProposal = {
+      proposal_id: createDeterministicId('qwen-orchestration-proposal', {
+        request_id,
+        correlation_id,
+        capability_key: matchingTool.capability_key,
+        params: parsedArguments
+      }),
+      capability_key: matchingTool.capability_key,
+      params: parsedArguments,
+      confidence: null,
+      reason: 'model tool call selected',
+      evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+    };
+
+    return buildProposalOutcome({
+      request,
+      proposal,
+      status: 'proposal',
+      reason: 'model tool call selected',
+      evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+    });
+  }
+}
+
+export function createNodeFetchChatCompletionsTransport(options: {
+  baseUrl: string;
+  apiKey?: string | null;
+  timeoutMs?: number;
+}): QwenChatCompletionsTransport {
+  return {
+    chatCompletions(request: QwenChatCompletionsRequest): QwenChatCompletionsResponse {
+      const script = `
+import { readFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
+const headers = { 'content-type': 'application/json' };
+if (input.apiKey) {
+  headers.authorization = \`Bearer \${input.apiKey}\`;
+}
+
+const controller = new AbortController();
+const timeout = Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? setTimeout(() => controller.abort(), input.timeoutMs) : null;
+
+try {
+  const response = await fetch(input.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input.request),
+    signal: controller.signal
+  });
+  const text = await response.text();
+  let json = null;
+  try {
+    json = text.length > 0 ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  process.stdout.write(JSON.stringify({
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    body: json ?? text
+  }));
+} catch (error) {
+  process.stderr.write(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+} finally {
+  if (timeout) clearTimeout(timeout);
+}
+`;
+      const child = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        {
+          input: JSON.stringify({
+            url: options.baseUrl,
+            apiKey: normalizeOptionalString(options.apiKey ?? null),
+            timeoutMs: options.timeoutMs ?? 30_000,
+            request
+          }),
+          encoding: 'utf8'
+        }
+      );
+      if (child.error) {
+        throw child.error;
+      }
+      if (child.status !== 0) {
+        throw new Error(child.stderr || `qwen transport failed with status ${child.status}`);
+      }
+      const output = child.stdout ? (JSON.parse(child.stdout) as { ok: boolean; status: number; statusText: string; body: unknown }) : null;
+      if (!output) {
+        throw new Error('qwen transport returned no output');
+      }
+      if (!output.ok) {
+        throw new Error(`qwen transport failed with status ${output.status}: ${output.statusText}`);
+      }
+      return {
+        raw: output.body,
+        ...(isPlainObject(output.body) ? output.body : {})
+      } as QwenChatCompletionsResponse;
+    }
+  };
+}
+
+export function createQwenOrchestrator(options: QwenOrchestratorOptions = {}): QwenOrchestrator {
+  return new QwenOrchestrator(options);
+}

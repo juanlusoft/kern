@@ -1,0 +1,455 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createNodeFetchChatCompletionsTransport,
+  createQwenOrchestrator,
+  type QwenChatCompletionsRequest,
+  type QwenChatCompletionsResponse,
+  type QwenToolDefinition
+} from '../src/index';
+
+function buildToolCatalog(): QwenToolDefinition[] {
+  return [
+    {
+      capability_key: 'mock.resource.read',
+      description: 'Read governed estimates from the runtime',
+      parameters_schema: {
+        type: 'object',
+        required: ['estimate_id'],
+        additionalProperties: false,
+        properties: {
+          estimate_id: {
+            type: 'string'
+          },
+          customer_id: {
+            type: 'string'
+          },
+          resource_type: {
+            type: 'string'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'mock.email.send',
+      description: 'Send governed emails from the runtime',
+      parameters_schema: {
+        type: 'object',
+        required: ['to', 'subject', 'body'],
+        additionalProperties: false,
+        properties: {
+          to: {
+            type: 'string'
+          },
+          subject: {
+            type: 'string'
+          },
+          body: {
+            type: 'string'
+          }
+        }
+      }
+    }
+  ];
+}
+
+function buildRequest(overrides: Partial<QwenChatCompletionsRequest> = {}) {
+  return {
+    model: 'kern-vl',
+    temperature: 0.1,
+    tool_choice: 'auto' as const,
+    tools: [],
+    messages: [
+      {
+        role: 'system' as const,
+        content: 'system'
+      },
+      {
+        role: 'user' as const,
+        content: 'Necesito el presupuesto estimate-123 del cliente customer-001'
+      }
+    ],
+    ...overrides
+  };
+}
+
+test('Qwen orchestrator proposes only active capabilities and parses tool calls', () => {
+  const requests: QwenChatCompletionsRequest[] = [];
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions(request) {
+        requests.push(structuredClone(request));
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        estimate_id: 'estimate-123',
+                        customer_id: 'customer-001',
+                        resource_type: 'estimate'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-1',
+    user_message: 'Necesito el presupuesto estimate-123 del cliente customer-001',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-1',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+  const records = orchestrator.getEvidenceLedger().listByCorrelation('corr-1');
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].tools.length, 1);
+  assert.equal(requests[0].tools[0].function.name, 'mock.resource.read');
+  assert.equal(requests[0].tool_choice && typeof requests[0].tool_choice === 'object', true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+  assert.equal(outcome.proposal?.params.estimate_id, 'estimate-123');
+  assert.equal(outcome.proposal?.params.customer_id, 'customer-001');
+  assert.equal(records.some((record) => record.record_type === 'model_orchestration_requested'), true);
+  assert.equal(records.some((record) => record.record_type === 'model_tool_call_received'), true);
+});
+
+test('Qwen orchestrator ignores claimed result content and records the override', () => {
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '{"price":999,"result":"invented"}',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        estimate_id: 'estimate-123'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-2',
+    user_message: 'Necesito el presupuesto estimate-123',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-2',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+  const records = orchestrator.getEvidenceLedger().listByCorrelation('corr-2');
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+  assert.equal(records.some((record) => record.record_type === 'model_claimed_result_ignored'), true);
+});
+
+test('Qwen orchestrator returns no_proposal honestly when no tool call appears', () => {
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'hola'
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-3',
+    user_message: 'hola',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-3',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+  const records = orchestrator.getEvidenceLedger().listByCorrelation('corr-3');
+
+  assert.equal(outcome.status, 'no_proposal');
+  assert.equal(outcome.proposal, null);
+  assert.equal(records.some((record) => record.record_type === 'model_no_tool_call'), true);
+});
+
+test('Qwen orchestrator fails closed for invalid tool arguments and unknown capabilities', () => {
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        customer_id: 'customer-001'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const blocked = orchestrator.propose({
+    request_id: 'request-4',
+    user_message: 'Necesito el presupuesto estimate-123',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-4',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  const deniedOrchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-2',
+                    type: 'function',
+                    function: {
+                      name: 'unknown.capability',
+                      arguments: JSON.stringify({
+                        estimate_id: 'estimate-123'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const denied = deniedOrchestrator.propose({
+    request_id: 'request-5',
+    user_message: 'Necesito el presupuesto estimate-123',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-5',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['unknown.capability'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.equal(['blocked', 'denied'].includes(denied.status), true);
+});
+
+test('Qwen orchestrator surfaces transport failures and keeps secrets out of outputs', () => {
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    apiKey: 'model_secret_key_must_not_leak',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        throw new Error('timeout');
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-6',
+    user_message: 'Necesito el presupuesto estimate-123',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-6',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(outcome.status, 'error');
+  assert.equal(JSON.stringify(outcome).includes('model_secret_key_must_not_leak'), false);
+  assert.equal(
+    orchestrator
+      .getEvidenceLedger()
+      .listByCorrelation('corr-6')
+      .some((record) => JSON.stringify(record).includes('model_secret_key_must_not_leak')),
+    false
+  );
+});
+
+test('Qwen live integration is opt-in only', { skip: !process.env.KERN_MODEL_BASE_URL }, () => {
+  const transport = createNodeFetchChatCompletionsTransport({
+    baseUrl: process.env.KERN_MODEL_BASE_URL as string,
+    apiKey: process.env.KERN_MODEL_API_KEY ?? null,
+    timeoutMs: 10_000
+  });
+  const orchestrator = createQwenOrchestrator({
+    baseUrl: process.env.KERN_MODEL_BASE_URL,
+    model: process.env.KERN_MODEL_NAME ?? 'kern-vl',
+    apiKey: process.env.KERN_MODEL_API_KEY ?? null,
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: transport,
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-live',
+    user_message: 'Necesito el presupuesto estimate-123',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-live',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(typeof outcome.status, 'string');
+  assert.equal(JSON.stringify(outcome).includes(process.env.KERN_MODEL_API_KEY ?? ''), false);
+  assert.equal(JSON.stringify(outcome).includes('estimate-123'), outcome.status === 'proposal');
+});
