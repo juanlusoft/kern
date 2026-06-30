@@ -69,6 +69,11 @@ export type EvidenceRecordType =
   | 'approval_requested'
   | 'effect_blocked'
   | 'orchestration_requested'
+  | 'model_orchestration_requested'
+  | 'model_tool_call_received'
+  | 'model_no_tool_call'
+  | 'model_orchestration_error'
+  | 'model_claimed_result_ignored'
   | 'orchestration_proposal_created'
   | 'orchestration_no_proposal'
   | 'orchestration_proposal_denied'
@@ -520,6 +525,7 @@ export interface OrchestrationProposal {
   params: Record<string, unknown>;
   confidence: number | null;
   reason: string | null;
+  evidence_links?: string[];
 }
 
 export interface OrchestrationValidationResult {

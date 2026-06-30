@@ -119,6 +119,21 @@ test('createEvidenceRecord accepts orchestration evidence types', () => {
   assert.equal(record.subject, 'mock.orchestrator');
 });
 
+test('createEvidenceRecord accepts model orchestration evidence types', () => {
+  const record = createEvidenceRecord({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-model',
+    record_type: 'model_orchestration_requested',
+    subject: 'qwen-orchestrator',
+    data: {
+      model: 'kern-vl'
+    }
+  });
+
+  assert.equal(record.record_type, 'model_orchestration_requested');
+  assert.equal(record.subject, 'qwen-orchestrator');
+});
+
 test('createEvidenceRecord accepts channel evidence types and channel message results stay typed', () => {
   const record = createEvidenceRecord({
     organization_id: 'org-acme',

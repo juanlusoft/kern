@@ -40,7 +40,13 @@ function cloneResponse(response: OrchestrationResponse): OrchestrationResponse {
 function cloneOutcome(outcome: OrchestrationOutcome): OrchestrationOutcome {
   return {
     ...outcome,
-    proposal: outcome.proposal ? { ...outcome.proposal, params: structuredClone(outcome.proposal.params) } : null,
+    proposal: outcome.proposal
+      ? {
+          ...outcome.proposal,
+          params: structuredClone(outcome.proposal.params),
+          evidence_links: outcome.proposal.evidence_links ? [...outcome.proposal.evidence_links] : undefined
+        }
+      : null,
     validation: outcome.validation
       ? {
           ...outcome.validation,
@@ -163,6 +169,28 @@ function normalizeCapabilityParams(input: Record<string, unknown>): Record<strin
   return structuredClone(input);
 }
 
+function mergeLists(...lists: Array<string[] | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const list of lists) {
+    if (!list) {
+      continue;
+    }
+    for (const item of list) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+      const normalized = item.trim();
+      if (normalized.length === 0 || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      merged.push(normalized);
+    }
+  }
+  return merged;
+}
+
 function sanitizeProposal(proposal: OrchestrationProposal): OrchestrationProposal {
   return {
     proposal_id: proposal.proposal_id,
@@ -278,10 +306,18 @@ export class InMemoryOrchestrationBoundary {
     const normalizedInstallationId = normalizeOptionalString(
       normalizedRequest.installation_id ?? normalizedRequest.context?.installation_id ?? null
     );
+    const activeCapabilitiesForOrchestrator = normalizeInstallationCapabilities(
+      this.installationCapabilities,
+      normalizedInstallationId
+    );
+    const orchestratorRequest = this.enrichRequestWithActiveCapabilities(
+      normalizedRequest,
+      activeCapabilitiesForOrchestrator
+    );
 
     if (!this.orchestrator) {
       return this.finishBlockedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'orchestrator unavailable',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -289,11 +325,11 @@ export class InMemoryOrchestrationBoundary {
 
     let proposalOutcome: OrchestrationOutcome;
     try {
-      proposalOutcome = this.orchestrator.propose(normalizedRequest);
+      proposalOutcome = this.orchestrator.propose(orchestratorRequest);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'orchestrator unavailable';
       return this.finishErrorOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -326,7 +362,7 @@ export class InMemoryOrchestrationBoundary {
         }
       });
       return this.finishDeniedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -346,7 +382,7 @@ export class InMemoryOrchestrationBoundary {
         }
       });
       return this.finishBlockedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -355,7 +391,7 @@ export class InMemoryOrchestrationBoundary {
 
     if (proposalOutcome.status === 'error') {
       return this.finishErrorOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -365,7 +401,7 @@ export class InMemoryOrchestrationBoundary {
     const proposal = proposalOutcome.proposal;
     if (!proposal) {
       return this.finishBlockedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'proposal missing',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -418,14 +454,14 @@ export class InMemoryOrchestrationBoundary {
       });
       return validation.status === 'denied'
         ? this.finishDeniedOutcome({
-            request: normalizedRequest,
+            request: orchestratorRequest,
             reason: validation.reason,
             orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
             proposalOutcome,
             validation
           })
         : this.finishBlockedOutcome({
-            request: normalizedRequest,
+            request: orchestratorRequest,
             reason: validation.reason,
             orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
             proposalOutcome,
@@ -448,7 +484,7 @@ export class InMemoryOrchestrationBoundary {
     const workflowKind = this.resolveWorkflowKind(proposal.capability_key);
     if (!workflowKind) {
       return this.finishDeniedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'capability unknown',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -465,7 +501,7 @@ export class InMemoryOrchestrationBoundary {
     const workflowRequest = resolveWorkflowRequest(proposal, normalizedRequest);
     if (!workflowRequest) {
       return this.finishBlockedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'proposal params invalid',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -481,7 +517,7 @@ export class InMemoryOrchestrationBoundary {
     const activeCapabilities = normalizeInstallationCapabilities(this.installationCapabilities, normalizedInstallationId);
     if (activeCapabilities.length === 0) {
       return this.finishDeniedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'capability not active in installation',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -496,7 +532,7 @@ export class InMemoryOrchestrationBoundary {
     }
     if (!activeCapabilities.includes(proposal.capability_key)) {
       return this.finishDeniedOutcome({
-        request: normalizedRequest,
+        request: orchestratorRequest,
         reason: 'capability not active in installation',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -527,7 +563,7 @@ export class InMemoryOrchestrationBoundary {
     const workflow_result = this.workflowRuntime.executeWorkflow(workflowRequest);
     const finalResponse = cloneResponse(workflow_result.response);
     const finalOutcome = this.finishProposalOutcome({
-      request: normalizedRequest,
+      request: orchestratorRequest,
       proposal,
       validation,
       workflow_kind: workflowKind,
@@ -591,6 +627,30 @@ export class InMemoryOrchestrationBoundary {
             force_params: request.context.force_params ? structuredClone(request.context.force_params) : null
           }
         : null
+    };
+  }
+
+  private enrichRequestWithActiveCapabilities(request: OrchestrationRequest, activeCapabilities: string[]): OrchestrationRequest {
+    const context = request.context ?? null;
+    const active_capabilities = mergeLists(context?.active_capabilities ?? [], activeCapabilities);
+    if (!context) {
+      return {
+        ...request,
+        context: {
+          installation_id: normalizeOptionalString(request.installation_id ?? null),
+          active_capabilities,
+          metadata: {},
+          force_capability_key: null,
+          force_params: null
+        }
+      };
+    }
+    return {
+      ...request,
+      context: {
+        ...context,
+        active_capabilities
+      }
     };
   }
 
@@ -707,10 +767,10 @@ export class InMemoryOrchestrationBoundary {
     orchestrationRequestedEvidence: string;
   }): OrchestrationOutcome {
     const now = this.now().toISOString();
-    const evidenceLinks = this.workflowRuntime
-      .getEvidenceLedger()
-      .listByCorrelation(input.request.correlation_id)
-      .map((record) => record.evidence_id);
+    const evidenceLinks = mergeLists(
+      input.proposal.evidence_links,
+      this.workflowRuntime.getEvidenceLedger().listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id)
+    );
     const outcome: OrchestrationOutcome = {
       request_id: input.request.request_id,
       organization_id: input.request.organization_id,
@@ -782,7 +842,10 @@ export class InMemoryOrchestrationBoundary {
         data: null,
         response_source: 'workflow_blocked'
       }),
-      evidence_links: evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id),
+      evidence_links: mergeLists(
+        input.proposalOutcome?.evidence_links,
+        evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id)
+      ),
       created_at: this.now().toISOString(),
       updated_at: responseEvidence.created_at,
       reason: input.reason
@@ -838,7 +901,10 @@ export class InMemoryOrchestrationBoundary {
         data: null,
         response_source: 'workflow_blocked'
       }),
-      evidence_links: evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id),
+      evidence_links: mergeLists(
+        input.proposalOutcome?.evidence_links,
+        evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id)
+      ),
       created_at: this.now().toISOString(),
       updated_at: responseEvidence.created_at,
       reason: input.reason
@@ -888,7 +954,10 @@ export class InMemoryOrchestrationBoundary {
         data: null,
         response_source: 'workflow_blocked'
       }),
-      evidence_links: evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id),
+      evidence_links: mergeLists(
+        input.proposalOutcome?.evidence_links,
+        evidenceLedger.listByCorrelation(input.request.correlation_id).map((record) => record.evidence_id)
+      ),
       created_at: this.now().toISOString(),
       updated_at: responseEvidence.created_at,
       reason: input.reason
