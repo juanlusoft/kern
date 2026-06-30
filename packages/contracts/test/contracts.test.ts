@@ -5,6 +5,7 @@ import {
   fingerprintCapabilityInput,
   fingerprintCapabilityInvocation,
   fingerprintCoreRequest,
+  type ChannelMessageResult,
   normalizeCorrelationId,
   normalizeResourceQuery,
   normalizeRequestedScope,
@@ -116,6 +117,37 @@ test('createEvidenceRecord accepts orchestration evidence types', () => {
 
   assert.equal(record.record_type, 'orchestration_requested');
   assert.equal(record.subject, 'mock.orchestrator');
+});
+
+test('createEvidenceRecord accepts channel evidence types and channel message results stay typed', () => {
+  const record = createEvidenceRecord({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-channel',
+    record_type: 'channel_message_received',
+    subject: 'telegram-message-1',
+    data: {
+      channel: 'telegram',
+      chat_id: 'chat-acme'
+    }
+  });
+
+  const channelResult: ChannelMessageResult = {
+    channel: 'telegram',
+    status: 'sent',
+    reason: 'message sent',
+    correlation_id: 'corr-channel',
+    inbound_message: null,
+    outbound_message: null,
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    installation_id: 'telegram-installation',
+    orchestration_outcome: null,
+    evidence_links: [record.evidence_id]
+  };
+
+  assert.equal(record.record_type, 'channel_message_received');
+  assert.equal(channelResult.channel, 'telegram');
+  assert.equal(channelResult.status, 'sent');
 });
 
 test('capability fingerprint helpers remain deterministic', () => {

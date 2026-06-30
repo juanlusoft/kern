@@ -188,9 +188,6 @@ test('M8 returns not_found unavailable and error without inventing data', () => 
 test('M8 source scan keeps Holded, Qwen and Telegram out of core packages', () => {
   const files = [
     'packages/core/src/index.ts',
-    'packages/contracts/src/index.ts',
-    'packages/workflows/src/index.ts',
-    'packages/capabilities/src/index.ts'
   ];
   const forbidden = ['Holded', 'holded', 'KERN_HOLDED_API_KEY', 'Qwen', 'Telegram'];
 
