@@ -134,6 +134,21 @@ test('createEvidenceRecord accepts model orchestration evidence types', () => {
   assert.equal(record.subject, 'qwen-orchestrator');
 });
 
+test('createEvidenceRecord accepts runtime installation evidence types', () => {
+  const record = createEvidenceRecord({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-runtime',
+    record_type: 'installation_config_loaded',
+    subject: 'runtime',
+    data: {
+      installation_id: 'install-acme'
+    }
+  });
+
+  assert.equal(record.record_type, 'installation_config_loaded');
+  assert.equal(record.subject, 'runtime');
+});
+
 test('createEvidenceRecord accepts channel evidence types and channel message results stay typed', () => {
   const record = createEvidenceRecord({
     organization_id: 'org-acme',

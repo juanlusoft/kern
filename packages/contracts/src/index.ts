@@ -99,7 +99,18 @@ export type EvidenceRecordType =
   | 'channel_orchestration_requested'
   | 'channel_response_prepared'
   | 'channel_message_sent'
-  | 'channel_message_send_error';
+  | 'channel_message_send_error'
+  | 'installation_config_loaded'
+  | 'installation_config_validated'
+  | 'installation_start_blocked'
+  | 'module_registered'
+  | 'module_activated'
+  | 'module_missing'
+  | 'secret_missing'
+  | 'runtime_started'
+  | 'runtime_message_received'
+  | 'runtime_message_processed'
+  | 'runtime_message_failed';
 
 export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
 
