@@ -11,7 +11,14 @@ import {
 } from '../src/index';
 import { normalizeResourceQuery, type ResourceQuery } from '../../../contracts/src/index';
 
-function buildQuery(overrides: Partial<ResourceQuery> = {}): ResourceQuery {
+function buildQuery(
+  resource_type_or_overrides: 'estimate' | 'invoice' | Partial<ResourceQuery> = 'estimate',
+  overrides: Partial<ResourceQuery> = {}
+): ResourceQuery {
+  const resource_type =
+    typeof resource_type_or_overrides === 'string' ? resource_type_or_overrides : 'estimate';
+  const mergedOverrides =
+    typeof resource_type_or_overrides === 'string' ? overrides : resource_type_or_overrides;
   return normalizeResourceQuery({
     query_id: 'query-1',
     organization_id: 'org-acme',
@@ -21,11 +28,11 @@ function buildQuery(overrides: Partial<ResourceQuery> = {}): ResourceQuery {
       principal_type: 'human',
       delegated_identity: null
     },
-    resource_type: 'estimate',
+    resource_type,
     resource_id: 'estimate-123',
     filters: null,
     requested_fields: ['estimate_id', 'customer_name', 'total_amount'],
-    ...overrides
+    ...mergedOverrides
   });
 }
 
@@ -90,6 +97,52 @@ test('Holded adapter returns found with SourceEvidence and hides API key from ou
   assert.ok(result.source_evidence.length > 0);
   assert.equal(result.source_evidence[0].source_system, 'holded');
   assert.equal(result.source_evidence[0].resource_id, 'estimate-123');
+  assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
+  assert.equal(serialized.includes(sentinel), false);
+});
+
+test('Holded adapter reads invoices with the same governed pattern as estimates', () => {
+  const sentinel = 'secret_test_token_must_not_leak';
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/1931',
+        docNumber: 'F26/1931',
+        customer_id: 'customer-001',
+        customer_name: 'Acme Customer',
+        total_amount: 1210,
+        currency: 'EUR',
+        date: '2026-06-29T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: sentinel,
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(buildQuery('invoice', { resource_id: 'F26/1931' }));
+  const serialized = JSON.stringify(result);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /holded\.example\.test\/api\/invoicing\/v1\/documents\/invoice/);
+  assert.equal((calls[0].init?.headers as Record<string, string> | undefined)?.key, sentinel);
+  assert.equal(result.status, 'found');
+  assert.equal(result.produced_by_adapter, true);
+  assert.equal(result.data?.resource_type, 'invoice');
+  assert.equal(result.data?.invoice_id, 'F26/1931');
+  assert.equal(result.data?.customer_name, 'Acme Customer');
+  assert.ok(result.source_evidence);
+  assert.ok(result.source_evidence.length > 0);
+  assert.equal(result.source_evidence[0].source_type, 'invoice');
+  assert.equal(result.source_evidence[0].resource_id, 'F26/1931');
   assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
   assert.equal(serialized.includes(sentinel), false);
 });

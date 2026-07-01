@@ -229,6 +229,18 @@ function extractResponseData(outcome: OrchestrationOutcome): Record<string, unkn
   return isPlainObject(outcome.response.data) ? outcome.response.data : null;
 }
 
+function resourceTypeFromOutcome(outcome: OrchestrationOutcome): 'estimate' | 'invoice' {
+  const responseData = extractResponseData(outcome);
+  const resourceType =
+    firstStringFromKeys(responseData, ['resource_type', 'document_type']) ??
+    firstStringFromKeys(extractResourceResult(outcome), ['resource_type', 'document_type']);
+  return resourceType === 'invoice' ? 'invoice' : 'estimate';
+}
+
+function documentTitle(resourceType: 'estimate' | 'invoice'): string {
+  return resourceType === 'invoice' ? 'Última factura' : 'Último presupuesto';
+}
+
 function buildSourceReferenceLine(
   responseData: Record<string, unknown> | null,
   resourceResult: Record<string, unknown> | null
@@ -243,26 +255,28 @@ function buildSourceReferenceLine(
   if (!sourceSystem) {
     return null;
   }
+  const displaySourceSystem = sourceSystem.charAt(0).toUpperCase() + sourceSystem.slice(1);
   const documentId =
-    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
-    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
+    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']) ??
+    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']) ??
     toTrimmedString(firstSourceEvidence?.record_id) ??
     toTrimmedString(firstSourceEvidence?.resource_id);
   if (!documentId) {
-    return `Fuente: ${sourceSystem}`;
+    return `Fuente: ${displaySourceSystem}`;
   }
-  return `Fuente: ${sourceSystem} · documento ${documentId}`;
+  return `Fuente: ${displaySourceSystem} · documento ${documentId}`;
 }
 
 function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
+  const resourceType = resourceTypeFromOutcome(outcome);
   const customerName =
     firstStringFromKeys(responseData, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
     firstStringFromKeys(resourceResult, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']);
   const documentId =
-    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
-    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']);
+    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']) ??
+    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']);
   const productSummary = summarizeProductNames(responseData) ?? summarizeProductNames(resourceResult);
   const total =
     formatCurrencyAmount(
@@ -286,7 +300,7 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
     ? ' IVA incl.'
     : '';
   const lines: string[] = [];
-  lines.push(customerName ? `Último presupuesto de ${customerName}:` : 'Último presupuesto:');
+  lines.push(customerName ? `${documentTitle(resourceType)} de ${customerName}:` : documentTitle(resourceType) + ':');
   const detailParts = [documentId, productSummary, total ? `${total}${vatInclusion}` : null].filter(
     (value): value is string => Boolean(value)
   );
@@ -305,7 +319,7 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
     case 'completed':
       return buildCompletedOutboundText(outcome);
     case 'not_found':
-      return 'No he encontrado ese presupuesto en Holded.';
+      return 'No he encontrado ese documento en Holded.';
     case 'unavailable':
       return 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.';
     case 'error':

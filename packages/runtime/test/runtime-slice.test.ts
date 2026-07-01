@@ -82,7 +82,7 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
   } satisfies RuntimeInstallationConfig;
 }
 
-function buildQwenTransport(): QwenChatCompletionsTransport {
+function buildQwenTransport(resource_type: 'estimate' | 'invoice' = 'estimate'): QwenChatCompletionsTransport {
   return {
     chatCompletions() {
       const choice: QwenChatCompletionChoice = {
@@ -100,7 +100,7 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
                         name: 'mock.resource.read',
                         arguments: {
                           customer_id: 'Granapublic',
-                          resource_type: 'estimate'
+                          resource_type
                         }
                       })
                     }
@@ -117,46 +117,91 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
   };
 }
 
-function buildHoldedFetch(calls: Array<{ url: string; init?: RequestInit }>): HoldedFetch {
+function buildHoldedFetch(calls: Array<{ url: string; init?: RequestInit }>, resource_type: 'estimate' | 'invoice' = 'estimate'): HoldedFetch {
   return (url: string, init?: RequestInit) => {
     calls.push({ url, init });
-    const body = [
-      {
-        estimate_id: 'P26/04366',
-        docNumber: 'P26/04366',
-        customer_id: 'granapublic',
-        customer_name: 'Granapublic Xx Sl',
-        contact: 'contact-granapublic',
-        contactName: 'Granapublic Xx Sl',
-        total_amount: 2100,
-        currency: 'EUR',
-        date: '2024-03-09T00:00:00.000Z'
-      },
-      {
-        estimate_id: 'P26/04367',
-        docNumber: 'P26/04367',
-        customer_id: 'granapublic',
-        customer_name: 'Granapublic Xx Sl',
-        contact: 'contact-granapublic',
-        contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo Monomerico' }],
-        total_amount: 2200,
-        currency: 'EUR',
-        date: '2024-07-03T00:00:00.000Z'
-      },
-      {
-        estimate_id: 'P26/04368',
-        docNumber: 'P26/04368',
-        customer_id: 'granapublic',
-        customer_name: 'Granapublic Xx Sl',
-        contact: 'contact-granapublic',
-        contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo Monomerico Plus' }],
-        total_amount: 2300,
-        currency: 'EUR',
-        date: '2024-07-04T00:00:00.000Z'
-      }
-    ];
+    const body =
+      resource_type === 'invoice'
+        ? [
+            {
+              resource_type: 'invoice',
+              source_system: 'Holded',
+              invoice_id: 'F26/1930',
+              docNumber: 'F26/1930',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              total_amount: 1100,
+              currency: 'EUR',
+              date: '2024-03-09T00:00:00.000Z'
+            },
+            {
+              resource_type: 'invoice',
+              source_system: 'Holded',
+              invoice_id: 'F26/1931',
+              docNumber: 'F26/1931',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              products: [{ name: 'MUPIS PAPEL' }],
+              total_amount: 1200,
+              currency: 'EUR',
+              date: '2024-07-03T00:00:00.000Z'
+            },
+            {
+              resource_type: 'invoice',
+              source_system: 'Holded',
+              invoice_id: 'F26/1932',
+              docNumber: 'F26/1932',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              products: [{ name: 'Vinilo Monomérico Plus' }],
+              total_amount: 1300,
+              currency: 'EUR',
+              date: '2024-07-02T00:00:00.000Z'
+            }
+          ]
+        : [
+            {
+              estimate_id: 'P26/04366',
+              docNumber: 'P26/04366',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              total_amount: 2100,
+              currency: 'EUR',
+              date: '2024-03-09T00:00:00.000Z'
+            },
+            {
+              estimate_id: 'P26/04367',
+              docNumber: 'P26/04367',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              products: [{ name: 'Vinilo Monomérico' }],
+              total_amount: 2200,
+              currency: 'EUR',
+              date: '2024-07-03T00:00:00.000Z'
+            },
+            {
+              estimate_id: 'P26/04368',
+              docNumber: 'P26/04368',
+              customer_id: 'granapublic',
+              customer_name: 'Granapublic Xx Sl',
+              contact: 'contact-granapublic',
+              contactName: 'Granapublic Xx Sl',
+              products: [{ name: 'Vinilo Monomérico Plus' }],
+              total_amount: 2300,
+              currency: 'EUR',
+              date: '2024-07-04T00:00:00.000Z'
+            }
+          ];
     return {
       ok: true,
       status: 200,
@@ -267,11 +312,17 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     true
   );
   assert.equal(
+    qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some(
+      (candidate) => candidate.required?.includes('invoice_id') && candidate.required?.length === 1
+    ),
+    true
+  );
+  assert.equal(
     qwenRequest.messages?.[0]?.content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
     true
   );
   assert.equal(
-    qwenRequest.messages?.[0]?.content?.includes('Do not invent estimate_id.'),
+    qwenRequest.messages?.[0]?.content?.includes('Do not invent estimate_id or invoice_id.'),
     true
   );
   assert.equal(channelResult.status, 'sent');
@@ -303,6 +354,60 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'orchestration_requested'), true);
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'workflow_invocation_requested'), true);
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'workflow_response_created'), true);
+});
+
+test('runtime slice can read invoices and formats Telegram output safely', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 3,
+      message: {
+        message_id: 300,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito la factura del cliente Granapublic',
+        date: 1_751_472_060,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport('invoice'),
+    holdedFetch: buildHoldedFetch([], 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  assert.equal(result.status, 'sent');
+  assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  assert.equal(result.orchestration_outcome?.response.data?.invoice_id, 'F26/1931');
+  assert.equal((result.orchestration_outcome?.response.data as { docNumber?: string } | undefined)?.docNumber, 'F26/1931');
+  assert.equal(result.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].text.includes('Última factura de Granapublic Xx Sl:'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('MUPIS PAPEL'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
 });
 
 test('runtime transport handles large Holded payloads without becoming unavailable', async () => {
