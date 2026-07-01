@@ -201,13 +201,22 @@ function sanitizeProposal(proposal: OrchestrationProposal): OrchestrationProposa
   };
 }
 
+function normalizeCustomerLookupParam(value: unknown): string | null {
+  return normalizeOptionalString(value);
+}
+
 function resolveWorkflowRequest(
   proposal: OrchestrationProposal,
   request: OrchestrationRequest
 ): MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput | null {
   if (proposal.capability_key === 'mock.resource.read') {
     const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
-    const customer_id = normalizeOptionalString(proposal.params.customer_id);
+    const customer_id =
+      normalizeCustomerLookupParam(proposal.params.customer_id) ??
+      normalizeCustomerLookupParam(proposal.params.customer_name) ??
+      normalizeCustomerLookupParam(proposal.params.contact_name) ??
+      normalizeCustomerLookupParam(proposal.params.contactName) ??
+      normalizeCustomerLookupParam(proposal.params.contact);
     if (!estimate_id && !customer_id) {
       return null;
     }
@@ -217,7 +226,7 @@ function resolveWorkflowRequest(
       organization_hint: request.organization_id,
       principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
       correlation_id: request.correlation_id,
-      estimate_id: estimate_id ?? 'estimate-unknown',
+      estimate_id,
       customer_id,
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
@@ -687,7 +696,12 @@ export class InMemoryOrchestrationBoundary {
 
     if (proposal.capability_key === 'mock.resource.read') {
       const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
-      const customer_id = normalizeOptionalString(proposal.params.customer_id);
+      const customer_id =
+        normalizeCustomerLookupParam(proposal.params.customer_id) ??
+        normalizeCustomerLookupParam(proposal.params.customer_name) ??
+        normalizeCustomerLookupParam(proposal.params.contact_name) ??
+        normalizeCustomerLookupParam(proposal.params.contactName) ??
+        normalizeCustomerLookupParam(proposal.params.contact);
       if (!estimate_id && !customer_id) {
         return {
           valid: false,
@@ -704,7 +718,10 @@ export class InMemoryOrchestrationBoundary {
         status: 'proposal',
         reason: 'proposal validated',
         capability_key: proposal.capability_key,
-        params: normalizeCapabilityParams(proposal.params),
+        params: normalizeCapabilityParams({
+          ...proposal.params,
+          customer_id: customer_id ?? proposal.params.customer_id ?? null
+        }),
         capability_active: true,
         capability_known: true
       };

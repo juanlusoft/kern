@@ -270,7 +270,7 @@ function buildWorkflowResult(input: {
 
 function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record<string, unknown> {
   return {
-    estimate_id: input.estimate_id,
+    estimate_id: input.estimate_id ?? null,
     customer_id: input.customer_id ?? null
   };
 }
@@ -282,7 +282,7 @@ function createMockResourceQuery(input: {
   principal_id: string;
   principal_type: PrincipalType | null;
   delegated_identity: string | null;
-  estimate_id: string;
+  estimate_id?: string | null;
   customer_id?: string | null;
   claimed_result?: unknown;
   caller_result?: unknown;
@@ -295,11 +295,11 @@ function createMockResourceQuery(input: {
     correlation_id: input.correlation_id,
     actor: {
       principal_id: input.principal_id,
-      principal_type: input.principal_type,
-      delegated_identity: input.delegated_identity
+    principal_type: input.principal_type,
+    delegated_identity: input.delegated_identity
     },
     resource_type: 'estimate',
-    resource_id: input.estimate_id,
+    resource_id: input.estimate_id ?? null,
     filters: input.customer_id ? { customer_id: input.customer_id } : null,
     requested_fields: ['estimate_id', 'customer_name', 'description', 'base_amount', 'tax_amount', 'total_amount', 'currency', 'source'],
     claimed_result: input.claimed_result ?? null,
@@ -531,15 +531,17 @@ export class InMemoryGovernedWorkflowRuntime {
     });
     const requested_at = input.requested_at?.trim() || this.now().toISOString();
     const capabilityId = input.capability_id ?? 'mock.resource.read';
+    const estimate_id = input.estimate_id?.trim() || null;
+    const customer_id = input.customer_id?.trim() || null;
     const coreRequest = createWorkflowCoreRequest({
       workflow_id: input.workflow_id,
       correlation_id,
       organization_hint: input.organization_hint,
       principal_hint: input.principal_hint,
       action: 'workflow.mock.estimate.read',
-      purpose: `Read estimate ${input.estimate_id}`,
+      purpose: customer_id ? `Read latest estimate for ${customer_id}` : `Read estimate ${estimate_id ?? 'unknown'}`,
       payload: {
-        resource: `estimate/${input.estimate_id}`,
+        resource: customer_id ? `estimate/customer/${customer_id}` : `estimate/${estimate_id ?? 'unknown'}`,
         operation: 'read',
         requested_scope: 'read:knowledge',
         classification: 'internal',
@@ -561,8 +563,8 @@ export class InMemoryGovernedWorkflowRuntime {
       data: {
         workflow_id: input.workflow_id,
         kind: input.kind,
-        estimate_id: input.estimate_id,
-        customer_id: input.customer_id ?? null,
+        estimate_id,
+        customer_id,
         claimed_result: input.claimed_result ?? null,
         claimed_output: input.claimed_output ?? null,
         caller_result: input.caller_result ?? null,
@@ -577,7 +579,7 @@ export class InMemoryGovernedWorkflowRuntime {
       step_kind: 'intent',
       status: 'completed',
       evidence_reference: intentEvidence.evidence_id,
-      details: { estimate_id: input.estimate_id }
+      details: { estimate_id, customer_id }
     }));
 
     const organizationContext = this.resolveOrganizationContext(coreRequest);
@@ -633,8 +635,8 @@ export class InMemoryGovernedWorkflowRuntime {
       principal_id: identityContext.principal_id ?? 'unknown',
       principal_type: identityContext.principal_type,
       delegated_identity: identityContext.delegated_identity,
-      estimate_id: input.estimate_id,
-      customer_id: input.customer_id ?? null,
+      estimate_id,
+      customer_id,
       claimed_result: input.claimed_result ?? null,
       caller_result: input.caller_result ?? null,
       assistant_result: input.assistant_result ?? null,
@@ -794,7 +796,7 @@ export class InMemoryGovernedWorkflowRuntime {
       principal_id: identityContext.principal_id,
       correlation_id,
       input: {
-        purpose: `Read estimate ${input.estimate_id}`,
+        purpose: customer_id ? `Read latest estimate for ${customer_id}` : `Read estimate ${estimate_id ?? 'unknown'}`,
         requested_scope: ['read:knowledge'],
         payload: governedResourceQuery as unknown as Record<string, unknown>
       },

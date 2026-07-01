@@ -28,6 +28,8 @@ export interface QwenParameterSchema {
   required?: string[];
   additionalProperties?: boolean;
   properties?: Record<string, QwenParameterSchemaProperty>;
+  anyOf?: Array<{ required?: string[] }>;
+  oneOf?: Array<{ required?: string[] }>;
 }
 
 export interface QwenToolDefinition {
@@ -233,7 +235,18 @@ function buildSystemPrompt(input: {
     'You are Kern M10 orchestration.',
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
-    'Do not output business data, claims, answers, or results.',
+    'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
+    'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, resource_id, resource_type, and search terms.',
+    'When the user names a customer, fill customer_id with the customer name from the user request.',
+    "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
+    'User: "ultimo presupuesto de Granapublic"',
+    'Correct tool params:',
+    '{',
+    '  "resource_type": "estimate",',
+    '  "customer_id": "Granapublic"',
+    '}',
+    "For latest estimate of a named customer, always provide customer_id with the customer name from the user's request.",
+    'Do not invent estimate_id.',
     `organization_id=${input.organization_id ?? 'null'}`,
     `principal_id=${input.principal_id ?? 'null'}`,
     `installation_id=${input.installation_id ?? 'null'}`,
@@ -294,6 +307,22 @@ function validateToolArguments(definition: QwenToolDefinition, params: Record<st
       if (!Object.prototype.hasOwnProperty.call(params, requiredKey)) {
         return false;
       }
+    }
+  }
+  const conditionalSets = [
+    ...(Array.isArray((schema as { anyOf?: Array<{ required?: string[] }> }).anyOf)
+      ? ((schema as { anyOf: Array<{ required?: string[] }> }).anyOf ?? []).map((candidate) => candidate.required ?? null)
+      : []),
+    ...(Array.isArray((schema as { oneOf?: Array<{ required?: string[] }> }).oneOf)
+      ? ((schema as { oneOf: Array<{ required?: string[] }> }).oneOf ?? []).map((candidate) => candidate.required ?? null)
+      : [])
+  ].filter((candidate): candidate is string[] => Array.isArray(candidate) && candidate.length > 0);
+  if (conditionalSets.length > 0) {
+    const satisfiesAtLeastOne = conditionalSets.some((requiredKeys) =>
+      requiredKeys.every((requiredKey) => Object.prototype.hasOwnProperty.call(params, requiredKey))
+    );
+    if (!satisfiesAtLeastOne) {
+      return false;
     }
   }
   if (schema.additionalProperties === false && schema.properties) {

@@ -485,7 +485,7 @@ export interface GovernedWorkflowRequestBase {
 
 export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBase {
   kind: 'mock.estimate.read';
-  estimate_id: string;
+  estimate_id?: string | null;
   customer_id?: string | null;
   capability_id?: string | null;
 }

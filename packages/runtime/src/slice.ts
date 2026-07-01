@@ -18,6 +18,7 @@ import {
   createNodeFetchTelegramTransport,
   createQwenNodeFetchTransport
 } from './transports';
+import type { QwenToolDefinition } from '../../orchestrators/qwen/src/index';
 import {
   createSampleInstallationConfig,
   loadInstallationConfig,
@@ -199,19 +200,55 @@ function buildQwenToolCatalog() {
   return [
     {
       capability_key: 'mock.resource.read',
-      description: 'Read governed estimates from the runtime by customer or estimate id',
+      description:
+        'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object' as const,
-        required: [],
+        required: ['resource_type'],
         additionalProperties: false as const,
+        anyOf: [
+          { required: ['customer_id'] },
+          { required: ['customer_name'] },
+          { required: ['contact_name'] },
+          { required: ['contactName'] },
+          { required: ['contact'] },
+          { required: ['estimate_id'] },
+          { required: ['resource_id'] }
+        ],
         properties: {
+          resource_type: {
+            type: 'string' as const,
+            description: "Use 'estimate' for budget/estimate lookup."
+          },
           estimate_id: { type: 'string' as const },
-          customer_id: { type: 'string' as const },
-          resource_type: { type: 'string' as const }
+          resource_id: {
+            type: 'string' as const,
+            description: 'Known resource id if the user explicitly provided one.'
+          },
+          customer_id: {
+            type: 'string' as const,
+            description: "Customer name or search term extracted from the user's request. Required when the user asks for the latest estimate of a customer."
+          },
+          customer_name: {
+            type: 'string' as const,
+            description: 'Alias for customer_id when the user gave a customer name.'
+          },
+          contact_name: {
+            type: 'string' as const,
+            description: 'Alias for customer_id when the user gave a contact name.'
+          },
+          contactName: {
+            type: 'string' as const,
+            description: 'Alias for customer_id when the user gave a contact name.'
+          },
+          contact: {
+            type: 'string' as const,
+            description: 'Alias for customer_id when the user gave a contact.'
+          }
         }
       }
     }
-  ];
+  ] satisfies QwenToolDefinition[];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {

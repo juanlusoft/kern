@@ -90,19 +90,18 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
           role: 'assistant',
           content: '',
           tool_calls: [
-                {
-                  id: 'tool-call-1',
-                  type: 'function',
-                  function: {
-                    name: 'mock.resource.read',
-                    arguments: JSON.stringify({
-                      estimate_id: 'estimate-12345',
-                      customer_id: 'granapublic',
-                      resource_type: 'estimate'
-                    })
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        customer_id: 'Granapublic',
+                        resource_type: 'estimate'
+                      })
+                    }
                   }
-                }
-          ]
+                ]
         }
       };
       return {
@@ -225,8 +224,32 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
 
   assert.equal(qwenCalls.length > 0, true);
   assert.equal(holdedCalls.length > 0, true);
-  const qwenRequest = qwenCalls[0] as { tools?: Array<{ function?: { parameters?: { required?: string[] } } }> };
-  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.required?.length ?? -1, 0);
+  const qwenRequest = qwenCalls[0] as {
+    tools?: Array<{
+      function?: {
+        parameters?: {
+          required?: string[];
+          anyOf?: Array<{ required?: string[] }>;
+        };
+      };
+    }>;
+    messages?: Array<{ role?: string; content?: string | null }>;
+  };
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.required?.includes('resource_type'), true);
+  assert.equal(
+    qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some(
+      (candidate) => candidate.required?.includes('customer_id') && candidate.required?.length === 1
+    ),
+    true
+  );
+  assert.equal(
+    qwenRequest.messages?.[0]?.content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
+    true
+  );
+  assert.equal(
+    qwenRequest.messages?.[0]?.content?.includes('Do not invent estimate_id.'),
+    true
+  );
   assert.equal(channelResult.status, 'sent');
   assert.equal(channelResult.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
