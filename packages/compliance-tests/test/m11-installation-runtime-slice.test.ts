@@ -18,24 +18,24 @@ function buildEnv(): NodeJS.ProcessEnv {
 
 function buildInstallationConfig(): RuntimeInstallationConfig {
   return {
-    installation_id: 'install-pacoprint-live-test',
+    installation_id: 'install-granapublic-live-test',
     organization: {
-      organization_id: 'org-pacoprint-live-test',
-      name: 'PacoPrint Live Test',
+      organization_id: 'org-granapublic-live-test',
+      name: 'Granapublic Live Test',
       active: true,
-      isolation_boundary: 'PacoPrint live only'
+      isolation_boundary: 'Granapublic live only'
     },
     principals: [
       {
-        principal_id: 'principal-gema-live-test',
-        name: 'Gema Live Test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        name: 'Gema Granapublic Live Test',
         principal_type: 'human',
         active: true,
         scopes: ['request:governed', 'read:knowledge', 'read:estimate']
       },
       {
-        principal_id: 'principal-juan-live-test',
-        name: 'Juan Live Test',
+        principal_id: 'principal-juan-granapublic-live-test',
+        name: 'Juan Granapublic Live Test',
         principal_type: 'human',
         active: true,
         scopes: ['request:governed']
@@ -46,12 +46,12 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
         channel: 'telegram',
         telegram_user_id: '146574793',
         telegram_chat_id: '146574793',
-        organization_id: 'org-pacoprint-live-test',
-        principal_id: 'principal-gema-live-test',
-        installation_id: 'install-pacoprint-live-test',
+        organization_id: 'org-granapublic-live-test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        installation_id: 'install-granapublic-live-test',
         principal_type: 'human',
         active: true,
-        display_name: 'Gema Live Test'
+        display_name: 'Gema Granapublic Live Test'
       }
     ],
     active_modules: ['telegram-channel', 'qwen-orchestrator', 'holded-read'],
@@ -79,12 +79,36 @@ function buildHoldedFetch(): HoldedFetch {
   return (_url: string, _init?: RequestInit): HoldedFetchResponse => {
     const body = [
       {
-        estimate_id: 'estimate-123',
-        customer_id: 'customer-001',
-        customer_name: 'Acme Customer',
-        total_amount: 1210,
+        estimate_id: 'estimate-old-granapublic',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2100,
         currency: 'EUR',
-        date: '2026-06-30T00:00:00.000Z'
+        date: '2024-03-09T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-new-granapublic',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomerico' }],
+        total_amount: 2200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-other',
+        customer_id: 'other-customer',
+        customer_name: 'Other Customer',
+        contact: 'contact-other',
+        contactName: 'Other Customer',
+        products: [{ name: 'Otro producto' }],
+        total_amount: 1800,
+        currency: 'EUR',
+        date: '2024-08-15T00:00:00.000Z'
       }
     ];
     return {
@@ -117,8 +141,8 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
                   function: {
                     name: 'mock.resource.read',
                     arguments: JSON.stringify({
-                      estimate_id: 'estimate-123',
-                      customer_id: 'customer-001',
+                      estimate_id: 'estimate-12345',
+                      customer_id: 'granapublic',
                       resource_type: 'estimate'
                     })
                   }
@@ -141,19 +165,19 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   telegramTransport.seedUpdates([
     {
       update_id: 2,
-    message: {
-      message_id: 200,
-      chat: {
-        id: 146574793,
-        type: 'private'
-      },
-      from: {
-        id: 146574793,
-        username: 'gema',
-        first_name: 'Gema',
-        last_name: 'Print'
+      message: {
+        message_id: 200,
+        chat: {
+          id: 146574793,
+          type: 'private'
         },
-        text: 'Necesito el presupuesto estimate-123 del cliente customer-001',
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito el ultimo presupuesto del cliente Granapublic',
         date: 1_751_472_000,
         raw: null
       },
@@ -186,7 +210,10 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.inbound_message?.message_id, '200');
   assert.equal(result.inbound_message?.chat_id, '146574793');
   assert.equal(result.inbound_message?.user_id, '146574793');
-  assert.equal(result.orchestration_outcome?.organization_id, 'org-pacoprint-live-test');
+  assert.equal(result.orchestration_outcome?.organization_id, 'org-granapublic-live-test');
+  assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'estimate-new-granapublic');
+  assert.equal(result.orchestration_outcome?.response.data?.customer_name, 'Granapublic Xx Sl');
+  assert.equal(result.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
   assert.equal(JSON.stringify(result).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(result).includes('holded-secret'), false);
   assert.equal(
@@ -196,7 +223,7 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(
     runtime.orchestrationBoundary
       .getEvidenceLedger()
-      .listByCorrelation('telegram:install-pacoprint-live-test:146574793:200')
+      .listByCorrelation('telegram:install-granapublic-live-test:146574793:200')
       .some((record) => record.record_type === 'workflow_response_created'),
     true
   );
@@ -227,7 +254,7 @@ test('M11 runtime slice fails closed when live-like organization, principal, sco
       config: {
         ...structuredClone(baseConfig),
         principals: baseConfig.principals.map((principal) =>
-          principal.principal_id === 'principal-gema-live-test'
+          principal.principal_id === 'principal-gema-granapublic-live-test'
             ? {
                 ...principal,
                 scopes: []
@@ -262,7 +289,7 @@ test('M11 runtime slice fails closed when live-like organization, principal, sco
             first_name: 'Gema',
             last_name: 'Print'
           },
-          text: 'Necesito el presupuesto estimate-123 del cliente customer-001',
+          text: 'Necesito el ultimo presupuesto del cliente Granapublic',
           date: 1_751_472_000,
           raw: null
         },

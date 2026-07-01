@@ -199,10 +199,10 @@ function buildQwenToolCatalog() {
   return [
     {
       capability_key: 'mock.resource.read',
-      description: 'Read governed estimates from the runtime',
+      description: 'Read governed estimates from the runtime by customer or estimate id',
       parameters_schema: {
         type: 'object' as const,
-        required: ['estimate_id'],
+        required: [],
         additionalProperties: false as const,
         properties: {
           estimate_id: { type: 'string' as const },

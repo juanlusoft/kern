@@ -86,6 +86,18 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeSearchText(value: unknown): string | null {
+  const candidate = normalizeOptionalString(value);
+  if (!candidate) {
+    return null;
+  }
+  return candidate
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 function normalizeApiKey(apiKey: string | null | undefined): string | null {
   return normalizeOptionalString(apiKey);
 }
@@ -146,6 +158,8 @@ function validateQuery(input: ResourceQuery): string | null {
   const resource_id = normalizeOptionalString(input.resource_id);
   const customer_id = input.filters && typeof input.filters.customer_id === 'string' ? normalizeOptionalString(input.filters.customer_id) : null;
   const contact_id = input.filters && typeof input.filters.contact_id === 'string' ? normalizeOptionalString(input.filters.contact_id) : null;
+  const contact =
+    input.filters && typeof input.filters.contact === 'string' ? normalizeOptionalString(input.filters.contact) : null;
   const contact_name =
     input.filters && typeof input.filters.contact_name === 'string'
       ? normalizeOptionalString(input.filters.contact_name)
@@ -158,12 +172,12 @@ function validateQuery(input: ResourceQuery): string | null {
       : input.filters && typeof input.filters.customerName === 'string'
         ? normalizeOptionalString(input.filters.customerName)
         : null;
-  if (!resource_id && !customer_id && !contact_id && !contact_name && !customer_name) return 'resource query invalid';
+  if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name) return 'resource query invalid';
   return null;
 }
 
 function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' {
-  return normalizeOptionalString(query.resource_id) ? 'by_id' : 'by_customer';
+  return collectQueryLookupTerms(query).length > 0 ? 'by_customer' : 'by_id';
 }
 
 function buildEndpoint(baseUrl: string, query: ResourceQuery): string {
@@ -175,9 +189,48 @@ function collectFieldPaths(record: Record<string, unknown>): string[] {
   return keys.length > 0 ? keys : ['resource'];
 }
 
-function extractRecordId(record: Record<string, unknown>, fallback: string | null): string {
-  const candidate = record.estimate_id ?? record.id ?? record.resource_id ?? fallback;
-  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : fallback ?? 'unknown';
+function extractRecordId(record: Record<string, unknown>): string | null {
+  const candidate = record.estimate_id ?? record.id ?? record.resource_id;
+  return normalizeOptionalString(candidate);
+}
+
+function collectQueryLookupTerms(query: ResourceQuery): string[] {
+  const filters = query.filters && isRecord(query.filters) ? query.filters : null;
+  const candidateValues = [
+    filters?.customer_id,
+    filters?.customer_name,
+    filters?.customerName,
+    filters?.contact_name,
+    filters?.contactName,
+    filters?.contact,
+    filters?.contact_id
+  ];
+  const terms = candidateValues
+    .map((candidate) => normalizeSearchText(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
+  return [...new Set(terms)];
+}
+
+function collectRecordLookupCandidates(record: Record<string, unknown>): string[] {
+  const candidateValues = [
+    record.customer_id,
+    record.contact_id,
+    record.contact_name,
+    record.customer_name,
+    record.contactName,
+    record.customerName,
+    record.contact,
+    record.customer,
+    isRecord(record.contact) ? record.contact.name : null,
+    isRecord(record.contact) ? record.contact.contact_name : null,
+    isRecord(record.contact) ? record.contact.contactName : null,
+    isRecord(record.customer) ? record.customer.name : null,
+    isRecord(record.customer) ? record.customer.customer_name : null,
+    isRecord(record.customer) ? record.customer.customerName : null
+  ];
+  return candidateValues
+    .map((candidate) => normalizeSearchText(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
 }
 
 function normalizePayload(payload: unknown): { records: Record<string, unknown>[]; empty: boolean } {
@@ -228,63 +281,18 @@ function normalizeDateCandidate(record: Record<string, unknown>): number | null 
 }
 
 function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery): boolean {
+  const lookupTerms = collectQueryLookupTerms(query);
+  if (lookupTerms.length > 0) {
+    const candidateTerms = collectRecordLookupCandidates(record);
+    return candidateTerms.some((candidate) => lookupTerms.some((lookup) => candidate.includes(lookup)));
+  }
+
   const resource_id = normalizeOptionalString(query.resource_id);
-  if (resource_id) {
-    const candidate = extractRecordId(record, null);
-    return normalizeOptionalString(candidate) === resource_id;
-  }
-
-  const filters = query.filters && isRecord(query.filters) ? query.filters : null;
-  const customer_id = filters && typeof filters.customer_id === 'string' ? normalizeOptionalString(filters.customer_id) : null;
-  const contact_id = filters && typeof filters.contact_id === 'string' ? normalizeOptionalString(filters.contact_id) : null;
-  const contact_name =
-    filters && typeof filters.contact_name === 'string'
-      ? normalizeOptionalString(filters.contact_name)
-      : filters && typeof filters.contactName === 'string'
-        ? normalizeOptionalString(filters.contactName)
-        : null;
-  const customer_name =
-    filters && typeof filters.customer_name === 'string'
-      ? normalizeOptionalString(filters.customer_name)
-      : filters && typeof filters.customerName === 'string'
-        ? normalizeOptionalString(filters.customerName)
-        : null;
-
-  if (customer_id) {
-    const candidates = [
-      record.customer_id,
-      isRecord(record.customer) ? record.customer.id : null,
-      isRecord(record.customer) ? record.customer.customer_id : null
-    ];
-    return candidates.some((candidate) => normalizeOptionalString(candidate) === customer_id);
-  }
-
-  if (contact_id) {
-    const candidates = [
-      record.contact_id,
-      isRecord(record.contact) ? record.contact.id : null,
-      isRecord(record.contact) ? record.contact.contact_id : null
-    ];
-    return candidates.some((candidate) => normalizeOptionalString(candidate) === contact_id);
-  }
-
-  const lookupNames = [contact_name, customer_name].filter((candidate): candidate is string => Boolean(candidate));
-  if (lookupNames.length === 0) {
+  if (!resource_id) {
     return false;
   }
-
-  const candidateNames = [
-    record.contact_name,
-    record.customer_name,
-    isRecord(record.contact) ? record.contact.name : null,
-    isRecord(record.customer) ? record.customer.name : null
-  ]
-    .map((candidate) => normalizeOptionalString(candidate))
-    .filter((candidate): candidate is string => Boolean(candidate));
-
-  return candidateNames.some((candidateName) =>
-    lookupNames.some((lookupName) => candidateName.toLowerCase() === lookupName.toLowerCase())
-  );
+  const candidate = extractRecordId(record);
+  return candidate !== null && normalizeSearchText(candidate) === normalizeSearchText(resource_id);
 }
 
 function selectMatchingRecord(records: Record<string, unknown>[], query: ResourceQuery): Record<string, unknown> | null {
@@ -669,8 +677,8 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
         })
       );
     }
-    const record = selectMatchingRecord(payload.records, normalized);
-    if (!record) {
+  const record = selectMatchingRecord(payload.records, normalized);
+  if (!record) {
       return cloneResourceResult(
         createTerminalResult({
           query: normalized,
@@ -683,7 +691,20 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
         })
       );
     }
-    const record_id = extractRecordId(record, resource_id);
+    const record_id = extractRecordId(record);
+    if (!record_id) {
+      return cloneResourceResult(
+        createTerminalResult({
+          query: normalized,
+          adapter_id: this.adapter_id,
+          status: 'error',
+          reason: 'Holded estimate missing id',
+          authorization,
+          resource_id,
+          produced_by_adapter: true
+        })
+      );
+    }
 
     const found = buildFoundResult({
       query: normalized,
