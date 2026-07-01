@@ -99,7 +99,8 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
     status: 200,
     body: [
       {
-        estimate_id: 'estimate-old-granapublic',
+        estimate_id: 'P26/04366',
+        docNumber: 'P26/04366',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
         products: [{ name: 'Producto antiguo' }],
@@ -108,11 +109,22 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
         date: '2024-03-09T00:00:00.000Z'
       },
       {
-        estimate_id: 'estimate-new-granapublic',
+        estimate_id: 'P26/04367',
+        docNumber: 'P26/04367',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
         products: [{ name: 'Vinilo Monomerico' }],
         total_amount: 2200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'P26/04368',
+        docNumber: 'P26/04368',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomérico Plus' }],
+        total_amount: 2300,
         currency: 'EUR',
         date: '2024-07-03T00:00:00.000Z'
       },
@@ -165,12 +177,175 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
     const result = adapter.read(query);
     const resultData = result.data as { products?: Array<{ name?: string }>; contactName?: string } | null;
     assert.equal(result.status, 'found');
-    assert.equal(result.data?.estimate_id, 'estimate-new-granapublic');
+    assert.equal(result.data?.estimate_id, 'P26/04368');
+    assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04368');
     assert.equal(result.data?.contactName, 'Granapublic Xx Sl');
     assert.equal(result.data?.lookup_mode, 'by_customer');
-    assert.equal(resultData?.products?.[0]?.name, 'Vinilo Monomerico');
-    assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-new-granapublic');
+    assert.equal(resultData?.products?.[0]?.name, 'Vinilo Monomérico Plus');
+    assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04368');
   }
+});
+
+test('Holded adapter chooses the latest estimate by date before comparing document numbers', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'P26/04366',
+        docNumber: 'P26/04366',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2100,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'P26/04368',
+        docNumber: 'P26/04368',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2300,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'P26/04367',
+        docNumber: 'P26/04367',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2200,
+        currency: 'EUR',
+        date: '2024-07-04T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { customer_id: 'granapublic' }
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'P26/04367');
+  assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04367');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04367');
+});
+
+test('Holded adapter compares document numbers naturally when dates match', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-9',
+        docNumber: 'P26/9',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 900,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-10',
+        docNumber: 'P26/10',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 1000,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-2',
+        docNumber: 'P26/2',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { customer_name: 'Granapublic' }
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-10');
+  assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/10');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-10');
+});
+
+test('Holded adapter uses id as the final tie-break when dates and document numbers match', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-001',
+        docNumber: 'P26/04368',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2100,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-002',
+        docNumber: 'P26/04368',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2300,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { customer_name: 'Granapublic' }
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-002');
+  assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04368');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-002');
 });
 
 test('Holded adapter returns not_found for customer searches with no matching documents and does not invent ids', () => {

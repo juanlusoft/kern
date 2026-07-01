@@ -189,8 +189,23 @@ function collectFieldPaths(record: Record<string, unknown>): string[] {
   return keys.length > 0 ? keys : ['resource'];
 }
 
+const naturalComparator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
 function extractRecordId(record: Record<string, unknown>): string | null {
   const candidate = record.estimate_id ?? record.id ?? record.resource_id;
+  return normalizeOptionalString(candidate);
+}
+
+function extractRecordDocumentNumber(record: Record<string, unknown>): string | null {
+  const candidate =
+    record.docNumber ??
+    record.documentNo ??
+    record.document_number ??
+    record.documentNumber ??
+    record.estimateNumber ??
+    record.invoiceNum ??
+    record.number ??
+    record.num;
   return normalizeOptionalString(candidate);
 }
 
@@ -280,6 +295,35 @@ function normalizeDateCandidate(record: Record<string, unknown>): number | null 
   return null;
 }
 
+function compareOptionalStringsDesc(left: string | null, right: string | null): number {
+  if (left === null && right === null) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return naturalComparator.compare(right, left);
+}
+
+function compareOptionalNumbersDesc(left: number | null, right: number | null): number {
+  if (left === null && right === null) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  if (left === right) {
+    return 0;
+  }
+  return right - left;
+}
+
 function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery): boolean {
   const lookupTerms = collectQueryLookupTerms(query);
   if (lookupTerms.length > 0) {
@@ -301,18 +345,26 @@ function selectMatchingRecord(records: Record<string, unknown>[], query: Resourc
     return null;
   }
   const ranked = matches
-    .map((record) => ({ record, timestamp: normalizeDateCandidate(record) }))
+    .map((record) => ({
+      record,
+      timestamp: normalizeDateCandidate(record),
+      documentNumber: extractRecordDocumentNumber(record),
+      recordId: extractRecordId(record)
+    }))
     .sort((left, right) => {
-      if (left.timestamp === null && right.timestamp === null) {
-        return 0;
+      const dateComparison = compareOptionalNumbersDesc(left.timestamp, right.timestamp);
+      if (dateComparison !== 0) {
+        return dateComparison;
       }
-      if (left.timestamp === null) {
-        return 1;
+      const documentComparison = compareOptionalStringsDesc(left.documentNumber, right.documentNumber);
+      if (documentComparison !== 0) {
+        return documentComparison;
       }
-      if (right.timestamp === null) {
-        return -1;
+      const idComparison = compareOptionalStringsDesc(left.recordId, right.recordId);
+      if (idComparison !== 0) {
+        return idComparison;
       }
-      return right.timestamp - left.timestamp;
+      return 0;
     });
   return ranked[0]?.record ?? null;
 }
