@@ -13,20 +13,53 @@ function buildToolCatalog(): QwenToolDefinition[] {
   return [
     {
       capability_key: 'mock.resource.read',
-      description: 'Read governed estimates from the runtime',
+      description:
+        'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
-        required: ['estimate_id'],
+        required: ['resource_type'],
         additionalProperties: false,
+        anyOf: [
+          { required: ['customer_id'] },
+          { required: ['customer_name'] },
+          { required: ['contact_name'] },
+          { required: ['contactName'] },
+          { required: ['contact'] },
+          { required: ['estimate_id'] },
+          { required: ['resource_id'] }
+        ],
         properties: {
+          resource_type: {
+            type: 'string',
+            description: "Use 'estimate' for budget/estimate lookup."
+          },
           estimate_id: {
-            type: 'string'
+            type: 'string',
+            description: 'Known exact estimate/document id only if the user explicitly provided one.'
           },
           customer_id: {
-            type: 'string'
+            type: 'string',
+            description: "Customer name or search term extracted from the user's request."
           },
-          resource_type: {
-            type: 'string'
+          customer_name: {
+            type: 'string',
+            description: 'Alias for customer_id when the user gave a customer name.'
+          },
+          contact_name: {
+            type: 'string',
+            description: 'Alias for customer_id when the user gave a contact name.'
+          },
+          contactName: {
+            type: 'string',
+            description: 'Alias for customer_id when the user gave a contact name.'
+          },
+          contact: {
+            type: 'string',
+            description: 'Alias for customer_id when the user gave a contact.'
+          },
+          resource_id: {
+            type: 'string',
+            description: 'Known resource id if the user explicitly provided one.'
           }
         }
       }
@@ -154,7 +187,7 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
                         estimate_id: 'estimate-123',
-                        customer_id: 'customer-001',
+                        customer_id: 'Granapublic',
                         resource_type: 'estimate'
                       })
                     }
@@ -194,13 +227,106 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
   assert.equal(requests.length, 1);
   assert.equal(requests[0].tools.length, 1);
   assert.equal(requests[0].tools[0].function.name, 'mock.resource.read');
+  assert.equal(requests[0].tools[0].function.parameters.required?.includes('resource_type'), true);
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some(
+      (candidate) => candidate.required?.includes('customer_id') && candidate.required?.length === 1
+    ),
+    true
+  );
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some(
+      (candidate) => candidate.required?.includes('estimate_id') && candidate.required?.length === 1
+    ),
+    true
+  );
   assert.equal(requests[0].tool_choice && typeof requests[0].tool_choice === 'object', true);
+  assert.equal(
+    requests[0].messages[0].content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes('Extracting the customer name from the user\'s request as a tool parameter is not outputting business data.'),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes('User: "ultimo presupuesto de Granapublic"'),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes('"customer_id": "Granapublic"'),
+    true
+  );
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
   assert.equal(outcome.proposal?.params.estimate_id, 'estimate-123');
-  assert.equal(outcome.proposal?.params.customer_id, 'customer-001');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal(records.some((record) => record.record_type === 'model_orchestration_requested'), true);
   assert.equal(records.some((record) => record.record_type === 'model_tool_call_received'), true);
+});
+
+test('Qwen orchestrator allows customer extraction as tool params without inventing estimate ids', () => {
+  const requests: QwenChatCompletionsRequest[] = [];
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions(request) {
+        requests.push(structuredClone(request));
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        resource_type: 'estimate',
+                        customer_id: 'Granapublic'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-1b',
+    user_message: 'ultimo presupuesto de Granapublic',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-1b',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].tools[0].function.parameters.anyOf?.some((candidate) => candidate.required?.includes('customer_id')), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
+  assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
 });
 
 test('Qwen orchestrator ignores claimed result content and records the override', () => {
@@ -223,6 +349,7 @@ test('Qwen orchestrator ignores claimed result content and records the override'
                     function: {
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
+                        resource_type: 'estimate',
                         estimate_id: 'estimate-123'
                       })
                     }
@@ -323,22 +450,22 @@ test('Qwen orchestrator fails closed for invalid tool arguments and unknown capa
           choices: [
             {
               index: 0,
-              message: {
-                role: 'assistant',
-                content: '',
-                tool_calls: [
-                  {
-                    id: 'tool-call-1',
-                    type: 'function',
-                    function: {
-                      name: 'mock.resource.read',
-                      arguments: JSON.stringify({
-                        customer_id: 'customer-001'
-                      })
+                message: {
+                  role: 'assistant',
+                  content: '',
+                  tool_calls: [
+                    {
+                      id: 'tool-call-1',
+                      type: 'function',
+                      function: {
+                        name: 'mock.resource.read',
+                        arguments: JSON.stringify({
+                          resource_type: 'estimate'
+                        })
+                      }
                     }
-                  }
-                ]
-              }
+                  ]
+                }
             }
           ]
         };

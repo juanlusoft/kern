@@ -17,25 +17,48 @@ function buildToolCatalog(): Array<{
     type: 'object';
     required: string[];
     additionalProperties: false;
+    anyOf: Array<{ required: string[] }>;
     properties: {
+      resource_type: { type: 'string' };
       estimate_id: { type: 'string' };
       customer_id: { type: 'string' };
-      resource_type: { type: 'string' };
+      customer_name: { type: 'string' };
+      contact_name: { type: 'string' };
+      contactName: { type: 'string' };
+      contact: { type: 'string' };
+      resource_id: { type: 'string' };
     };
   };
 }> {
   return [
     {
       capability_key: 'mock.resource.read',
-      description: 'Read governed estimates from the runtime',
+      description:
+        'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
-        required: ['estimate_id'],
+        required: ['resource_type'],
         additionalProperties: false,
+        anyOf: [
+          { required: ['customer_id'] },
+          { required: ['customer_name'] },
+          { required: ['contact_name'] },
+          { required: ['contactName'] },
+          { required: ['contact'] },
+          { required: ['estimate_id'] },
+          { required: ['resource_id'] }
+        ],
         properties: {
+          resource_type: {
+            type: 'string'
+          },
           estimate_id: { type: 'string' },
           customer_id: { type: 'string' },
-          resource_type: { type: 'string' }
+          customer_name: { type: 'string' },
+          contact_name: { type: 'string' },
+          contactName: { type: 'string' },
+          contact: { type: 'string' },
+          resource_id: { type: 'string' }
         }
       }
     }
@@ -88,7 +111,7 @@ function buildBoundary(overrides: {
                         name: 'mock.resource.read',
                         arguments: JSON.stringify({
                           estimate_id: 'estimate-123',
-                          customer_id: 'customer-001',
+                          customer_id: 'Granapublic',
                           resource_type: 'estimate'
                         })
                       }
@@ -191,13 +214,30 @@ test('M10 ignores claimed model content and records the override', () => {
     toolCatalog: [
       {
         capability_key: 'mock.resource.read',
-        description: 'Read governed estimates from the runtime',
+        description:
+          'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
         parameters_schema: {
           type: 'object',
-          required: ['estimate_id'],
+          required: ['resource_type'],
           additionalProperties: false,
+          anyOf: [
+            { required: ['customer_id'] },
+            { required: ['customer_name'] },
+            { required: ['contact_name'] },
+            { required: ['contactName'] },
+            { required: ['contact'] },
+            { required: ['estimate_id'] },
+            { required: ['resource_id'] }
+          ],
           properties: {
-            estimate_id: { type: 'string' }
+            resource_type: { type: 'string' },
+            estimate_id: { type: 'string' },
+            customer_id: { type: 'string' },
+            customer_name: { type: 'string' },
+            contact_name: { type: 'string' },
+            contactName: { type: 'string' },
+            contact: { type: 'string' },
+            resource_id: { type: 'string' }
           }
         }
       }
@@ -218,6 +258,7 @@ test('M10 ignores claimed model content and records the override', () => {
                     function: {
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
+                        resource_type: 'estimate',
                         estimate_id: 'estimate-123'
                       })
                     }
@@ -320,13 +361,30 @@ test('M10 fails closed for transport failure, invalid params and unknown capabil
     toolCatalog: [
       {
         capability_key: 'mock.resource.read',
-        description: 'Read governed estimates from the runtime',
+        description:
+          'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
         parameters_schema: {
           type: 'object',
-          required: ['estimate_id'],
+          required: ['resource_type'],
           additionalProperties: false,
+          anyOf: [
+            { required: ['customer_id'] },
+            { required: ['customer_name'] },
+            { required: ['contact_name'] },
+            { required: ['contactName'] },
+            { required: ['contact'] },
+            { required: ['estimate_id'] },
+            { required: ['resource_id'] }
+          ],
           properties: {
-            estimate_id: { type: 'string' }
+            resource_type: { type: 'string' },
+            estimate_id: { type: 'string' },
+            customer_id: { type: 'string' },
+            customer_name: { type: 'string' },
+            contact_name: { type: 'string' },
+            contactName: { type: 'string' },
+            contact: { type: 'string' },
+            resource_id: { type: 'string' }
           }
         }
       }
@@ -344,13 +402,30 @@ test('M10 fails closed for transport failure, invalid params and unknown capabil
     toolCatalog: [
       {
         capability_key: 'mock.resource.read',
-        description: 'Read governed estimates from the runtime',
+        description:
+          'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
         parameters_schema: {
           type: 'object',
-          required: ['estimate_id'],
+          required: ['resource_type'],
           additionalProperties: false,
+          anyOf: [
+            { required: ['customer_id'] },
+            { required: ['customer_name'] },
+            { required: ['contact_name'] },
+            { required: ['contactName'] },
+            { required: ['contact'] },
+            { required: ['estimate_id'] },
+            { required: ['resource_id'] }
+          ],
           properties: {
-            estimate_id: { type: 'string' }
+            resource_type: { type: 'string' },
+            estimate_id: { type: 'string' },
+            customer_id: { type: 'string' },
+            customer_name: { type: 'string' },
+            contact_name: { type: 'string' },
+            contactName: { type: 'string' },
+            contact: { type: 'string' },
+            resource_id: { type: 'string' }
           }
         }
       }
@@ -371,7 +446,7 @@ test('M10 fails closed for transport failure, invalid params and unknown capabil
                     function: {
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
-                        customer_id: 'customer-001'
+                        resource_type: 'estimate'
                       })
                     }
                   }
@@ -390,13 +465,30 @@ test('M10 fails closed for transport failure, invalid params and unknown capabil
     toolCatalog: [
       {
         capability_key: 'mock.resource.read',
-        description: 'Read governed estimates from the runtime',
+        description:
+          'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
         parameters_schema: {
           type: 'object',
-          required: ['estimate_id'],
+          required: ['resource_type'],
           additionalProperties: false,
+          anyOf: [
+            { required: ['customer_id'] },
+            { required: ['customer_name'] },
+            { required: ['contact_name'] },
+            { required: ['contactName'] },
+            { required: ['contact'] },
+            { required: ['estimate_id'] },
+            { required: ['resource_id'] }
+          ],
           properties: {
-            estimate_id: { type: 'string' }
+            resource_type: { type: 'string' },
+            estimate_id: { type: 'string' },
+            customer_id: { type: 'string' },
+            customer_name: { type: 'string' },
+            contact_name: { type: 'string' },
+            contactName: { type: 'string' },
+            contact: { type: 'string' },
+            resource_id: { type: 'string' }
           }
         }
       }
