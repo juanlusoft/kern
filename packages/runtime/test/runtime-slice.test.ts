@@ -7,6 +7,7 @@ import type {
   QwenChatCompletionsTransport,
   QwenChatCompletionChoice
 } from '../../orchestrators/qwen/src/index';
+import { createNodeFetchHoldedTransport } from '../src/index';
 import {
   startInstallationRuntime,
   type RuntimeInstallationConfig
@@ -187,6 +188,22 @@ function buildTelegramUpdate() {
   };
 }
 
+function buildLargeHoldedPayload() {
+  return [
+    {
+      estimate_id: 'estimate-000000',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      total_amount: 2100,
+      currency: 'EUR',
+      date: '2024-07-03T00:00:00.000Z',
+      memo: 'Granapublic estimate payload '.repeat(60_000)
+    }
+  ];
+}
+
 test('runtime slice wires telegram, qwen, holded and governance evidence end to end', () => {
   const config = buildInstallationConfig();
   const serializedConfig = JSON.stringify(config);
@@ -282,6 +299,26 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'orchestration_requested'), true);
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'workflow_invocation_requested'), true);
   assert.equal(orchestrationRecords.some((record) => record.record_type === 'workflow_response_created'), true);
+});
+
+test('runtime transport handles large Holded payloads without becoming unavailable', async () => {
+  const body = JSON.stringify(buildLargeHoldedPayload());
+  const transport = createNodeFetchHoldedTransport({
+    baseUrl: 'data:',
+    apiKey: 'holded-secret',
+    timeoutMs: 120_000
+  });
+  const response = transport(`data:application/json;base64,${Buffer.from(body).toString('base64')}`);
+  const text = response.text();
+  const payload = response.json() as Array<{ estimate_id?: string }>;
+
+  assert.equal(response.ok, true);
+  assert.equal(response.status, 200);
+  assert.equal(text.length > 1_000_000, true);
+  assert.equal(Array.isArray(payload), true);
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0]?.estimate_id, 'estimate-000000');
+  assert.equal(payload.at(-1)?.estimate_id, 'estimate-000000');
 });
 
 test('runtime slice fails closed for live-like installation changes without falling back to M1 fixtures', () => {

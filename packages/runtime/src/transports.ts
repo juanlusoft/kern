@@ -19,6 +19,8 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+const SYNC_TRANSPORT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
 function normalizeTelegramId(value: unknown): string | null {
   if (typeof value === 'string') {
     return value.trim().length > 0 ? value.trim() : null;
@@ -95,7 +97,8 @@ function createSyncJsonTransport(script: string): (input: Record<string, unknown
   return (input: Record<string, unknown>) => {
     const child = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
       input: JSON.stringify(input),
-      encoding: 'utf8'
+      encoding: 'utf8',
+      maxBuffer: SYNC_TRANSPORT_MAX_BUFFER_BYTES
     });
     if (child.error) {
       throw child.error;
@@ -109,6 +112,17 @@ function createSyncJsonTransport(script: string): (input: Record<string, unknown
     }
     return output;
   };
+}
+
+function parseJsonText(text: string): unknown | null {
+  if (text.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 export function createNodeFetchHoldedTransport(options: {
@@ -136,17 +150,10 @@ try {
     signal: controller.signal
   });
   const text = await response.text();
-  let json = null;
-  try {
-    json = text.length > 0 ? JSON.parse(text) : null;
-  } catch {
-    json = null;
-  }
   process.stdout.write(JSON.stringify({
     ok: response.ok,
     status: response.status,
     statusText: response.statusText,
-    json,
     text
   }));
 } catch (error) {
@@ -168,15 +175,15 @@ try {
       ok: boolean;
       status: number;
       statusText: string;
-      json: unknown;
       text: string;
     };
+    const parsedJson = parseJsonText(output.text);
     return {
       ok: output.ok,
       status: output.status,
       statusText: output.statusText,
       text: () => output.text,
-      json: () => (output.json ?? (output.text ? JSON.parse(output.text) : null)),
+      json: () => parsedJson,
       headers: { get: () => null }
     };
   };
@@ -204,17 +211,10 @@ try {
     signal: controller.signal
   });
   const text = await response.text();
-  let json = null;
-  try {
-    json = text.length > 0 ? JSON.parse(text) : null;
-  } catch {
-    json = null;
-  }
   process.stdout.write(JSON.stringify({
     ok: response.ok,
     status: response.status,
     statusText: response.statusText,
-    json,
     text
   }));
 } catch (error) {
@@ -242,13 +242,12 @@ try {
         ok: boolean;
         status: number;
         statusText: string;
-        json: unknown;
         text: string;
       };
       if (!output.ok) {
         throw new Error(`telegram transport failed with status ${output.status}: ${output.statusText}`);
       }
-      const payload = output.json;
+      const payload = parseJsonText(output.text);
       const updates = isPlainObject(payload) && Array.isArray(payload.result) ? payload.result : Array.isArray(payload) ? payload : [];
       return updates.map(normalizeTelegramUpdate).filter((update): update is TelegramChannelUpdate => Boolean(update));
     },
@@ -269,7 +268,6 @@ try {
         ok: boolean;
         status: number;
         statusText: string;
-        json: unknown;
         text: string;
       };
       if (!output.ok) {
@@ -277,7 +275,7 @@ try {
       }
       return {
         ...message,
-        raw: output.json ?? output.text
+        raw: output.text
       };
     }
   };
