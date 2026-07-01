@@ -430,12 +430,99 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
   assert.equal(truncatedText.endsWith('… [respuesta resumida]'), true);
 });
 
+test('Telegram outbound text formats invoice results safely and keeps runtime-only content', () => {
+  const invoiceOutcome = {
+    request_id: 'telegram:req-invoice',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-invoice',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: {
+      workflow_id: 'wf-invoice',
+      workflow_kind: 'mock.estimate.read',
+      organization_id: 'org-granapublic-live-test',
+      correlation_id: 'corr-invoice',
+      turn_id: null,
+      status: 'completed',
+      response: {
+        response_source: 'runtime_result',
+        workflow_kind: 'mock.estimate.read',
+        status: 'completed',
+        message: 'invoice retrieved from runtime',
+        data: {
+          contactName: 'Granapublic Xx Sl',
+          resource_type: 'invoice',
+          source_system: 'Holded',
+          invoice_id: 'F26/1931',
+          docNumber: 'F26/1931',
+          products: [{ name: 'MUPIS PAPEL' }],
+          total_amount: 6.1,
+          tax_amount: 1.26,
+          currency: 'EUR',
+          lookup_mode: 'by_customer',
+          line_id: 'line_456',
+          raw: { hidden: true }
+        }
+      },
+      capability_result: null,
+      evidence_links: ['evidence-2'],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      steps: [],
+      evidence_trace: {
+        evidence_ids: ['evidence-2'],
+        record_types: ['workflow_response_created']
+      }
+    },
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'invoice retrieved from runtime',
+      data: {
+        contactName: 'Granapublic Xx Sl',
+        resource_type: 'invoice',
+        source_system: 'Holded',
+        invoice_id: 'F26/1931',
+        docNumber: 'F26/1931',
+        products: [{ name: 'MUPIS PAPEL' }],
+        total_amount: 6.1,
+        tax_amount: 1.26,
+        currency: 'EUR',
+        lookup_mode: 'by_customer',
+        line_id: 'line_456',
+        raw: { hidden: true }
+      }
+    },
+    evidence_links: ['evidence-2'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const safeText = buildTelegramOutboundText(invoiceOutcome);
+  assert.equal(safeText.includes('Última factura de Granapublic Xx Sl:'), true);
+  assert.equal(safeText.includes('F26/1931'), true);
+  assert.equal(safeText.includes('MUPIS PAPEL'), true);
+  assert.equal(safeText.includes('6,10'), true);
+  assert.equal(safeText.includes('IVA incl.'), true);
+  assert.equal(safeText.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(safeText.includes('{'), false);
+  assert.equal(safeText.includes('line_id'), false);
+  assert.equal(safeText.includes('raw'), false);
+  assert.equal(safeText.includes('parse_mode'), false);
+});
+
 test('Telegram outbound text reports runtime failure states honestly', () => {
   const cases = [
     {
       status: 'not_found',
       message: 'estimate not found',
-      expected: 'No he encontrado ese presupuesto en Holded.'
+      expected: 'No he encontrado ese documento en Holded.'
     },
     {
       status: 'unavailable',

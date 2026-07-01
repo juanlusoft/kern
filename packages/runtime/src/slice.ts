@@ -201,7 +201,7 @@ function buildQwenToolCatalog() {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer or exact document id. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object' as const,
         required: ['resource_type'],
@@ -213,21 +213,24 @@ function buildQwenToolCatalog() {
           { required: ['contactName'] },
           { required: ['contact'] },
           { required: ['estimate_id'] },
+          { required: ['invoice_id'] },
           { required: ['resource_id'] }
         ],
         properties: {
           resource_type: {
             type: 'string' as const,
-            description: "Use 'estimate' for budget/estimate lookup."
+            enum: ['estimate', 'invoice'],
+            description: "Use 'estimate' for budget/estimate lookup and 'invoice' for invoice lookup."
           },
           estimate_id: { type: 'string' as const },
+          invoice_id: { type: 'string' as const },
           resource_id: {
             type: 'string' as const,
             description: 'Known resource id if the user explicitly provided one.'
           },
           customer_id: {
             type: 'string' as const,
-            description: "Customer name or search term extracted from the user's request. Required when the user asks for the latest estimate of a customer."
+            description: "Customer name or search term extracted from the user's request. Required when the user asks for the latest estimate or invoice of a customer."
           },
           customer_name: {
             type: 'string' as const,

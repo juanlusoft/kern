@@ -14,7 +14,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates from the runtime by customer or estimate id. For latest estimate of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id. Only provide estimate_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer or exact document id. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
         required: ['resource_type'],
@@ -26,16 +26,22 @@ function buildToolCatalog(): QwenToolDefinition[] {
           { required: ['contactName'] },
           { required: ['contact'] },
           { required: ['estimate_id'] },
+          { required: ['invoice_id'] },
           { required: ['resource_id'] }
         ],
         properties: {
           resource_type: {
             type: 'string',
-            description: "Use 'estimate' for budget/estimate lookup."
+            enum: ['estimate', 'invoice'],
+            description: "Use 'estimate' for budget/estimate lookup and 'invoice' for invoice lookup."
           },
           estimate_id: {
             type: 'string',
             description: 'Known exact estimate/document id only if the user explicitly provided one.'
+          },
+          invoice_id: {
+            type: 'string',
+            description: 'Known exact invoice/document id only if the user explicitly provided one.'
           },
           customer_id: {
             type: 'string',
@@ -248,6 +254,12 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
     ),
     true
   );
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some(
+      (candidate) => candidate.required?.includes('invoice_id') && candidate.required?.length === 1
+    ),
+    true
+  );
   assert.equal(requests[0].tool_choice && typeof requests[0].tool_choice === 'object', true);
   assert.equal(
     requests[0].messages[0].content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
@@ -304,6 +316,40 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+});
+
+test('Qwen orchestrator accepts invoice tool params without inventing invoice ids', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall({
+    resource_type: 'invoice',
+    customer_id: 'Granapublic'
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-invoice',
+    user_message: 'Necesito la factura de Granapublic',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-invoice',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].tools[0].function.parameters.properties?.resource_type?.enum?.includes('invoice'), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
+  assert.equal(outcome.proposal?.params.resource_type, 'invoice');
+  assert.equal('invoice_id' in (outcome.proposal?.params ?? {}), false);
 });
 
 test('Qwen orchestrator unwraps strings objects and wrappers safely', () => {

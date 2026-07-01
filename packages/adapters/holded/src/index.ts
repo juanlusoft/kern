@@ -86,6 +86,11 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeDocumentType(value: unknown): 'estimate' | 'invoice' | null {
+  const candidate = normalizeOptionalString(value);
+  return candidate === 'estimate' || candidate === 'invoice' ? candidate : null;
+}
+
 function normalizeSearchText(value: unknown): string | null {
   const candidate = normalizeOptionalString(value);
   if (!candidate) {
@@ -154,7 +159,7 @@ function validateQuery(input: ResourceQuery): string | null {
   if (normalizeOptionalString(input.organization_id) === null) return 'resource query invalid';
   if (normalizeOptionalString(input.correlation_id) === null) return 'resource query invalid';
   if (input.actor === null || normalizeOptionalString(input.actor.principal_id) === null) return 'resource query invalid';
-  if (normalizeOptionalString(input.resource_type) !== 'estimate') return 'resource query invalid';
+  if (normalizeDocumentType(input.resource_type) === null) return 'resource query invalid';
   const resource_id = normalizeOptionalString(input.resource_id);
   const customer_id = input.filters && typeof input.filters.customer_id === 'string' ? normalizeOptionalString(input.filters.customer_id) : null;
   const contact_id = input.filters && typeof input.filters.contact_id === 'string' ? normalizeOptionalString(input.filters.contact_id) : null;
@@ -181,7 +186,7 @@ function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' {
 }
 
 function buildEndpoint(baseUrl: string, query: ResourceQuery): string {
-  return `${baseUrl}/api/invoicing/v1/documents/estimate`;
+  return `${baseUrl}/api/invoicing/v1/documents/${normalizeDocumentType(query.resource_type) ?? 'estimate'}`;
 }
 
 function collectFieldPaths(record: Record<string, unknown>): string[] {
@@ -192,7 +197,14 @@ function collectFieldPaths(record: Record<string, unknown>): string[] {
 const naturalComparator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
 function extractRecordId(record: Record<string, unknown>): string | null {
-  const candidate = record.estimate_id ?? record.id ?? record.resource_id;
+  const candidate =
+    record.estimate_id ??
+    record.invoice_id ??
+    record.invoiceId ??
+    record.document_id ??
+    record.documentId ??
+    record.id ??
+    record.resource_id;
   return normalizeOptionalString(candidate);
 }
 
@@ -270,11 +282,18 @@ function normalizePayload(payload: unknown): { records: Record<string, unknown>[
     const records = payload.estimates.filter(isRecord);
     return { records, empty: payload.estimates.length === 0 };
   }
+  if (Array.isArray(payload.invoices)) {
+    const records = payload.invoices.filter(isRecord);
+    return { records, empty: payload.invoices.length === 0 };
+  }
   if (isRecord(payload.data)) {
     return { records: [payload.data], empty: Object.keys(payload.data).length === 0 };
   }
   if (isRecord(payload.estimate)) {
     return { records: [payload.estimate], empty: Object.keys(payload.estimate).length === 0 };
+  }
+  if (isRecord(payload.invoice)) {
+    return { records: [payload.invoice], empty: Object.keys(payload.invoice).length === 0 };
   }
   if (typeof payload.estimate_id === 'string' || typeof payload.id === 'string') {
     return { records: [payload], empty: Object.keys(payload).length === 0 };
@@ -377,16 +396,16 @@ function createSourceEvidenceForRecord(input: {
 }): [SourceEvidence, ...SourceEvidence[]] {
   const fieldPaths = collectFieldPaths(input.record);
   const evidence = fieldPaths.map((fieldPath, index) =>
-      createSourceEvidence({
-        source_id: createDeterministicId('holded-source', {
-          module_key: HOLDed_READ_MODULE_KEY,
-          installation_id: input.query.organization_id ?? 'unknown',
-          resource_id: input.record_id,
-          field_path: fieldPath,
-          correlation_id: input.query.correlation_id ?? '',
-          index
-        }),
-      source_type: 'estimate',
+    createSourceEvidence({
+      source_id: createDeterministicId('holded-source', {
+        module_key: HOLDed_READ_MODULE_KEY,
+        installation_id: input.query.organization_id ?? 'unknown',
+        resource_id: input.record_id,
+        field_path: fieldPath,
+        correlation_id: input.query.correlation_id ?? '',
+        index
+      }),
+      source_type: normalizeDocumentType(input.query.resource_type) ?? 'estimate',
       source_system: HOLDed_SOURCE_SYSTEM,
       resource_id: input.record_id,
       record_id: input.record_id,
@@ -421,7 +440,7 @@ function createBaseResult(input: {
     query_id: input.query.query_id,
     organization_id: input.query.organization_id ?? 'unknown',
     correlation_id: input.query.correlation_id ?? 'unknown',
-    resource_type: input.query.resource_type,
+    resource_type: normalizeDocumentType(input.query.resource_type) ?? input.query.resource_type,
     resource_id: input.resource_id,
     created_at: new Date().toISOString(),
     evidence_links: [],
@@ -505,18 +524,19 @@ function buildFoundResult(input: {
 }): ResourceResult {
   const data = {
     ...structuredClone(input.record),
-    resource_type: 'estimate',
+    resource_type: normalizeDocumentType(input.query.resource_type) ?? 'estimate',
     source_system: HOLDed_SOURCE_SYSTEM,
     module_key: HOLDed_READ_MODULE_KEY,
     installation_id: input.query.organization_id,
     lookup_mode: lookupMode(input.query)
   };
+  const documentType = normalizeDocumentType(input.query.resource_type) ?? 'estimate';
   const result = validateResourceResult({
     ...createBaseResult({
       query: input.query,
       adapter_id: input.adapter_id,
       status: 'found',
-      reason: 'Holded estimate found',
+      reason: `Holded ${documentType} found`,
       authorization: input.authorization,
       resource_id: input.resource_id,
       produced_by_adapter: true
@@ -717,26 +737,28 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
 
     const payload = normalizePayload(parsed.value);
     if (payload.empty) {
+      const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
       return cloneResourceResult(
         createTerminalResult({
           query: normalized,
           adapter_id: this.adapter_id,
           status: 'not_found',
-          reason: 'Holded estimate list empty',
+          reason: `Holded ${documentType} list empty`,
           authorization,
           resource_id,
           produced_by_adapter: true
         })
       );
     }
-  const record = selectMatchingRecord(payload.records, normalized);
-  if (!record) {
+    const record = selectMatchingRecord(payload.records, normalized);
+    const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
+    if (!record) {
       return cloneResourceResult(
         createTerminalResult({
           query: normalized,
           adapter_id: this.adapter_id,
           status: 'not_found',
-          reason: 'Holded estimate not found',
+          reason: `Holded ${documentType} not found`,
           authorization,
           resource_id,
           produced_by_adapter: true
@@ -745,12 +767,13 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     }
     const record_id = extractRecordId(record);
     if (!record_id) {
+      const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
       return cloneResourceResult(
         createTerminalResult({
           query: normalized,
           adapter_id: this.adapter_id,
           status: 'error',
-          reason: 'Holded estimate missing id',
+          reason: `Holded ${documentType} missing id`,
           authorization,
           resource_id,
           produced_by_adapter: true
@@ -786,7 +809,7 @@ export function createHoldedReadAdapter(options: HoldedReadAdapterOptions): Hold
 export function createHoldedReadModuleDefinition(): HoldedModuleDefinition {
   return {
     module_key: HOLDed_READ_MODULE_KEY,
-    display_name: 'Holded estimate read adapter',
+    display_name: 'Holded estimate and invoice read adapter',
     createAdapter(options: HoldedReadAdapterOptions): ExternalReadAdapter {
       return new HoldedReadAdapter(options);
     }

@@ -211,6 +211,7 @@ function resolveWorkflowRequest(
 ): MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput | null {
   if (proposal.capability_key === 'mock.resource.read') {
     const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
+    const resource_type = proposal.params.resource_type === 'invoice' ? 'invoice' : 'estimate';
     const customer_id =
       normalizeCustomerLookupParam(proposal.params.customer_id) ??
       normalizeCustomerLookupParam(proposal.params.customer_name) ??
@@ -226,6 +227,7 @@ function resolveWorkflowRequest(
       organization_hint: request.organization_id,
       principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
       correlation_id: request.correlation_id,
+      resource_type,
       estimate_id,
       customer_id,
       claimed_result: request.claimed_result ?? null,

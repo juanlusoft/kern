@@ -42,6 +42,10 @@ const WORKFLOW_FLAGS = {
   agent_selected_organization: false
 } as const;
 
+function normalizeResourceType(value: unknown): 'estimate' | 'invoice' {
+  return value === 'invoice' ? 'invoice' : 'estimate';
+}
+
 function cloneWorkflowStep(step: WorkflowStep): WorkflowStep {
   return {
     ...step,
@@ -270,6 +274,7 @@ function buildWorkflowResult(input: {
 
 function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record<string, unknown> {
   return {
+    resource_type: input.resource_type ?? 'estimate',
     estimate_id: input.estimate_id ?? null,
     customer_id: input.customer_id ?? null
   };
@@ -282,6 +287,7 @@ function createMockResourceQuery(input: {
   principal_id: string;
   principal_type: PrincipalType | null;
   delegated_identity: string | null;
+  resource_type?: 'estimate' | 'invoice';
   estimate_id?: string | null;
   customer_id?: string | null;
   claimed_result?: unknown;
@@ -298,10 +304,13 @@ function createMockResourceQuery(input: {
     principal_type: input.principal_type,
     delegated_identity: input.delegated_identity
     },
-    resource_type: 'estimate',
+    resource_type: input.resource_type ?? 'estimate',
     resource_id: input.estimate_id ?? null,
     filters: input.customer_id ? { customer_id: input.customer_id } : null,
-    requested_fields: ['estimate_id', 'customer_name', 'description', 'base_amount', 'tax_amount', 'total_amount', 'currency', 'source'],
+    requested_fields:
+      input.resource_type === 'invoice'
+        ? ['invoice_id', 'customer_name', 'description', 'base_amount', 'tax_amount', 'total_amount', 'currency', 'source']
+        : ['estimate_id', 'customer_name', 'description', 'base_amount', 'tax_amount', 'total_amount', 'currency', 'source'],
     claimed_result: input.claimed_result ?? null,
     model_claimed_result: input.model_claimed_result ?? null,
     caller_result: input.caller_result ?? null,
@@ -531,6 +540,7 @@ export class InMemoryGovernedWorkflowRuntime {
     });
     const requested_at = input.requested_at?.trim() || this.now().toISOString();
     const capabilityId = input.capability_id ?? 'mock.resource.read';
+    const resource_type = normalizeResourceType(input.resource_type);
     const estimate_id = input.estimate_id?.trim() || null;
     const customer_id = input.customer_id?.trim() || null;
     const coreRequest = createWorkflowCoreRequest({
@@ -539,9 +549,16 @@ export class InMemoryGovernedWorkflowRuntime {
       organization_hint: input.organization_hint,
       principal_hint: input.principal_hint,
       action: 'workflow.mock.estimate.read',
-      purpose: customer_id ? `Read latest estimate for ${customer_id}` : `Read estimate ${estimate_id ?? 'unknown'}`,
+      purpose:
+        resource_type === 'invoice'
+          ? customer_id
+            ? `Read latest invoice for ${customer_id}`
+            : `Read invoice ${estimate_id ?? 'unknown'}`
+          : customer_id
+            ? `Read latest estimate for ${customer_id}`
+            : `Read estimate ${estimate_id ?? 'unknown'}`,
       payload: {
-        resource: customer_id ? `estimate/customer/${customer_id}` : `estimate/${estimate_id ?? 'unknown'}`,
+        resource: customer_id ? `${resource_type}/customer/${customer_id}` : `${resource_type}/${estimate_id ?? 'unknown'}`,
         operation: 'read',
         requested_scope: 'read:knowledge',
         classification: 'internal',
@@ -579,7 +596,7 @@ export class InMemoryGovernedWorkflowRuntime {
       step_kind: 'intent',
       status: 'completed',
       evidence_reference: intentEvidence.evidence_id,
-      details: { estimate_id, customer_id }
+      details: { resource_type, estimate_id, customer_id }
     }));
 
     const organizationContext = this.resolveOrganizationContext(coreRequest);
@@ -635,6 +652,7 @@ export class InMemoryGovernedWorkflowRuntime {
       principal_id: identityContext.principal_id ?? 'unknown',
       principal_type: identityContext.principal_type,
       delegated_identity: identityContext.delegated_identity,
+      resource_type,
       estimate_id,
       customer_id,
       claimed_result: input.claimed_result ?? null,
@@ -780,13 +798,13 @@ export class InMemoryGovernedWorkflowRuntime {
     this.turnRuntime.transitionTurn({
       turn_id: turn.turn_id,
       to_state: 'evaluating',
-      reason: 'mock estimate workflow evaluating',
+      reason: resource_type === 'invoice' ? 'mock invoice workflow evaluating' : 'mock estimate workflow evaluating',
       now: this.now
     });
     this.turnRuntime.transitionTurn({
       turn_id: turn.turn_id,
       to_state: 'executing',
-      reason: 'mock estimate workflow executing',
+      reason: resource_type === 'invoice' ? 'mock invoice workflow executing' : 'mock estimate workflow executing',
       now: this.now
     });
 
@@ -796,7 +814,14 @@ export class InMemoryGovernedWorkflowRuntime {
       principal_id: identityContext.principal_id,
       correlation_id,
       input: {
-        purpose: customer_id ? `Read latest estimate for ${customer_id}` : `Read estimate ${estimate_id ?? 'unknown'}`,
+        purpose:
+          resource_type === 'invoice'
+            ? customer_id
+              ? `Read latest invoice for ${customer_id}`
+              : `Read invoice ${estimate_id ?? 'unknown'}`
+            : customer_id
+              ? `Read latest estimate for ${customer_id}`
+              : `Read estimate ${estimate_id ?? 'unknown'}`,
         requested_scope: ['read:knowledge'],
         payload: governedResourceQuery as unknown as Record<string, unknown>
       },
@@ -880,7 +905,7 @@ export class InMemoryGovernedWorkflowRuntime {
       this.turnRuntime.transitionTurn({
         turn_id: turn.turn_id,
         to_state: 'completed',
-        reason: 'mock estimate workflow completed',
+        reason: resource_type === 'invoice' ? 'mock invoice workflow completed' : 'mock estimate workflow completed',
         now: this.now
       });
     } else if (capability_result.status === 'unavailable' || capability_result.status === 'error') {
@@ -933,14 +958,24 @@ export class InMemoryGovernedWorkflowRuntime {
                 : 'denied',
       message:
         capability_result.status === 'executed'
-          ? 'estimate retrieved from runtime'
+          ? resource_type === 'invoice'
+            ? 'invoice retrieved from runtime'
+            : 'estimate retrieved from runtime'
           : capability_result.status === 'not_found'
-            ? 'estimate not found'
+            ? resource_type === 'invoice'
+              ? 'invoice not found'
+              : 'estimate not found'
             : capability_result.status === 'unavailable'
-              ? 'estimate runtime unavailable'
+              ? resource_type === 'invoice'
+                ? 'invoice runtime unavailable'
+                : 'estimate runtime unavailable'
               : capability_result.status === 'error'
-                ? 'estimate runtime error'
-                : 'estimate denied',
+                ? resource_type === 'invoice'
+                  ? 'invoice runtime error'
+                  : 'estimate runtime error'
+                : resource_type === 'invoice'
+                  ? 'invoice denied'
+                  : 'estimate denied',
       data: responseData,
       runtimeDriven: true
     });
