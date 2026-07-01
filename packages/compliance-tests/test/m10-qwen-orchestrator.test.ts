@@ -102,23 +102,26 @@ function buildBoundary(overrides: {
                 index: 0,
                 message: {
                   role: 'assistant',
-                  content: '',
-                  tool_calls: [
-                    {
-                      id: 'tool-call-1',
-                      type: 'function',
-                      function: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
                         name: 'mock.resource.read',
-                        arguments: JSON.stringify({
+                        arguments: {
                           estimate_id: 'estimate-123',
                           customer_id: 'Granapublic',
                           resource_type: 'estimate'
-                        })
-                      }
+                        }
+                      })
                     }
-                  ]
-                }
+                  }
+                ]
               }
+            }
             ]
           };
         }
@@ -258,8 +261,13 @@ test('M10 ignores claimed model content and records the override', () => {
                     function: {
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
-                        resource_type: 'estimate',
-                        estimate_id: 'estimate-123'
+                        function: {
+                          name: 'mock.resource.read',
+                          arguments: {
+                            resource_type: 'estimate',
+                            customer_id: 'Granapublic'
+                          }
+                        }
                       })
                     }
                   }
@@ -280,10 +288,10 @@ test('M10 ignores claimed model content and records the override', () => {
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',
         fetch: buildHoldedFetch(200, {
-          estimate_id: 'estimate-123',
-          customer_id: 'customer-001',
-          customer_name: 'Acme Customer',
-          total_amount: 1210,
+          estimate_id: 'estimate-new-granapublic',
+          customer_id: 'granapublic',
+          customer_name: 'Granapublic Xx Sl',
+          total_amount: 2200,
           currency: 'EUR'
         }).fetch,
         now: () => new Date('2026-06-30T00:00:00.000Z'),
@@ -302,7 +310,7 @@ test('M10 ignores claimed model content and records the override', () => {
   const outcome = boundary.execute(buildRequest());
   const qwenRecords = orchestrator.getEvidenceLedger().listByCorrelation('corr-1');
 
-  assert.equal(outcome.response.data?.estimate_id, 'estimate-123');
+  assert.equal(outcome.response.data?.estimate_id, 'estimate-new-granapublic');
   assert.equal(JSON.stringify(outcome).includes('invented'), false);
   assert.equal(qwenRecords.some((record) => record.record_type === 'model_claimed_result_ignored'), true);
 });
