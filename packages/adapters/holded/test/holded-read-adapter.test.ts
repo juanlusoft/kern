@@ -94,25 +94,97 @@ test('Holded adapter returns found with SourceEvidence and hides API key from ou
   assert.equal(serialized.includes(sentinel), false);
 });
 
-test('Holded adapter supports customer lookup when the query fits ResourceQuery naturally', () => {
+test('Holded adapter prefers customer lookup over invented ids and matches normalized names', () => {
   const { fetchStub } = createFetchStub({
     status: 200,
     body: [
       {
-        estimate_id: 'estimate-456-old',
-        customer_id: 'customer-001',
-        customer_name: 'Acme Customer',
+        estimate_id: 'estimate-old-granapublic',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Producto antiguo' }],
         total_amount: 2100,
         currency: 'EUR',
-        date: '2026-06-28T00:00:00.000Z'
+        date: '2024-03-09T00:00:00.000Z'
       },
       {
-        estimate_id: 'estimate-456',
-        customer_id: 'customer-001',
-        customer_name: 'Acme Customer',
+        estimate_id: 'estimate-new-granapublic',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomerico' }],
         total_amount: 2200,
         currency: 'EUR',
-        date: '2026-06-29T00:00:00.000Z'
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-other',
+        contact: 'contact-other',
+        contactName: 'Other Customer',
+        products: [{ name: 'Otro producto' }],
+        total_amount: 1800,
+        currency: 'EUR',
+        date: '2024-08-15T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const customerLookupQueries = [
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'granapublic' }
+    }),
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_name: 'Granapublic' }
+    }),
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { contact_name: 'granapublic' }
+    }),
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { contactName: 'GRANAPUBLIC' }
+    }),
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { contact: 'granapublic' }
+    })
+  ];
+
+  for (const query of customerLookupQueries) {
+    const result = adapter.read(query);
+    const resultData = result.data as { products?: Array<{ name?: string }>; contactName?: string } | null;
+    assert.equal(result.status, 'found');
+    assert.equal(result.data?.estimate_id, 'estimate-new-granapublic');
+    assert.equal(result.data?.contactName, 'Granapublic Xx Sl');
+    assert.equal(result.data?.lookup_mode, 'by_customer');
+    assert.equal(resultData?.products?.[0]?.name, 'Vinilo Monomerico');
+    assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-new-granapublic');
+  }
+});
+
+test('Holded adapter returns not_found for customer searches with no matching documents and does not invent ids', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-other',
+        contact: 'contact-other',
+        contactName: 'Other Customer',
+        products: [{ name: 'Otro producto' }],
+        total_amount: 1800,
+        currency: 'EUR',
+        date: '2024-08-15T00:00:00.000Z'
       }
     ]
   });
@@ -129,14 +201,53 @@ test('Holded adapter supports customer lookup when the query fits ResourceQuery 
 
   const result = adapter.read(
     buildQuery({
-      resource_id: null,
-      filters: { customer_id: 'customer-001' }
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'granapublic' }
     })
   );
 
-  assert.equal(result.status, 'found');
-  assert.equal(result.data?.estimate_id, 'estimate-456');
-  assert.equal(result.data?.customer_id, 'customer-001');
+  assert.equal(result.status, 'not_found');
+  assert.equal(result.data, null);
+  assert.equal(result.source_evidence, null);
+  assert.equal(result.error, 'Holded estimate not found');
+});
+
+test('Holded adapter returns error when a matching customer record has no real id', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomerico' }],
+        total_amount: 2200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'granapublic' }
+    })
+  );
+
+  assert.equal(result.status, 'error');
+  assert.equal(result.data, null);
+  assert.equal(result.source_evidence, null);
+  assert.equal(result.error, 'Holded estimate missing id');
 });
 
 test('Holded adapter supports contact lookup and chooses the latest estimate by date', () => {

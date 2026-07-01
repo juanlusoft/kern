@@ -103,6 +103,7 @@ test('M8 happy path returns a proposal and runtime data only', () => {
 test('M8 claimed result is ignored end to end', () => {
   const boundary = buildBoundary(200, {
     estimate_id: 'estimate-123',
+    customer_id: 'customer-001',
     customer_name: 'Acme Customer',
     total_amount: 1210,
     currency: 'EUR'
