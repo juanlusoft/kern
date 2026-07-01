@@ -81,6 +81,7 @@ test('M9 keeps Telegram out of Core and remains offline/deterministic', () => {
   ]);
 
   const [result] = adapter.pollUpdates();
+  const sentMessages = transport.listSentMessages();
   const records = boundary.getEvidenceLedger().listByCorrelation(result.correlation_id);
 
   assert.equal(result.status, 'sent');
@@ -92,6 +93,11 @@ test('M9 keeps Telegram out of Core and remains offline/deterministic', () => {
   assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'estimate-123');
   assert.equal(JSON.stringify(result).includes('invented'), false);
   assert.equal(JSON.stringify(result).includes('telegram-secret-token'), false);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('estimate-123'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
   assert.equal(records.some((record) => record.record_type === 'channel_message_received'), true);
   assert.equal(records.some((record) => record.record_type === 'channel_identity_resolved'), true);
   assert.equal(records.some((record) => record.record_type === 'channel_orchestration_requested'), true);

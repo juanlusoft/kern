@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { InMemoryGovernedWorkflowRuntime } from '../../../workflows/src/index';
 import { InMemoryOrchestrationBoundary } from '../../../orchestration/src/index';
 import { createMockOrchestrator } from '../../../orchestrators/mock/src/index';
-import { createTelegramChannelAdapter, InMemoryTelegramTransport, type TelegramChannelAdapterOptions } from '../src/index';
+import {
+  buildTelegramOutboundText,
+  createTelegramChannelAdapter,
+  InMemoryTelegramTransport,
+  type TelegramChannelAdapterOptions
+} from '../src/index';
 import type { TelegramChannelUpdate } from '../../../contracts/src/index';
 
 function buildUpdate(overrides: Partial<TelegramChannelUpdate> = {}): TelegramChannelUpdate {
@@ -161,8 +166,12 @@ test('Telegram adapter resolves Telegram identity and sends runtime-only respons
   assert.equal(JSON.stringify(results).includes('invented'), false);
   assert.equal(JSON.stringify(sentMessages).includes('telegram-secret-token'), false);
   assert.equal(sentMessages.length, 2);
-  assert.equal(sentMessages[0].text.includes('runtime completed'), true);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('runtime completed'), false);
+  assert.equal(sentMessages[0].text.includes('Último presupuesto'), true);
   assert.equal(sentMessages[0].text.includes('estimate-123'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
   assert.equal(records.some((record) => record.record_type === 'channel_message_received'), true);
   assert.equal(records.some((record) => record.record_type === 'channel_identity_resolved'), true);
   assert.equal(records.some((record) => record.record_type === 'channel_orchestration_requested'), true);
@@ -249,9 +258,241 @@ test('Telegram adapter reports no proposal honestly and does not invent runtime 
   assert.equal(result.orchestration_outcome?.status, 'no_proposal');
   assert.equal(result.orchestration_outcome?.response.message.includes('no puedo determinar'), true);
   assert.equal(sentMessages.length, 1);
-  assert.equal(sentMessages[0].text.includes('no_proposal'), true);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('no_proposal'), false);
+  assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(JSON.stringify(sentMessages[0]).includes('invented'), false);
   assert.equal(records.some((record) => record.record_type === 'channel_orchestration_requested'), true);
+});
+
+test('Telegram outbound text summarizes runtime results safely and truncates long payloads', () => {
+  const completedOutcome = {
+    request_id: 'telegram:req',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-safe',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: {
+      workflow_id: 'wf-safe',
+      workflow_kind: 'mock.estimate.read',
+      organization_id: 'org-granapublic-live-test',
+      correlation_id: 'corr-safe',
+      turn_id: null,
+      status: 'completed',
+      response: {
+        response_source: 'runtime_result',
+        workflow_kind: 'mock.estimate.read',
+        status: 'completed',
+        message: 'estimate retrieved from runtime',
+        data: {
+          contactName: 'Granapublic Xx Sl',
+          estimate_id: 'P26/04366',
+          products: [{ name: 'Vinilo Monomérico' }],
+          total_amount: 6.1,
+          tax_amount: 1.26,
+          currency: 'EUR',
+          lookup_mode: 'by_customer',
+          line_id: 'line_123',
+          s_iva_21: 'yes'
+        }
+      },
+      capability_result: {
+        invocation_id: 'capability-invocation-1',
+        capability_id: 'mock.resource.read',
+        organization_id: 'org-granapublic-live-test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        correlation_id: 'corr-safe',
+        status: 'executed',
+        runtime_decision: 'executed',
+        binding_id: null,
+        decision_binding_id: null,
+        policy_decision_id: null,
+        executed_by_runtime: true,
+        output: {
+          capability_id: 'mock.resource.read',
+          status: 'executed',
+          result: {
+            status: 'found',
+            data: {
+              contactName: 'Granapublic Xx Sl',
+              estimate_id: 'P26/04366',
+              products: [{ name: 'Vinilo Monomérico' }],
+              total_amount: 6.1,
+              tax_amount: 1.26,
+              currency: 'EUR',
+              lookup_mode: 'by_customer',
+              line_id: 'line_123',
+              s_iva_21: 'yes'
+            },
+            source_evidence: [
+              {
+                source_id: 'source-1',
+                source_type: 'document',
+                source_system: 'Holded',
+                resource_id: 'P26/04366',
+                record_id: 'P26/04366',
+                field_path: 'estimate',
+                observed_at: '2026-06-30T00:00:00.000Z',
+                correlation_id: 'corr-safe'
+              }
+            ],
+            error: null
+          },
+          processed_at: '2026-06-30T00:00:00.000Z'
+        },
+        error: null,
+        evidence_links: ['evidence-1'],
+        created_at: '2026-06-30T00:00:00.000Z',
+        evidence_reference: 'evidence-1',
+        reason: 'ok'
+      },
+      evidence_links: ['evidence-1'],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      steps: [],
+      evidence_trace: {
+        evidence_ids: ['evidence-1'],
+        record_types: ['workflow_response_created']
+      }
+    },
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'estimate retrieved from runtime',
+      data: {
+        contactName: 'Granapublic Xx Sl',
+        estimate_id: 'P26/04366',
+        products: [{ name: 'Vinilo Monomérico' }],
+        total_amount: 6.1,
+        tax_amount: 1.26,
+        currency: 'EUR',
+        lookup_mode: 'by_customer',
+        line_id: 'line_123',
+        s_iva_21: 'yes'
+      }
+    },
+    evidence_links: ['evidence-1'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const safeText = buildTelegramOutboundText(completedOutcome);
+  assert.equal(safeText.includes('Granapublic Xx Sl'), true);
+  assert.equal(safeText.includes('P26/04366'), true);
+  assert.equal(safeText.includes('Vinilo Monomérico'), true);
+  assert.equal(safeText.includes('6,10'), true);
+  assert.equal(safeText.includes('IVA incl.'), true);
+  assert.equal(safeText.includes('Fuente: Holded · documento P26/04366'), true);
+  assert.equal(safeText.includes('{'), false);
+  assert.equal(safeText.includes('line_id'), false);
+  assert.equal(safeText.includes('s_iva_21'), false);
+  assert.equal(safeText.includes('parse_mode'), false);
+
+  const longOutcome = {
+    request_id: 'telegram:req-long',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-long',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: null,
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'estimate retrieved from runtime',
+      data: {
+        contactName: `Granapublic ${'X'.repeat(5000)}`,
+        estimate_id: 'P26/04366',
+        products: [{ name: 'Vinilo Monomérico' }],
+        total_amount: 6.1,
+        currency: 'EUR',
+        lookup_mode: 'by_customer'
+      }
+    },
+    evidence_links: ['evidence-1'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const truncatedText = buildTelegramOutboundText(longOutcome);
+  assert.equal(truncatedText.length <= 3900, true);
+  assert.equal(truncatedText.endsWith('… [respuesta resumida]'), true);
+});
+
+test('Telegram outbound text reports runtime failure states honestly', () => {
+  const cases = [
+    {
+      status: 'not_found',
+      message: 'estimate not found',
+      expected: 'No he encontrado ese presupuesto en Holded.'
+    },
+    {
+      status: 'unavailable',
+      message: 'estimate service unavailable',
+      expected: 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.'
+    },
+    {
+      status: 'error',
+      message: 'estimate runtime error',
+      expected: 'No he podido completar la consulta por un error del runtime.'
+    },
+    {
+      status: 'denied',
+      message: 'estimate denied',
+      expected: 'No puedo procesar esa petición con la configuración actual.'
+    },
+    {
+      status: 'blocked',
+      message: 'estimate blocked',
+      expected: 'No puedo procesar esa petición con la configuración actual.'
+    },
+    {
+      status: 'no_proposal',
+      message: 'no proposal',
+      expected: 'No he podido determinar una propuesta válida para esa consulta.'
+    }
+  ] as const;
+
+  for (const testCase of cases) {
+    const text = buildTelegramOutboundText({
+      request_id: 'telegram:req-failure',
+      organization_id: 'org-granapublic-live-test',
+      principal_id: 'principal-gema-granapublic-live-test',
+      correlation_id: 'corr-failure',
+      installation_id: 'telegram-installation',
+      status: 'proposal',
+      proposal: null,
+      validation: null,
+      workflow_kind: 'mock.estimate.read',
+      workflow_result: null,
+      response: {
+        response_source: 'workflow_blocked',
+        workflow_kind: 'mock.estimate.read',
+        status: testCase.status,
+        message: testCase.message,
+        data: null
+      },
+      evidence_links: [],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      reason: testCase.message
+    } as unknown as Parameters<typeof buildTelegramOutboundText>[0]);
+
+    assert.equal(text, testCase.expected);
+    assert.equal(text.includes('{'), false);
+    assert.equal(text.includes('parse_mode'), false);
+  }
 });
 
 test('Telegram adapter surfaces transport failures as error without leaking the token', () => {

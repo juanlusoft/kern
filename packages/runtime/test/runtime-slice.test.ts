@@ -220,6 +220,7 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
 
   const runtime = runtimeResult.runtime;
   const [channelResult] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
   const runtimeRecords = runtime.evidenceLedger.listByCorrelation('runtime:install-granapublic-live-test:2');
   const orchestrationRecords = runtime.orchestrationBoundary.getEvidenceLedger().listByCorrelation(
     'telegram:install-granapublic-live-test:146574793:200'
@@ -263,6 +264,13 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   assert.equal(channelResult.orchestration_outcome?.response.data?.customer_name, 'Granapublic Xx Sl');
   assert.equal(channelResult.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
   assert.equal(channelResult.orchestration_outcome?.organization_id, 'org-granapublic-live-test');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('Granapublic Xx Sl'), true);
+  assert.equal(sentMessages[0].text.includes('estimate-new-granapublic'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
   assert.equal(JSON.stringify(channelResult).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(channelResult).includes('holded-secret'), false);
   assert.equal(
