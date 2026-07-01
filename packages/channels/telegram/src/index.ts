@@ -146,12 +146,192 @@ function buildOrchestrationRequest(input: {
   };
 }
 
-function buildOutboundText(outcome: OrchestrationOutcome): string {
-  const headline = `runtime ${outcome.response.status}: ${outcome.response.message}`;
-  if (!outcome.response.data) {
-    return headline;
+const TELEGRAM_SAFE_MESSAGE_LIMIT = 3900;
+const TELEGRAM_TRUNCATION_SUFFIX = '… [respuesta resumida]';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toTrimmedString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function firstStringFromKeys(input: Record<string, unknown> | null, keys: string[]): string | null {
+  if (!input) return null;
+  for (const key of keys) {
+    const value = toTrimmedString(input[key]);
+    if (value) {
+      return value;
+    }
   }
-  return `${headline}\n${JSON.stringify(outcome.response.data, null, 2)}`;
+  return null;
+}
+
+function numberFromKeys(input: Record<string, unknown> | null, keys: string[]): number | null {
+  if (!input) return null;
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function formatCurrencyAmount(total: number | null, currency: string | null): string | null {
+  if (total === null) return null;
+  const formatted = total.toLocaleString('es-ES', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  if (!currency || currency.toUpperCase() === 'EUR') {
+    return `${formatted} €`;
+  }
+  return `${formatted} ${currency.toUpperCase()}`;
+}
+
+function summarizeProductNames(input: Record<string, unknown> | null): string | null {
+  if (!input) return null;
+  const products = input.products;
+  if (!Array.isArray(products) || products.length === 0) {
+    const fallback = firstStringFromKeys(input, ['product', 'description', 'summary']);
+    return fallback;
+  }
+  const names = products
+    .map((product) => {
+      if (typeof product === 'string') {
+        return toTrimmedString(product);
+      }
+      if (isPlainObject(product)) {
+        return (
+          toTrimmedString(product.name) ??
+          toTrimmedString(product.title) ??
+          toTrimmedString(product.description) ??
+          toTrimmedString(product.product_name)
+        );
+      }
+      return null;
+    })
+    .filter((value): value is string => Boolean(value));
+  if (names.length === 0) {
+    return null;
+  }
+  return names.slice(0, 2).join(', ');
+}
+
+function extractResourceResult(outcome: OrchestrationOutcome): Record<string, unknown> | null {
+  const result = outcome.workflow_result?.capability_result?.output?.result;
+  return isPlainObject(result) ? result : null;
+}
+
+function extractResponseData(outcome: OrchestrationOutcome): Record<string, unknown> | null {
+  return isPlainObject(outcome.response.data) ? outcome.response.data : null;
+}
+
+function buildSourceReferenceLine(
+  responseData: Record<string, unknown> | null,
+  resourceResult: Record<string, unknown> | null
+): string | null {
+  const sourceEvidence = resourceResult?.source_evidence;
+  const firstSourceEvidence =
+    Array.isArray(sourceEvidence) && sourceEvidence.length > 0 && isPlainObject(sourceEvidence[0]) ? sourceEvidence[0] : null;
+  const sourceSystem =
+    toTrimmedString(firstSourceEvidence?.source_system) ??
+    firstStringFromKeys(responseData, ['source_system', 'source']) ??
+    firstStringFromKeys(resourceResult, ['source_system', 'source']);
+  if (!sourceSystem) {
+    return null;
+  }
+  const documentId =
+    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
+    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
+    toTrimmedString(firstSourceEvidence?.record_id) ??
+    toTrimmedString(firstSourceEvidence?.resource_id);
+  if (!documentId) {
+    return `Fuente: ${sourceSystem}`;
+  }
+  return `Fuente: ${sourceSystem} · documento ${documentId}`;
+}
+
+function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
+  const responseData = extractResponseData(outcome);
+  const resourceResult = extractResourceResult(outcome);
+  const customerName =
+    firstStringFromKeys(responseData, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
+    firstStringFromKeys(resourceResult, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']);
+  const documentId =
+    firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']) ??
+    firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'resource_id', 'id']);
+  const productSummary = summarizeProductNames(responseData) ?? summarizeProductNames(resourceResult);
+  const total =
+    formatCurrencyAmount(
+      numberFromKeys(responseData, ['total', 'total_amount', 'amount']),
+      firstStringFromKeys(responseData, ['currency', 'currency_code'])
+    ) ??
+    formatCurrencyAmount(
+      numberFromKeys(resourceResult, ['total', 'total_amount', 'amount']),
+      firstStringFromKeys(resourceResult, ['currency', 'currency_code'])
+    );
+  const vatInclusion = Boolean(
+    responseData?.tax_amount ??
+      responseData?.tax ??
+      responseData?.vat ??
+      responseData?.vat_amount ??
+      resourceResult?.tax_amount ??
+      resourceResult?.tax ??
+      resourceResult?.vat ??
+      resourceResult?.vat_amount
+  )
+    ? ' IVA incl.'
+    : '';
+  const lines: string[] = [];
+  lines.push(customerName ? `Último presupuesto de ${customerName}:` : 'Último presupuesto:');
+  const detailParts = [documentId, productSummary, total ? `${total}${vatInclusion}` : null].filter(
+    (value): value is string => Boolean(value)
+  );
+  if (detailParts.length > 0) {
+    lines.push(detailParts.join(' — '));
+  }
+  const sourceLine = buildSourceReferenceLine(responseData, resourceResult);
+  if (sourceLine) {
+    lines.push(sourceLine);
+  }
+  return lines.join('\n');
+}
+
+function buildStatusText(outcome: OrchestrationOutcome): string {
+  switch (outcome.response.status) {
+    case 'completed':
+      return buildCompletedOutboundText(outcome);
+    case 'not_found':
+      return 'No he encontrado ese presupuesto en Holded.';
+    case 'unavailable':
+      return 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.';
+    case 'error':
+      return 'No he podido completar la consulta por un error del runtime.';
+    case 'denied':
+    case 'blocked':
+      return 'No puedo procesar esa petición con la configuración actual.';
+    case 'no_proposal':
+      return 'No he podido determinar una propuesta válida para esa consulta.';
+    default:
+      return `runtime ${outcome.response.status}: ${outcome.response.message}`;
+  }
+}
+
+function truncateTelegramText(text: string): string {
+  const characters = Array.from(text);
+  if (characters.length <= TELEGRAM_SAFE_MESSAGE_LIMIT) {
+    return text;
+  }
+  const suffixCharacters = Array.from(`\n${TELEGRAM_TRUNCATION_SUFFIX}`);
+  const truncatedLength = Math.max(0, TELEGRAM_SAFE_MESSAGE_LIMIT - suffixCharacters.length);
+  return `${characters.slice(0, truncatedLength).join('')}\n${TELEGRAM_TRUNCATION_SUFFIX}`;
+}
+
+export function buildTelegramOutboundText(outcome: OrchestrationOutcome): string {
+  return truncateTelegramText(buildStatusText(outcome));
 }
 
 function buildOutboundMessage(input: {
@@ -162,11 +342,10 @@ function buildOutboundMessage(input: {
   return {
     channel: input.channel,
     chat_id: input.inbound.chat_id,
-    text: buildOutboundText(input.outcome),
+    text: buildTelegramOutboundText(input.outcome),
     reply_to_message_id: input.inbound.message_id,
     correlation_id: input.outcome.correlation_id,
     update_id: null,
-    parse_mode: 'Markdown',
     source_evidence: [...input.outcome.evidence_links],
     data: input.outcome.response.data ? structuredClone(input.outcome.response.data) : null,
     raw: {

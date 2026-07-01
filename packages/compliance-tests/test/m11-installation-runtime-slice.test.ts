@@ -208,6 +208,7 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
 
   const runtime = runtimeResult.runtime;
   const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
 
   assert.equal(result.status, 'sent');
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
@@ -219,6 +220,13 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'estimate-new-granapublic');
   assert.equal(result.orchestration_outcome?.response.data?.customer_name, 'Granapublic Xx Sl');
   assert.equal(result.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('Granapublic Xx Sl'), true);
+  assert.equal(sentMessages[0].text.includes('estimate-new-granapublic'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
   assert.equal(JSON.stringify(result).includes('telegram-secret'), false);
   assert.equal(JSON.stringify(result).includes('holded-secret'), false);
   assert.equal(
