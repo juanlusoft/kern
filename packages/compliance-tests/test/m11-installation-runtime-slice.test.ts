@@ -131,24 +131,29 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
         choices: [
           {
             index: 0,
-            message: {
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
+                message: {
+                  role: 'assistant',
+                  content: '',
+                  tool_calls: [
+                    {
                   id: 'tool-call-1',
-                  type: 'function',
-                  function: {
-                    name: 'mock.resource.read',
-                    arguments: JSON.stringify({
-                      estimate_id: 'estimate-12345',
-                      customer_id: 'granapublic',
-                      resource_type: 'estimate'
-                    })
-                  }
+                      type: 'function',
+                      function: {
+                        name: 'mock.resource.read',
+                        arguments: JSON.stringify({
+                          function: {
+                            name: 'mock.resource.read',
+                            arguments: {
+                              estimate_id: 'estimate-12345',
+                              customer_id: 'granapublic',
+                              resource_type: 'estimate'
+                            }
+                          }
+                        })
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
           }
         ]
       };

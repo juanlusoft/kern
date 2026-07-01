@@ -58,7 +58,7 @@ export interface QwenChatToolCall {
   type: 'function';
   function: {
     name: string;
-    arguments: string;
+    arguments: unknown;
   };
 }
 
@@ -262,14 +262,51 @@ function buildToolArguments(candidate: unknown): Record<string, unknown> | null 
   return structuredClone(candidate);
 }
 
-function parseToolArguments(toolCall: QwenChatToolCall): Record<string, unknown> | null {
-  if (typeof toolCall.function.arguments !== 'string' || toolCall.function.arguments.trim().length === 0) {
+function unwrapToolArguments(candidate: unknown, depth = 0): unknown {
+  if (depth > 4) {
     return null;
   }
-  try {
-    return buildToolArguments(JSON.parse(toolCall.function.arguments));
-  } catch {
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    try {
+      return unwrapToolArguments(JSON.parse(trimmed), depth + 1);
+    } catch {
+      return null;
+    }
+  }
+  if (!isPlainObject(candidate)) {
     return null;
+  }
+
+  const current = candidate as Record<string, unknown>;
+  if (isPlainObject(current.function) && Object.prototype.hasOwnProperty.call(current.function, 'arguments')) {
+    return unwrapToolArguments(current.function.arguments, depth + 1);
+  }
+  if (Object.prototype.hasOwnProperty.call(current, 'arguments')) {
+    return unwrapToolArguments(current.arguments, depth + 1);
+  }
+  return current;
+}
+
+function parseToolArguments(toolCall: QwenChatToolCall): Record<string, unknown> | null {
+  const unwrapped = unwrapToolArguments(toolCall.function.arguments);
+  if (!unwrapped) {
+    return null;
+  }
+  return buildToolArguments(unwrapped);
+}
+
+function measureToolArgumentsLength(value: unknown): number {
+  if (typeof value === 'string') {
+    return value.length;
+  }
+  try {
+    return JSON.stringify(value)?.length ?? 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -728,7 +765,7 @@ export class QwenOrchestrator implements OrchestratorPort {
         model: this.model,
         tool_call_id: toolCall.id,
         capability_key: toolCall.function.name,
-        arguments_length: toolCall.function.arguments.length
+        arguments_length: measureToolArgumentsLength(toolCall.function.arguments)
       }
     });
 

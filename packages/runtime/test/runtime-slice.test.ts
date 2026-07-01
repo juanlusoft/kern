@@ -96,8 +96,11 @@ function buildQwenTransport(): QwenChatCompletionsTransport {
                     function: {
                       name: 'mock.resource.read',
                       arguments: JSON.stringify({
-                        customer_id: 'Granapublic',
-                        resource_type: 'estimate'
+                        name: 'mock.resource.read',
+                        arguments: {
+                          customer_id: 'Granapublic',
+                          resource_type: 'estimate'
+                        }
                       })
                     }
                   }

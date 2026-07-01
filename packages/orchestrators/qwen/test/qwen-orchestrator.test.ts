@@ -107,6 +107,43 @@ function buildRequest(overrides: Partial<QwenChatCompletionsRequest> = {}) {
   } satisfies QwenChatCompletionsRequest;
 }
 
+function buildOrchestratorForToolCall(toolCallArguments: unknown, content = '') {
+  const requests: QwenChatCompletionsRequest[] = [];
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions(request) {
+        requests.push(structuredClone(request));
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content,
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: toolCallArguments as never
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  return { orchestrator, requests };
+}
+
 test('Qwen transport appends chat/completions to a base URL', () => {
   assert.equal(resolveChatCompletionsUrl('http://localhost:8002/v1'), 'http://localhost:8002/v1/chat/completions');
 });
@@ -165,42 +202,13 @@ test('Qwen transport fails closed on transport errors without leaking the API ke
 });
 
 test('Qwen orchestrator proposes only active capabilities and parses tool calls', () => {
-  const requests: QwenChatCompletionsRequest[] = [];
-  const orchestrator = createQwenOrchestrator({
-    model: 'kern-vl',
-    toolCatalog: buildToolCatalog(),
-    chatCompletionsTransport: {
-      chatCompletions(request) {
-        requests.push(structuredClone(request));
-        return {
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: 'assistant',
-                content: '',
-                tool_calls: [
-                  {
-                    id: 'tool-call-1',
-                    type: 'function',
-                    function: {
-                      name: 'mock.resource.read',
-                      arguments: JSON.stringify({
-                        estimate_id: 'estimate-123',
-                        customer_id: 'Granapublic',
-                        resource_type: 'estimate'
-                      })
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        };
-      }
-    },
-    now: () => new Date('2026-06-30T00:00:00.000Z')
-  });
+  const { orchestrator, requests } = buildOrchestratorForToolCall(
+    JSON.stringify({
+      estimate_id: 'estimate-123',
+      customer_id: 'Granapublic',
+      resource_type: 'estimate'
+    })
+  );
 
   const outcome = orchestrator.propose({
     request_id: 'request-1',
@@ -266,40 +274,9 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
 });
 
 test('Qwen orchestrator allows customer extraction as tool params without inventing estimate ids', () => {
-  const requests: QwenChatCompletionsRequest[] = [];
-  const orchestrator = createQwenOrchestrator({
-    model: 'kern-vl',
-    toolCatalog: buildToolCatalog(),
-    chatCompletionsTransport: {
-      chatCompletions(request) {
-        requests.push(structuredClone(request));
-        return {
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: 'assistant',
-                content: '',
-                tool_calls: [
-                  {
-                    id: 'tool-call-1',
-                    type: 'function',
-                    function: {
-                      name: 'mock.resource.read',
-                      arguments: JSON.stringify({
-                        resource_type: 'estimate',
-                        customer_id: 'Granapublic'
-                      })
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        };
-      }
-    },
-    now: () => new Date('2026-06-30T00:00:00.000Z')
+  const { orchestrator, requests } = buildOrchestratorForToolCall({
+    resource_type: 'estimate',
+    customer_id: 'Granapublic'
   });
 
   const outcome = orchestrator.propose({
@@ -329,40 +306,143 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
 });
 
-test('Qwen orchestrator ignores claimed result content and records the override', () => {
-  const orchestrator = createQwenOrchestrator({
-    model: 'kern-vl',
-    toolCatalog: buildToolCatalog(),
-    chatCompletionsTransport: {
-      chatCompletions() {
-        return {
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: 'assistant',
-                content: '{"price":999,"result":"invented"}',
-                tool_calls: [
-                  {
-                    id: 'tool-call-1',
-                    type: 'function',
-                    function: {
-                      name: 'mock.resource.read',
-                      arguments: JSON.stringify({
-                        resource_type: 'estimate',
-                        estimate_id: 'estimate-123'
-                      })
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        };
-      }
+test('Qwen orchestrator unwraps strings objects and wrappers safely', () => {
+  const cases: Array<{
+    name: string;
+    arguments: unknown;
+    expected: Record<string, unknown>;
+  }> = [
+    {
+      name: 'string json',
+      arguments: JSON.stringify({ resource_type: 'estimate', customer_id: 'Granapublic' }),
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
     },
-    now: () => new Date('2026-06-30T00:00:00.000Z')
-  });
+    {
+      name: 'plain object',
+      arguments: { resource_type: 'estimate', customer_id: 'Granapublic' },
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
+    },
+    {
+      name: 'wrapper name with object arguments',
+      arguments: {
+        name: 'mock.resource.read',
+        arguments: { resource_type: 'estimate', customer_id: 'Granapublic' }
+      },
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
+    },
+    {
+      name: 'wrapper function with object arguments',
+      arguments: {
+        function: {
+          name: 'mock.resource.read',
+          arguments: { resource_type: 'estimate', customer_id: 'Granapublic' }
+        }
+      },
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
+    },
+    {
+      name: 'wrapper name with string arguments',
+      arguments: {
+        name: 'mock.resource.read',
+        arguments: JSON.stringify({ resource_type: 'estimate', customer_id: 'Granapublic' })
+      },
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
+    },
+    {
+      name: 'nested wrapper',
+      arguments: {
+        name: 'mock.resource.read',
+        arguments: {
+          name: 'mock.resource.read',
+          arguments: { resource_type: 'estimate', customer_id: 'Granapublic' }
+        }
+      },
+      expected: { resource_type: 'estimate', customer_id: 'Granapublic' }
+    }
+  ];
+
+  for (const testCase of cases) {
+    const { orchestrator } = buildOrchestratorForToolCall(testCase.arguments);
+    const outcome = orchestrator.propose({
+      request_id: `request-${testCase.name}`,
+      user_message: 'ultimo presupuesto de Granapublic',
+      organization_id: 'org-acme',
+      principal_id: 'human-001',
+      actor: {
+        principal_id: 'human-001',
+        principal_type: 'human',
+        delegated_identity: null
+      },
+      correlation_id: `corr-${testCase.name}`,
+      installation_id: 'install-acme',
+      context: {
+        installation_id: 'install-acme',
+        active_capabilities: ['mock.resource.read'],
+        metadata: {},
+        force_capability_key: null,
+        force_params: null
+      }
+    });
+
+    assert.equal(outcome.status, 'proposal', testCase.name);
+    assert.deepEqual(outcome.proposal?.params, testCase.expected);
+  }
+});
+
+test('Qwen orchestrator fails closed for malformed wrappers and missing required params', () => {
+  const invalidCases: Array<{
+    name: string;
+    arguments: unknown;
+  }> = [
+    { name: 'array', arguments: [] },
+    { name: 'null', arguments: null },
+    { name: 'primitive', arguments: 42 },
+    { name: 'wrapper without required params', arguments: { name: 'mock.resource.read', arguments: {} } },
+    {
+      name: 'wrapper with customer only',
+      arguments: { function: { name: 'mock.resource.read', arguments: { customer_id: 'Granapublic' } } }
+    },
+    { name: 'malformed json', arguments: '{not-json}' }
+  ];
+
+  for (const testCase of invalidCases) {
+    const { orchestrator } = buildOrchestratorForToolCall(testCase.arguments);
+    const outcome = orchestrator.propose({
+      request_id: `request-${testCase.name}`,
+      user_message: 'Necesito el presupuesto de Granapublic',
+      organization_id: 'org-acme',
+      principal_id: 'human-001',
+      actor: {
+        principal_id: 'human-001',
+        principal_type: 'human',
+        delegated_identity: null
+      },
+      correlation_id: `corr-${testCase.name}`,
+      installation_id: 'install-acme',
+      context: {
+        installation_id: 'install-acme',
+        active_capabilities: ['mock.resource.read'],
+        metadata: {},
+        force_capability_key: null,
+        force_params: null
+      }
+    });
+
+    assert.equal(['blocked', 'denied', 'no_proposal', 'error'].includes(outcome.status), true, testCase.name);
+  }
+});
+
+test('Qwen orchestrator ignores claimed result content and records the override', () => {
+  const { orchestrator } = buildOrchestratorForToolCall(
+    JSON.stringify({
+      name: 'mock.resource.read',
+      arguments: {
+        resource_type: 'estimate',
+        customer_id: 'Granapublic'
+      }
+    }),
+    '{"price":999,"result":"invented"}'
+  );
 
   const outcome = orchestrator.propose({
     request_id: 'request-2',
@@ -388,6 +468,7 @@ test('Qwen orchestrator ignores claimed result content and records the override'
 
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal(records.some((record) => record.record_type === 'model_claimed_result_ignored'), true);
 });
 
