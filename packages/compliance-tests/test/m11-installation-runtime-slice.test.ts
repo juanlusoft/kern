@@ -79,7 +79,8 @@ function buildHoldedFetch(): HoldedFetch {
   return (_url: string, _init?: RequestInit): HoldedFetchResponse => {
     const body = [
       {
-        estimate_id: 'estimate-old-granapublic',
+        estimate_id: 'P26/04366',
+        docNumber: 'P26/04366',
         customer_id: 'granapublic',
         customer_name: 'Granapublic Xx Sl',
         contact: 'contact-granapublic',
@@ -89,7 +90,8 @@ function buildHoldedFetch(): HoldedFetch {
         date: '2024-03-09T00:00:00.000Z'
       },
       {
-        estimate_id: 'estimate-new-granapublic',
+        estimate_id: 'P26/04367',
+        docNumber: 'P26/04367',
         customer_id: 'granapublic',
         customer_name: 'Granapublic Xx Sl',
         contact: 'contact-granapublic',
@@ -100,15 +102,16 @@ function buildHoldedFetch(): HoldedFetch {
         date: '2024-07-03T00:00:00.000Z'
       },
       {
-        estimate_id: 'estimate-other',
-        customer_id: 'other-customer',
-        customer_name: 'Other Customer',
-        contact: 'contact-other',
-        contactName: 'Other Customer',
-        products: [{ name: 'Otro producto' }],
-        total_amount: 1800,
+        estimate_id: 'P26/04368',
+        docNumber: 'P26/04368',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomérico Plus' }],
+        total_amount: 2300,
         currency: 'EUR',
-        date: '2024-08-15T00:00:00.000Z'
+        date: '2024-07-04T00:00:00.000Z'
       }
     ];
     return {
@@ -217,13 +220,14 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.inbound_message?.chat_id, '146574793');
   assert.equal(result.inbound_message?.user_id, '146574793');
   assert.equal(result.orchestration_outcome?.organization_id, 'org-granapublic-live-test');
-  assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'estimate-new-granapublic');
+  assert.equal(result.orchestration_outcome?.response.data?.estimate_id, 'P26/04368');
+  assert.equal((result.orchestration_outcome?.response.data as { docNumber?: string } | undefined)?.docNumber, 'P26/04368');
   assert.equal(result.orchestration_outcome?.response.data?.customer_name, 'Granapublic Xx Sl');
   assert.equal(result.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].parse_mode, undefined);
   assert.equal(sentMessages[0].text.includes('Granapublic Xx Sl'), true);
-  assert.equal(sentMessages[0].text.includes('estimate-new-granapublic'), true);
+  assert.equal(sentMessages[0].text.includes('P26/04368'), true);
   assert.equal(sentMessages[0].text.includes('Fuente:'), true);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
