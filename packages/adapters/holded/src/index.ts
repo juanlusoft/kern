@@ -162,6 +162,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizeTimestampMilliseconds(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function validateQuery(input: ResourceQuery): string | null {
   if (normalizeOptionalString(input.query_id) === null) return 'resource query invalid';
   if (normalizeOptionalString(input.organization_id) === null) return 'resource query invalid';
@@ -318,11 +329,9 @@ function normalizePayload(payload: unknown): { records: Record<string, unknown>[
 function normalizeDateCandidate(record: Record<string, unknown>): number | null {
   const candidates = [record.date, record.created_at, record.updated_at, record.issued_at, record.observed_at];
   for (const candidate of candidates) {
-    if (typeof candidate === 'string') {
-      const parsed = Date.parse(candidate);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
+    const normalized = normalizeTimestampMilliseconds(candidate);
+    if (normalized !== null) {
+      return normalized;
     }
   }
   return null;
@@ -382,21 +391,7 @@ function normalizePaymentsPending(record: Record<string, unknown>): number | nul
 }
 
 function normalizeDueDate(record: Record<string, unknown>): number | null {
-  const candidate = record.dueDate;
-  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-    return candidate;
-  }
-  if (typeof candidate === 'string' && candidate.trim().length > 0) {
-    const parsed = Number(candidate);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-    const dateParsed = Date.parse(candidate);
-    if (Number.isFinite(dateParsed)) {
-      return dateParsed;
-    }
-  }
-  return null;
+  return normalizeTimestampMilliseconds(record.dueDate);
 }
 
 function recordMatchesInvoicePaymentStatus(
@@ -738,6 +733,7 @@ function buildFoundResult(input: {
 }): ResourceResult {
   const data = {
     ...structuredClone(input.record),
+    dueDate: normalizeDueDate(input.record),
     resource_type: normalizeDocumentType(input.query.resource_type) ?? 'estimate',
     source_system: HOLDed_SOURCE_SYSTEM,
     module_key: HOLDed_READ_MODULE_KEY,

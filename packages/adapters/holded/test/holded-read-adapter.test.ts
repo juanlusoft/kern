@@ -241,6 +241,181 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
   assert.equal(serialized.includes(sentinel), false);
 });
 
+test('Holded adapter normalizes due dates from seconds milliseconds and ISO strings', () => {
+  const cases = [
+    {
+      resource_id: 'F26/2001',
+      dueDate: Date.parse('2024-07-01T00:00:00.000Z') / 1000,
+      expected_dueDate: Date.parse('2024-07-01T00:00:00.000Z')
+    },
+    {
+      resource_id: 'F26/2002',
+      dueDate: Date.parse('2024-07-02T00:00:00.000Z'),
+      expected_dueDate: Date.parse('2024-07-02T00:00:00.000Z')
+    },
+    {
+      resource_id: 'F26/2003',
+      dueDate: '2024-07-03T00:00:00.000Z',
+      expected_dueDate: Date.parse('2024-07-03T00:00:00.000Z')
+    }
+  ] as const;
+
+  for (const testCase of cases) {
+    const { fetchStub } = createFetchStub({
+      status: 200,
+      body: [
+        {
+          invoice_id: testCase.resource_id,
+          docNumber: testCase.resource_id,
+          customer_id: 'granapublic',
+          customer_name: 'Granapublic Xx Sl',
+          paymentsPending: 1200,
+          dueDate: testCase.dueDate,
+          total_amount: 1200,
+          currency: 'EUR',
+          date: '2024-07-03T00:00:00.000Z'
+        }
+      ]
+    });
+    const adapter = createHoldedReadAdapter({
+      apiKey: 'token',
+      fetch: fetchStub,
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      baseUrl: 'https://holded.example.test',
+      installation: {
+        installation_id: 'install-acme',
+        active_modules: [HOLDed_READ_MODULE_KEY]
+      }
+    }) as ReturnType<typeof createHoldedReadAdapter>;
+
+    const result = adapter.read(buildQuery('invoice', { resource_id: testCase.resource_id }));
+
+    assert.equal(result.status, 'found');
+    assert.equal(result.data?.invoice_id, testCase.resource_id);
+    assert.equal(result.data?.dueDate, testCase.expected_dueDate);
+  }
+});
+
+test('Holded adapter keeps pending and paid semantics unchanged while normalizing due dates', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/3001',
+        docNumber: 'F26/3001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        status: 0,
+        paymentsPending: 1100,
+        dueDate: Date.parse('2024-07-01T00:00:00.000Z') / 1000,
+        total_amount: 1100,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F26/3002',
+        docNumber: 'F26/3002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        status: 1,
+        paymentsPending: 0,
+        dueDate: Date.parse('2024-07-03T00:00:00.000Z'),
+        total_amount: 1200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const pendingResult = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'pending',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+  const paidResult = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'paid',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(pendingResult.status, 'found');
+  assert.equal(paidResult.status, 'found');
+  assert.equal((pendingResult.data as unknown as ResourceListResultData).records[0]?.record_id, 'F26/3001');
+  assert.equal((paidResult.data as unknown as ResourceListResultData).records[0]?.record_id, 'F26/3002');
+});
+
+test('Holded adapter only treats genuinely overdue invoices as overdue when due dates are normalized', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/4001',
+        docNumber: 'F26/4001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        paymentsPending: 1100,
+        dueDate: Date.parse('2024-07-01T00:00:00.000Z') / 1000,
+        total_amount: 1100,
+        currency: 'EUR',
+        date: '2024-07-01T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F26/4002',
+        docNumber: 'F26/4002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        paymentsPending: 1200,
+        dueDate: Date.parse('2024-07-03T00:00:00.000Z') / 1000,
+        total_amount: 1200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.aggregate.count, 1);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 1100);
+  assert.equal(listData.records[0]?.record_id, 'F26/4001');
+  assert.equal(listData.records[0]?.dueDate, Date.parse('2024-07-01T00:00:00.000Z'));
+});
+
 test('Holded adapter prefers customer lookup over invented ids and matches normalized names', () => {
   const { fetchStub } = createFetchStub({
     status: 200,
@@ -388,6 +563,63 @@ test('Holded adapter chooses the latest estimate by date before comparing docume
   assert.equal(result.data?.estimate_id, 'P26/04367');
   assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04367');
   assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04367');
+});
+
+test('Holded adapter chooses the latest estimate by normalized date before comparing document numbers', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-seconds-old',
+        docNumber: 'P26/010',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 1000,
+        currency: 'EUR',
+        date: Date.parse('2024-07-01T00:00:00.000Z') / 1000
+      },
+      {
+        estimate_id: 'estimate-iso-middle',
+        docNumber: 'P26/011',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 1100,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'estimate-ms-new',
+        docNumber: 'P26/012',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 1200,
+        currency: 'EUR',
+        date: Date.parse('2024-07-04T00:00:00.000Z')
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { customer_name: 'Granapublic' }
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-ms-new');
+  assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/012');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-ms-new');
 });
 
 test('Holded adapter compares document numbers naturally when dates match', () => {
