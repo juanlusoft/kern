@@ -44,6 +44,8 @@ export interface HoldedReadAdapterOptions {
   baseUrl?: string;
   fetch: HoldedFetch;
   now?: () => Date;
+  page_size?: number;
+  max_pages?: number;
   adapter_id?: string;
   module_key?: string;
   installation: HoldedInstallationManifest;
@@ -87,6 +89,20 @@ export class InMemoryHoldedModuleRegistry implements HoldedModuleRegistry {
 
 function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeQueryParamValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const candidate = value.trim();
+    return candidate.length > 0 ? candidate : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  return null;
 }
 
 function normalizeDocumentType(value: unknown): 'estimate' | 'invoice' | null {
@@ -212,6 +228,42 @@ function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status'
 
 function buildEndpoint(baseUrl: string, query: ResourceQuery): string {
   return `${baseUrl}/api/invoicing/v1/documents/${normalizeDocumentType(query.resource_type) ?? 'estimate'}`;
+}
+
+const HOLDed_PAGE_SIZE_DEFAULT = 500;
+const HOLDed_MAX_PAGES_DEFAULT = 50;
+
+function normalizePageLimit(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  return fallback;
+}
+
+function collectHoldedPreservedQueryParams(query: ResourceQuery): Array<[string, string]> {
+  const filters = query.filters && isRecord(query.filters) ? query.filters : null;
+  if (!filters) {
+    return [];
+  }
+  const entries: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(filters)) {
+    const candidate = normalizeQueryParamValue(value);
+    if (candidate !== null) {
+      entries.push([key, candidate]);
+    }
+  }
+  return entries;
+}
+
+function buildEndpointWithPage(baseUrl: string, query: ResourceQuery, page: number | null): string {
+  const endpoint = new URL(`${trimBaseUrl(baseUrl)}/api/invoicing/v1/documents/${normalizeDocumentType(query.resource_type) ?? 'estimate'}`);
+  for (const [key, value] of collectHoldedPreservedQueryParams(query)) {
+    endpoint.searchParams.set(key, value);
+  }
+  if (page !== null) {
+    endpoint.searchParams.set('page', String(page));
+  }
+  return endpoint.toString();
 }
 
 function collectFieldPaths(record: Record<string, unknown>): string[] {
@@ -563,6 +615,7 @@ function buildListFoundResult(input: {
   resource_id: string | null;
   records: Record<string, unknown>[];
   observed_at: string;
+  truncated?: boolean;
 }): ResourceResult {
   const payment_status = normalizePaymentStatus(input.query.payment_status) ?? 'pending';
   const listRecords = input.records
@@ -607,7 +660,8 @@ function buildListFoundResult(input: {
       payment_status,
       lookup_mode: lookupMode(input.query) === 'by_customer' ? 'by_customer' : 'by_status',
       records: listRecords,
-      aggregate: buildListAggregate(listRecords)
+      aggregate: buildListAggregate(listRecords),
+      ...(input.truncated ? { truncated: true } : {})
     } as unknown as Record<string, unknown>,
     source_evidence: listRecords.flatMap((record) => [...record.source_evidence]) as [SourceEvidence, ...SourceEvidence[]],
     error: null
@@ -722,6 +776,201 @@ function parseJsonSafely(rawText: string): { ok: true; value: unknown } | { ok: 
   }
 }
 
+function dedupeRecordsById(records: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seenIds = new Set<string>();
+  const deduped: Record<string, unknown>[] = [];
+  for (const record of records) {
+    const recordId = extractRecordId(record);
+    if (recordId) {
+      if (seenIds.has(recordId)) {
+        continue;
+      }
+      seenIds.add(recordId);
+    }
+    deduped.push(record);
+  }
+  return deduped;
+}
+
+type HoldedPageFetchOutcome =
+  | { ok: true; records: Record<string, unknown>[]; empty: boolean }
+  | { ok: false; result: ResourceResult };
+
+function fetchHoldedDocumentPage(input: {
+  query: ResourceQuery;
+  adapter_id: string;
+  authorization: ExternalReadAdapterAuthorization;
+  resource_id: string | null;
+  endpoint: string;
+  fetch: HoldedFetch;
+  apiKey: string | null;
+}): HoldedPageFetchOutcome {
+  let response: HoldedFetchResponse;
+  try {
+    const headers: Record<string, string> = {
+      Accept: 'application/json'
+    };
+    if (input.apiKey) {
+      headers.key = input.apiKey;
+    }
+    response = input.fetch(input.endpoint, {
+      method: 'GET',
+      headers
+    });
+  } catch {
+    return {
+      ok: false,
+      result: cloneResourceResult(
+        createTerminalResult({
+          query: input.query,
+          adapter_id: input.adapter_id,
+          status: 'unavailable',
+          reason: 'Holded transport unavailable',
+          authorization: input.authorization,
+          resource_id: input.resource_id,
+          produced_by_adapter: true
+        })
+      )
+    };
+  }
+
+  const responseText = readResponseText(response);
+  if (response.status === 401 || response.status === 403) {
+    return {
+      ok: false,
+      result: cloneResourceResult(
+        createTerminalResult({
+          query: input.query,
+          adapter_id: input.adapter_id,
+          status: 'denied',
+          reason: 'Holded authorization denied',
+          authorization: input.authorization,
+          resource_id: input.resource_id,
+          produced_by_adapter: true
+        })
+      )
+    };
+  }
+  if (response.status === 404) {
+    return {
+      ok: false,
+      result: cloneResourceResult(
+        createTerminalResult({
+          query: input.query,
+          adapter_id: input.adapter_id,
+          status: 'error',
+          reason: 'Holded endpoint not available',
+          authorization: input.authorization,
+          resource_id: input.resource_id,
+          produced_by_adapter: true
+        })
+      )
+    };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      result: cloneResourceResult(
+        createTerminalResult({
+          query: input.query,
+          adapter_id: input.adapter_id,
+          status: response.status >= 500 ? 'error' : 'error',
+          reason: responseText || 'Holded response error',
+          authorization: input.authorization,
+          resource_id: input.resource_id,
+          produced_by_adapter: true
+        })
+      )
+    };
+  }
+
+  const parsed = parseJsonSafely(responseText);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      result: cloneResourceResult(
+        createTerminalResult({
+          query: input.query,
+          adapter_id: input.adapter_id,
+          status: 'error',
+          reason: parsed.reason,
+          authorization: input.authorization,
+          resource_id: input.resource_id,
+          produced_by_adapter: true
+        })
+      )
+    };
+  }
+
+  const payload = normalizePayload(parsed.value);
+  if (payload.empty) {
+    return { ok: true, records: [], empty: true };
+  }
+  return { ok: true, records: payload.records, empty: false };
+}
+
+function fetchHoldedDocumentPages(input: {
+  query: ResourceQuery;
+  adapter_id: string;
+  authorization: ExternalReadAdapterAuthorization;
+  resource_id: string | null;
+  fetch: HoldedFetch;
+  apiKey: string | null;
+  baseUrl: string;
+  page_size: number;
+  max_pages: number;
+}): { ok: true; records: Record<string, unknown>[]; truncated: boolean; empty: boolean } | { ok: false; result: ResourceResult } {
+  const records: Record<string, unknown>[] = [];
+  let truncated = false;
+  for (let page = 1; page <= input.max_pages; page += 1) {
+    const endpoint = buildEndpointWithPage(input.baseUrl, input.query, page);
+    const outcome = fetchHoldedDocumentPage({
+      query: input.query,
+      adapter_id: input.adapter_id,
+      authorization: input.authorization,
+      resource_id: input.resource_id,
+      endpoint,
+      fetch: input.fetch,
+      apiKey: input.apiKey
+    });
+    if (!outcome.ok) {
+      return outcome;
+    }
+    if (outcome.records.length === 0) {
+      return {
+        ok: true,
+        records: dedupeRecordsById(records),
+        truncated,
+        empty: page === 1
+      };
+    }
+    records.push(...outcome.records);
+    if (outcome.records.length < input.page_size) {
+      return {
+        ok: true,
+        records: dedupeRecordsById(records),
+        truncated,
+        empty: false
+      };
+    }
+    if (page === input.max_pages) {
+      truncated = true;
+      return {
+        ok: true,
+        records: dedupeRecordsById(records),
+        truncated,
+        empty: false
+      };
+    }
+  }
+  return {
+    ok: true,
+    records: dedupeRecordsById(records),
+    truncated,
+    empty: records.length === 0
+  };
+}
+
 function buildFoundResult(input: {
   query: ResourceQuery;
   adapter_id: string;
@@ -730,6 +979,7 @@ function buildFoundResult(input: {
   record: Record<string, unknown>;
   record_id: string;
   observed_at: string;
+  truncated?: boolean;
 }): ResourceResult {
   const data = {
     ...structuredClone(input.record),
@@ -738,7 +988,8 @@ function buildFoundResult(input: {
     source_system: HOLDed_SOURCE_SYSTEM,
     module_key: HOLDed_READ_MODULE_KEY,
     installation_id: input.query.organization_id,
-    lookup_mode: lookupMode(input.query)
+    lookup_mode: lookupMode(input.query),
+    ...(input.truncated ? { truncated: true } : {})
   };
   const documentType = normalizeDocumentType(input.query.resource_type) ?? 'estimate';
   const result = validateResourceResult({
@@ -783,6 +1034,8 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
   private readonly activeModules: string[];
   private readonly fetch: HoldedFetch;
   private readonly now: () => Date;
+  private readonly pageSize: number;
+  private readonly maxPages: number;
   private readonly apiKey: string | null;
   private readonly baseUrl: string;
   private readonly moduleRegistered: boolean;
@@ -794,6 +1047,8 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     this.activeModules = [...options.installation.active_modules];
     this.fetch = options.fetch;
     this.now = options.now ?? (() => new Date());
+    this.pageSize = normalizePageLimit(options.page_size, HOLDed_PAGE_SIZE_DEFAULT);
+    this.maxPages = normalizePageLimit(options.max_pages, HOLDed_MAX_PAGES_DEFAULT);
     this.apiKey = normalizeApiKey(options.apiKey ?? process.env.KERN_HOLDED_API_KEY ?? null);
     this.baseUrl = trimBaseUrl(options.baseUrl ?? process.env.KERN_HOLDED_BASE_URL ?? 'https://api.holded.com');
     this.moduleRegistered = options.module_registered ?? true;
@@ -859,6 +1114,62 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
           authorization,
           resource_id,
           produced_by_adapter: true
+        })
+      );
+    }
+
+    if (payment_status) {
+      const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
+      const paginated = fetchHoldedDocumentPages({
+        query: normalized,
+        adapter_id: this.adapter_id,
+        authorization,
+        resource_id,
+        fetch: this.fetch,
+        apiKey: this.apiKey,
+        baseUrl: this.baseUrl,
+        page_size: this.pageSize,
+        max_pages: this.maxPages
+      });
+      if (!paginated.ok) {
+        return paginated.result;
+      }
+      if (paginated.empty || paginated.records.length === 0) {
+        return cloneResourceResult(
+          createTerminalResult({
+            query: normalized,
+            adapter_id: this.adapter_id,
+            status: 'not_found',
+            reason: `Holded ${documentType} list empty`,
+            authorization,
+            resource_id,
+            produced_by_adapter: true
+          })
+        );
+      }
+      const records = selectMatchingRecords(paginated.records, normalized, this.now);
+      if (records.length === 0) {
+        return cloneResourceResult(
+          createTerminalResult({
+            query: normalized,
+            adapter_id: this.adapter_id,
+            status: 'not_found',
+            reason: `Holded ${documentType} list empty for ${payment_status}`,
+            authorization,
+            resource_id,
+            produced_by_adapter: true
+          })
+        );
+      }
+      return cloneResourceResult(
+        buildListFoundResult({
+          query: normalized,
+          adapter_id: this.adapter_id,
+          authorization,
+          resource_id,
+          records,
+          observed_at: this.now().toISOString(),
+          truncated: paginated.truncated
         })
       );
     }
@@ -962,32 +1273,6 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       );
     }
     const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
-    if (payment_status) {
-      const records = selectMatchingRecords(payload.records, normalized, this.now);
-      if (records.length === 0) {
-        return cloneResourceResult(
-          createTerminalResult({
-            query: normalized,
-            adapter_id: this.adapter_id,
-            status: 'not_found',
-            reason: `Holded ${documentType} list empty for ${payment_status}`,
-            authorization,
-            resource_id,
-            produced_by_adapter: true
-          })
-        );
-      }
-      return cloneResourceResult(
-        buildListFoundResult({
-          query: normalized,
-          adapter_id: this.adapter_id,
-          authorization,
-          resource_id,
-          records,
-          observed_at: this.now().toISOString()
-        })
-      );
-    }
     const record = selectMatchingRecord(payload.records, normalized, this.now);
     if (!record) {
       return cloneResourceResult(
