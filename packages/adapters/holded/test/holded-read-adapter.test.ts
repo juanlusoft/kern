@@ -9,7 +9,7 @@ import {
   resolveHoldedReadAdapterForInstallation,
   type HoldedFetchResponse
 } from '../src/index';
-import { normalizeResourceQuery, type ResourceQuery } from '../../../contracts/src/index';
+import { normalizeResourceQuery, type ResourceListResultData, type ResourceQuery } from '../../../contracts/src/index';
 
 function buildQuery(
   resource_type_or_overrides: 'estimate' | 'invoice' | Partial<ResourceQuery> = 'estimate',
@@ -142,6 +142,100 @@ test('Holded adapter reads invoices with the same governed pattern as estimates'
   assert.ok(result.source_evidence);
   assert.ok(result.source_evidence.length > 0);
   assert.equal(result.source_evidence[0].source_type, 'invoice');
+  assert.equal(result.source_evidence[0].resource_id, 'F26/1931');
+  assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
+  assert.equal(serialized.includes(sentinel), false);
+});
+
+test('Holded adapter returns invoice payment-status lists with aggregate and SourceEvidence', () => {
+  const sentinel = 'secret_test_token_must_not_leak';
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/1930',
+        docNumber: 'F26/1930',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 1100,
+        dueDate: '2024-03-09T00:00:00.000Z',
+        total_amount: 1100,
+        currency: 'EUR',
+        date: '2024-03-09T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F26/1931',
+        docNumber: 'F26/1931',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'MUPIS PAPEL' }],
+        paymentsPending: 1200,
+        dueDate: '2024-07-03T00:00:00.000Z',
+        total_amount: 1200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F26/1932',
+        docNumber: 'F26/1932',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        products: [{ name: 'Vinilo Monomérico Plus' }],
+        paymentsPending: 1300,
+        dueDate: '2024-07-02T00:00:00.000Z',
+        total_amount: 1300,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: sentinel,
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+  const serialized = JSON.stringify(result);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /holded\.example\.test\/api\/invoicing\/v1\/documents\/invoice/);
+  assert.equal((calls[0].init?.headers as Record<string, string> | undefined)?.key, sentinel);
+  assert.equal(result.status, 'found');
+  assert.equal(result.produced_by_adapter, true);
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.kind, 'list');
+  assert.equal(listData.result_mode, 'list');
+  assert.equal(listData.resource_type, 'invoice');
+  assert.equal(listData.payment_status, 'overdue');
+  assert.equal(listData.lookup_mode, 'by_customer');
+  assert.equal(listData.records.length, 3);
+  assert.equal(listData.records[0]?.record_id, 'F26/1931');
+  assert.equal(listData.records[1]?.record_id, 'F26/1932');
+  assert.equal(listData.records[2]?.record_id, 'F26/1930');
+  assert.equal(listData.aggregate.count, 3);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 3600);
+  assert.ok(result.source_evidence);
+  assert.ok(result.source_evidence.length > 0);
+  assert.equal(result.source_evidence[0].source_system, 'holded');
   assert.equal(result.source_evidence[0].resource_id, 'F26/1931');
   assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
   assert.equal(serialized.includes(sentinel), false);

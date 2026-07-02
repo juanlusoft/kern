@@ -1,6 +1,7 @@
 import {
   createEvidenceRecord,
   normalizeCorrelationId,
+  normalizeResourceQuery,
   type GovernedWorkflowKind,
   type GovernedWorkflowRequest,
   type GovernedWorkflowResponse,
@@ -212,13 +213,16 @@ function resolveWorkflowRequest(
   if (proposal.capability_key === 'mock.resource.read') {
     const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
     const resource_type = proposal.params.resource_type === 'invoice' ? 'invoice' : 'estimate';
+    const payment_status = normalizeResourceQuery({
+      payment_status: proposal.params.payment_status ?? null
+    }).payment_status;
     const customer_id =
       normalizeCustomerLookupParam(proposal.params.customer_id) ??
       normalizeCustomerLookupParam(proposal.params.customer_name) ??
       normalizeCustomerLookupParam(proposal.params.contact_name) ??
       normalizeCustomerLookupParam(proposal.params.contactName) ??
       normalizeCustomerLookupParam(proposal.params.contact);
-    if (!estimate_id && !customer_id) {
+    if (!estimate_id && !customer_id && !payment_status) {
       return null;
     }
     return {
@@ -228,6 +232,7 @@ function resolveWorkflowRequest(
       principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
       correlation_id: request.correlation_id,
       resource_type,
+      payment_status,
       estimate_id,
       customer_id,
       claimed_result: request.claimed_result ?? null,

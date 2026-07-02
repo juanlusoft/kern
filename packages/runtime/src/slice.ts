@@ -201,7 +201,7 @@ function buildQwenToolCatalog() {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates or invoices from the runtime by customer or exact document id. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer or exact document id. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object' as const,
         required: ['resource_type'],
@@ -212,6 +212,7 @@ function buildQwenToolCatalog() {
           { required: ['contact_name'] },
           { required: ['contactName'] },
           { required: ['contact'] },
+          { required: ['payment_status'] },
           { required: ['estimate_id'] },
           { required: ['invoice_id'] },
           { required: ['resource_id'] }
@@ -224,6 +225,11 @@ function buildQwenToolCatalog() {
           },
           estimate_id: { type: 'string' as const },
           invoice_id: { type: 'string' as const },
+          payment_status: {
+            type: 'string' as const,
+            enum: ['pending', 'paid', 'overdue'],
+            description: 'Use only with resource_type="invoice" to list invoices by payment state.'
+          },
           resource_id: {
             type: 'string' as const,
             description: 'Known resource id if the user explicitly provided one.'

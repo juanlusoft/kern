@@ -135,6 +135,123 @@ test('M8 executes a validated proposal through the governed read runtime and pre
   assert.equal(records.some((record) => record.record_type === 'workflow_response_created'), true);
 });
 
+test('M8 forwards invoice payment status through the orchestration boundary into runtime list output', () => {
+  const invoiceHolded = buildHoldedFetch(200, [
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1930',
+      docNumber: 'F26/1930',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      status: 0,
+      paymentsPending: 1100,
+      dueDate: '2024-03-09T00:00:00.000Z',
+      total_amount: 1100,
+      currency: 'EUR',
+      date: '2024-03-09T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1931',
+      docNumber: 'F26/1931',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'MUPIS PAPEL' }],
+      status: 0,
+      paymentsPending: 1200,
+      dueDate: '2024-07-03T00:00:00.000Z',
+      total_amount: 1200,
+      currency: 'EUR',
+      date: '2024-07-03T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1932',
+      docNumber: 'F26/1932',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'Vinilo Monomérico Plus' }],
+      status: 0,
+      paymentsPending: 1300,
+      dueDate: '2024-07-02T00:00:00.000Z',
+      total_amount: 1300,
+      currency: 'EUR',
+      date: '2024-07-02T00:00:00.000Z'
+    }
+  ]);
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    externalReadAdapter: createHoldedReadAdapter({
+      apiKey: 'token',
+      fetch: invoiceHolded.fetch,
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      installation: {
+        installation_id: 'install-acme',
+        active_modules: ['holded-read']
+      }
+    })
+  });
+  const boundary = new InMemoryOrchestrationBoundary({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    workflowRuntime: runtime,
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [
+        {
+          keywords: ['vencidas'],
+          capability_key: 'mock.resource.read',
+          reason: 'invoice list route selected from message keywords',
+          confidence: 1,
+          buildParams: () => ({
+            resource_type: 'invoice',
+            payment_status: 'overdue',
+            customer_id: 'Granapublic'
+          })
+        }
+      ]
+    }),
+    installationCapabilities: {
+      'install-acme': ['mock.resource.read']
+    }
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'Necesito las facturas vencidas de Granapublic',
+      correlation_id: 'corr-invoice-list'
+    })
+  );
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.response.response_source, 'runtime_result');
+  assert.equal(outcome.response.status, 'completed');
+  const responseData = outcome.response.data as
+    | {
+        kind?: string;
+        payment_status?: string;
+        aggregate?: { count?: number; paymentsPendingTotal?: number };
+        records?: Array<{ invoice_id?: string }>;
+      }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.payment_status, 'overdue');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(responseData?.records?.[0]?.invoice_id, 'F26/1931');
+  assert.equal(responseData?.records?.[1]?.invoice_id, 'F26/1932');
+  assert.equal(responseData?.records?.[2]?.invoice_id, 'F26/1930');
+});
+
 test('M8 ignores claimed results from the orchestrator proposal', () => {
   const boundary = buildBoundary({
     orchestrator: createMockOrchestrator({
