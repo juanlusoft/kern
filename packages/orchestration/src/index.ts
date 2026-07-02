@@ -206,6 +206,26 @@ function normalizeCustomerLookupParam(value: unknown): string | null {
   return normalizeOptionalString(value);
 }
 
+function isValidMockResourceReadProposal(params: Record<string, unknown>): boolean {
+  const estimate_id = normalizeOptionalString(params.estimate_id);
+  const customer_id =
+    normalizeCustomerLookupParam(params.customer_id) ??
+    normalizeCustomerLookupParam(params.customer_name) ??
+    normalizeCustomerLookupParam(params.contact_name) ??
+    normalizeCustomerLookupParam(params.contactName) ??
+    normalizeCustomerLookupParam(params.contact);
+  const resource_type = params.resource_type === 'invoice' ? 'invoice' : 'estimate';
+  const payment_status = normalizeResourceQuery({
+    payment_status: params.payment_status ?? null
+  }).payment_status;
+
+  if (payment_status && resource_type !== 'invoice') {
+    return false;
+  }
+
+  return Boolean(estimate_id || customer_id || payment_status);
+}
+
 function resolveWorkflowRequest(
   proposal: OrchestrationProposal,
   request: OrchestrationRequest
@@ -702,14 +722,7 @@ export class InMemoryOrchestrationBoundary {
     }
 
     if (proposal.capability_key === 'mock.resource.read') {
-      const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
-      const customer_id =
-        normalizeCustomerLookupParam(proposal.params.customer_id) ??
-        normalizeCustomerLookupParam(proposal.params.customer_name) ??
-        normalizeCustomerLookupParam(proposal.params.contact_name) ??
-        normalizeCustomerLookupParam(proposal.params.contactName) ??
-        normalizeCustomerLookupParam(proposal.params.contact);
-      if (!estimate_id && !customer_id) {
+      if (!isValidMockResourceReadProposal(proposal.params)) {
         return {
           valid: false,
           status: 'blocked',
@@ -727,7 +740,13 @@ export class InMemoryOrchestrationBoundary {
         capability_key: proposal.capability_key,
         params: normalizeCapabilityParams({
           ...proposal.params,
-          customer_id: customer_id ?? proposal.params.customer_id ?? null
+          customer_id: normalizeCustomerLookupParam(proposal.params.customer_id) ??
+            normalizeCustomerLookupParam(proposal.params.customer_name) ??
+            normalizeCustomerLookupParam(proposal.params.contact_name) ??
+            normalizeCustomerLookupParam(proposal.params.contactName) ??
+            normalizeCustomerLookupParam(proposal.params.contact) ??
+            proposal.params.customer_id ??
+            null
         }),
         capability_active: true,
         capability_known: true

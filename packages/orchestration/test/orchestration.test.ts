@@ -30,6 +30,16 @@ function buildRequest(overrides: Partial<OrchestrationRequest> = {}): Orchestrat
   };
 }
 
+function buildReadProposal(params: Record<string, unknown>, keywords: string[] = ['vencidas']) {
+  return {
+    keywords,
+    capability_key: 'mock.resource.read',
+    reason: 'invoice list route selected from message keywords',
+    confidence: 1,
+    buildParams: () => params
+  } as const;
+}
+
 function buildHoldedFetch(status: number, body: unknown) {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const fetch = (url: string | URL | Request, init?: RequestInit): HoldedFetchResponse => {
@@ -250,6 +260,213 @@ test('M8 forwards invoice payment status through the orchestration boundary into
   assert.equal(responseData?.records?.[0]?.invoice_id, 'F26/1931');
   assert.equal(responseData?.records?.[1]?.invoice_id, 'F26/1932');
   assert.equal(responseData?.records?.[2]?.invoice_id, 'F26/1930');
+});
+
+test('M8 accepts invoice payment-status proposals without a customer', () => {
+  const invoiceHolded = buildHoldedFetch(200, [
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1930',
+      docNumber: 'F26/1930',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      status: 0,
+      paymentsPending: 1100,
+      dueDate: '2024-03-09T00:00:00.000Z',
+      total_amount: 1100,
+      currency: 'EUR',
+      date: '2024-03-09T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1931',
+      docNumber: 'F26/1931',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'MUPIS PAPEL' }],
+      status: 0,
+      paymentsPending: 1200,
+      dueDate: '2024-07-03T00:00:00.000Z',
+      total_amount: 1200,
+      currency: 'EUR',
+      date: '2024-07-03T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1932',
+      docNumber: 'F26/1932',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
+      status: 0,
+      paymentsPending: 1300,
+      dueDate: '2024-07-02T00:00:00.000Z',
+      total_amount: 1300,
+      currency: 'EUR',
+      date: '2024-07-02T00:00:00.000Z'
+    }
+  ]);
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    externalReadAdapter: createHoldedReadAdapter({
+      apiKey: 'token',
+      fetch: invoiceHolded.fetch,
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      installation: {
+        installation_id: 'install-acme',
+        active_modules: ['holded-read']
+      }
+    })
+  });
+  const boundary = new InMemoryOrchestrationBoundary({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    workflowRuntime: runtime,
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        payment_status: 'overdue'
+      }, ['vencidas'])]
+    }),
+    installationCapabilities: {
+      'install-acme': ['mock.resource.read']
+    }
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'Necesito las facturas vencidas',
+      correlation_id: 'corr-invoice-list-no-customer'
+    })
+  );
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.response.response_source, 'runtime_result');
+  assert.equal(outcome.response.status, 'completed');
+  const responseData = outcome.response.data as
+    | {
+        kind?: string;
+        payment_status?: string;
+        aggregate?: { count?: number; paymentsPendingTotal?: number };
+        records?: Array<{ invoice_id?: string }>;
+      }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.payment_status, 'overdue');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(responseData?.records?.[0]?.invoice_id, 'F26/1931');
+  assert.equal(responseData?.records?.[1]?.invoice_id, 'F26/1932');
+  assert.equal(responseData?.records?.[2]?.invoice_id, 'F26/1930');
+});
+
+test('M8 blocks invoice payment-status proposals that use estimate resource type', () => {
+  const boundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'estimate',
+        payment_status: 'overdue'
+      }, ['vencidas'])]
+    })
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'facturas vencidas',
+      correlation_id: 'corr-estimate-payment-status'
+    })
+  );
+
+  const records = boundary.getEvidenceLedger().listByCorrelation('corr-estimate-payment-status');
+  assert.equal(outcome.status, 'blocked');
+  assert.equal(outcome.reason, 'proposal params invalid');
+  assert.equal(records.some((record) => record.record_type === 'orchestration_proposal_blocked'), true);
+});
+
+test('M8 validates invoice payment-status proposals for pending and paid without a customer', () => {
+  const pendingBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        payment_status: 'pending'
+      }, ['pendientes'])]
+    })
+  });
+  const paidBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        payment_status: 'paid'
+      }, ['pagadas'])]
+    })
+  });
+
+  const pendingOutcome = pendingBoundary.execute(
+    buildRequest({
+      user_message: 'facturas pendientes',
+      correlation_id: 'corr-invoice-pending'
+    })
+  );
+  const paidOutcome = paidBoundary.execute(
+    buildRequest({
+      user_message: 'facturas pagadas',
+      correlation_id: 'corr-invoice-paid'
+    })
+  );
+
+  assert.equal(pendingOutcome.status, 'proposal');
+  assert.equal(pendingOutcome.validation?.status, 'proposal');
+  assert.equal(paidOutcome.status, 'proposal');
+  assert.equal(paidOutcome.validation?.status, 'proposal');
+});
+
+test('M8 blocks empty proposals and unknown invoice payment status', () => {
+  const emptyBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({ resource_type: 'estimate' }, ['estimate'])]
+    })
+  });
+  const unknownStatusBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        payment_status: 'unknown'
+      }, ['facturas'])]
+    })
+  });
+
+  const emptyOutcome = emptyBoundary.execute(
+    buildRequest({
+      user_message: 'estimate',
+      correlation_id: 'corr-empty-proposal'
+    })
+  );
+  const unknownStatusOutcome = unknownStatusBoundary.execute(
+    buildRequest({
+      user_message: 'facturas',
+      correlation_id: 'corr-unknown-payment-status'
+    })
+  );
+
+  assert.equal(emptyOutcome.status, 'blocked');
+  assert.equal(emptyOutcome.reason, 'proposal params invalid');
+  assert.equal(unknownStatusOutcome.status, 'blocked');
+  assert.equal(unknownStatusOutcome.reason, 'proposal params invalid');
 });
 
 test('M8 ignores claimed results from the orchestrator proposal', () => {
