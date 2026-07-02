@@ -113,6 +113,7 @@ export type EvidenceRecordType =
   | 'runtime_message_failed';
 
 export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
+export type ResourcePaymentStatus = 'pending' | 'paid' | 'overdue';
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -342,6 +343,35 @@ export interface SourceEvidence {
   correlation_id: string;
 }
 
+export interface ResourceListAggregate {
+  count: number;
+  paymentsPendingTotal: number;
+}
+
+export interface ResourceListRecord {
+  record_id: string;
+  resource_type: 'invoice';
+  payment_status: ResourcePaymentStatus;
+  status: number | null;
+  paymentsPending: number | null;
+  dueDate: number | null;
+  total: number | null;
+  docNumber: string | null;
+  contactName: string | null;
+  source_evidence: [SourceEvidence, ...SourceEvidence[]];
+  data: Record<string, unknown>;
+}
+
+export interface ResourceListResultData {
+  kind: 'list';
+  result_mode: 'list';
+  resource_type: 'invoice';
+  payment_status: ResourcePaymentStatus;
+  lookup_mode: 'by_status' | 'by_customer';
+  records: [ResourceListRecord, ...ResourceListRecord[]] | ResourceListRecord[];
+  aggregate: ResourceListAggregate;
+}
+
 export interface ExternalReadAdapterAuthorization {
   adapter_id: string;
   source_system: string;
@@ -430,6 +460,7 @@ export interface ResourceQuery {
   correlation_id: string | null;
   actor: TurnActor | null;
   resource_type: string;
+  payment_status?: ResourcePaymentStatus | null;
   resource_id: string | null;
   filters: Record<string, unknown> | null;
   requested_fields: string[] | null;
@@ -486,6 +517,7 @@ export interface GovernedWorkflowRequestBase {
 export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBase {
   kind: 'mock.estimate.read';
   resource_type?: 'estimate' | 'invoice';
+  payment_status?: ResourcePaymentStatus | null;
   estimate_id?: string | null;
   customer_id?: string | null;
   capability_id?: string | null;
@@ -795,6 +827,10 @@ export function normalizeResourceQuery(input: unknown): ResourceQuery {
         }
       : null,
     resource_type: typeof candidate.resource_type === 'string' ? candidate.resource_type : '',
+    payment_status:
+      candidate.payment_status === 'pending' || candidate.payment_status === 'paid' || candidate.payment_status === 'overdue'
+        ? candidate.payment_status
+        : null,
     resource_id: typeof candidate.resource_id === 'string' ? candidate.resource_id : null,
     filters: candidate.filters && typeof candidate.filters === 'object' ? (candidate.filters as Record<string, unknown>) : null,
     requested_fields: requestedFields,
@@ -812,6 +848,7 @@ export function fingerprintResourceQuery(query: ResourceQuery): string {
     correlation_id: query.correlation_id,
     actor: query.actor,
     resource_type: query.resource_type,
+    payment_status: query.payment_status,
     resource_id: query.resource_id,
     filters: query.filters,
     requested_fields: query.requested_fields ? [...query.requested_fields].sort() : null

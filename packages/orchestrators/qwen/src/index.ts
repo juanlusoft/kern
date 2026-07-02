@@ -112,6 +112,11 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' | null {
+  const candidate = normalizeOptionalString(value);
+  return candidate === 'pending' || candidate === 'paid' || candidate === 'overdue' ? candidate : null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -236,7 +241,7 @@ function buildSystemPrompt(input: {
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
-    'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, and search terms.',
+    'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
     'User: "ultimo presupuesto de Granapublic"',
@@ -246,6 +251,12 @@ function buildSystemPrompt(input: {
     '  "customer_id": "Granapublic"',
     '}',
     "For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user's request.",
+    'For invoice payment-status lists, use resource_type="invoice" together with payment_status="pending", "paid", or "overdue".',
+    'Examples:',
+    '{ "resource_type": "invoice", "payment_status": "overdue" }',
+    '{ "resource_type": "invoice", "payment_status": "pending", "customer_id": "Granapublic" }',
+    '{ "resource_type": "invoice", "payment_status": "paid", "customer_id": "Petroprix" }',
+    'Do not use payment_status with resource_type="estimate".',
     'Do not invent estimate_id or invoice_id.',
     `organization_id=${input.organization_id ?? 'null'}`,
     `principal_id=${input.principal_id ?? 'null'}`,
@@ -371,6 +382,13 @@ function validateToolArguments(definition: QwenToolDefinition, params: Record<st
   }
   if (!schema.properties) {
     return true;
+  }
+  const resourceType = typeof params.resource_type === 'string' ? params.resource_type : null;
+  const paymentStatus = normalizePaymentStatus(params.payment_status);
+  if (Object.prototype.hasOwnProperty.call(params, 'payment_status')) {
+    if (!paymentStatus || resourceType !== 'invoice') {
+      return false;
+    }
   }
   for (const [key, property] of Object.entries(schema.properties)) {
     if (!Object.prototype.hasOwnProperty.call(params, key)) {

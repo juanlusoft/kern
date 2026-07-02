@@ -267,7 +267,84 @@ function buildSourceReferenceLine(
   return `Fuente: ${displaySourceSystem} · documento ${documentId}`;
 }
 
+function paymentStatusLabel(paymentStatus: string | null): string {
+  switch (paymentStatus) {
+    case 'pending':
+      return 'pendientes';
+    case 'paid':
+      return 'pagadas';
+    case 'overdue':
+      return 'vencidas';
+    default:
+      return 'facturas';
+  }
+}
+
+function isInvoiceListResponseData(outcome: OrchestrationOutcome): boolean {
+  const responseData = extractResponseData(outcome);
+  return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'list' && Array.isArray(responseData.records));
+}
+
+function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
+  const responseData = extractResponseData(outcome);
+  const resourceResult = extractResourceResult(outcome);
+  if (!responseData || !isPlainObject(responseData) || responseData.kind !== 'list' || !Array.isArray(responseData.records)) {
+    return buildCompletedOutboundText(outcome);
+  }
+  const records = responseData.records.filter((record): record is Record<string, unknown> => Boolean(record) && typeof record === 'object' && !Array.isArray(record));
+  if (records.length === 0) {
+    return buildCompletedOutboundText(outcome);
+  }
+  const paymentStatus = toTrimmedString(responseData.payment_status) ?? 'overdue';
+  const firstRecord = records[0] ?? null;
+  const customerName =
+    firstStringFromKeys(firstRecord, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
+    firstStringFromKeys(responseData, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
+    firstStringFromKeys(resourceResult, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']);
+  const aggregate = isPlainObject(responseData.aggregate) ? responseData.aggregate : null;
+  const count = numberFromKeys(aggregate, ['count']) ?? records.length;
+  const totalPending = numberFromKeys(aggregate, ['paymentsPendingTotal']);
+  const currency =
+    firstStringFromKeys(firstRecord, ['currency', 'currency_code']) ??
+    firstStringFromKeys(responseData, ['currency', 'currency_code']) ??
+    firstStringFromKeys(resourceResult, ['currency', 'currency_code']);
+  const totalPendingText = totalPending !== null ? formatCurrencyAmount(totalPending, currency) : null;
+  const lines: string[] = [];
+  lines.push(customerName ? `${documentTitle('invoice')} de ${customerName}:` : `${documentTitle('invoice')}:`);
+  lines.push(
+    paymentStatus === 'paid'
+      ? `${count} facturas pagadas`
+      : `${count} facturas ${paymentStatusLabel(paymentStatus)}${totalPendingText ? ` · ${totalPendingText} pendientes` : ''}`
+  );
+  records.slice(0, 3).forEach((record) => {
+    const documentId =
+      firstStringFromKeys(record, ['docNumber', 'documentNo', 'document_number', 'invoice_id', 'resource_id', 'id']) ??
+      'sin identificador';
+    const productSummary = summarizeProductNames(record);
+    const recordAmount =
+      paymentStatus === 'paid'
+        ? numberFromKeys(record, ['total', 'total_amount', 'amount'])
+        : numberFromKeys(record, ['paymentsPending', 'total', 'total_amount', 'amount']);
+    const recordCurrency = firstStringFromKeys(record, ['currency', 'currency_code']) ?? currency;
+    const recordAmountText = formatCurrencyAmount(recordAmount, recordCurrency);
+    const statusSuffix = paymentStatus === 'paid' ? 'pagada' : paymentStatus === 'overdue' ? 'vencida' : 'pendiente';
+    const detailParts = [documentId, productSummary, recordAmountText ? `${recordAmountText} ${statusSuffix}` : statusSuffix].filter(
+      (value): value is string => Boolean(value)
+    );
+    lines.push(detailParts.join(' — '));
+  });
+  if (records.length > 3) {
+    lines.push(`… y ${records.length - 3} más`);
+  }
+  const sourceLine = buildSourceReferenceLine(firstRecord, firstRecord);
+  if (sourceLine) {
+    lines.push(sourceLine);
+  }
+  return lines.join('\n');
+}
+
 function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
+
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
   const resourceType = resourceTypeFromOutcome(outcome);
@@ -317,7 +394,7 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
 function buildStatusText(outcome: OrchestrationOutcome): string {
   switch (outcome.response.status) {
     case 'completed':
-      return buildCompletedOutboundText(outcome);
+      return isInvoiceListResponseData(outcome) ? buildInvoiceListOutboundText(outcome) : buildCompletedOutboundText(outcome);
     case 'not_found':
       return 'No he encontrado ese documento en Holded.';
     case 'unavailable':

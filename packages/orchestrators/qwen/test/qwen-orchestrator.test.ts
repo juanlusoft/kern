@@ -14,7 +14,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates or invoices from the runtime by customer or exact document id. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer or exact document id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
         required: ['resource_type'],
@@ -25,6 +25,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
           { required: ['contact_name'] },
           { required: ['contactName'] },
           { required: ['contact'] },
+          { required: ['payment_status'] },
           { required: ['estimate_id'] },
           { required: ['invoice_id'] },
           { required: ['resource_id'] }
@@ -42,6 +43,11 @@ function buildToolCatalog(): QwenToolDefinition[] {
           invoice_id: {
             type: 'string',
             description: 'Known exact invoice/document id only if the user explicitly provided one.'
+          },
+          payment_status: {
+            type: 'string',
+            enum: ['pending', 'paid', 'overdue'],
+            description: 'Use only with resource_type="invoice" to list invoices by payment state.'
           },
           customer_id: {
             type: 'string',
@@ -316,6 +322,99 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+});
+
+test('Qwen orchestrator supports invoice payment-status lists and keeps estimate queries out of payment status mode', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall({
+    resource_type: 'invoice',
+    payment_status: 'overdue',
+    customer_id: 'Granapublic'
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-invoice-status',
+    user_message: 'facturas vencidas de Granapublic',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-invoice-status',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].messages[0].content?.includes('payment_status="pending", "paid", or "overdue"'), true);
+  assert.equal(requests[0].messages[0].content?.includes('{ "resource_type": "invoice", "payment_status": "overdue" }'), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.params.resource_type, 'invoice');
+  assert.equal(outcome.proposal?.params.payment_status, 'overdue');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
+
+  const blockedOrchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: buildToolCatalog(),
+    chatCompletionsTransport: {
+      chatCompletions() {
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-invalid-payment-status',
+                    type: 'function',
+                    function: {
+                      name: 'mock.resource.read',
+                      arguments: JSON.stringify({
+                        resource_type: 'estimate',
+                        payment_status: 'overdue'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-06-30T00:00:00.000Z')
+  });
+
+  const blocked = blockedOrchestrator.propose({
+    request_id: 'request-estimate-status',
+    user_message: 'facturas vencidas de Granapublic',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-estimate-status',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
 });
 
 test('Qwen orchestrator accepts invoice tool params without inventing invoice ids', () => {

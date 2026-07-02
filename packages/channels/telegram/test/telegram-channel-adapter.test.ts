@@ -517,6 +517,239 @@ test('Telegram outbound text formats invoice results safely and keeps runtime-on
   assert.equal(safeText.includes('parse_mode'), false);
 });
 
+test('Telegram outbound text formats invoice lists safely and summarizes aggregate status', () => {
+  const listOutcome = {
+    request_id: 'telegram:req-invoice-list',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-invoice-list',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: {
+      workflow_id: 'wf-invoice-list',
+      workflow_kind: 'mock.estimate.read',
+      organization_id: 'org-granapublic-live-test',
+      correlation_id: 'corr-invoice-list',
+      turn_id: null,
+      status: 'completed',
+      response: {
+        response_source: 'runtime_result',
+        workflow_kind: 'mock.estimate.read',
+        status: 'completed',
+        message: 'invoice list retrieved from runtime',
+        data: {
+          kind: 'list',
+          result_mode: 'list',
+          resource_type: 'invoice',
+          payment_status: 'overdue',
+          lookup_mode: 'by_customer',
+          records: [
+            {
+              invoice_id: 'F26/1931',
+              docNumber: 'F26/1931',
+              customer_name: 'Granapublic Xx Sl',
+              products: [{ name: 'MUPIS PAPEL' }],
+              paymentsPending: 1200,
+              dueDate: '2024-07-03T00:00:00.000Z',
+              total_amount: 1200,
+              currency: 'EUR',
+              source_system: 'Holded'
+            },
+            {
+              invoice_id: 'F26/1932',
+              docNumber: 'F26/1932',
+              customer_name: 'Granapublic Xx Sl',
+              products: [{ name: 'Vinilo Monomérico Plus' }],
+              paymentsPending: 1300,
+              dueDate: '2024-07-02T00:00:00.000Z',
+              total_amount: 1300,
+              currency: 'EUR',
+              source_system: 'Holded'
+            },
+            {
+              invoice_id: 'F26/1930',
+              docNumber: 'F26/1930',
+              customer_name: 'Granapublic Xx Sl',
+              paymentsPending: 1100,
+              dueDate: '2024-03-09T00:00:00.000Z',
+              total_amount: 1100,
+              currency: 'EUR',
+              source_system: 'Holded'
+            }
+          ],
+          aggregate: {
+            count: 3,
+            paymentsPendingTotal: 3600
+          }
+        }
+      },
+      capability_result: {
+        invocation_id: 'capability-invocation-2',
+        capability_id: 'mock.resource.read',
+        organization_id: 'org-granapublic-live-test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        correlation_id: 'corr-invoice-list',
+        status: 'executed',
+        runtime_decision: 'executed',
+        binding_id: null,
+        decision_binding_id: null,
+        policy_decision_id: null,
+        executed_by_runtime: true,
+        output: {
+          capability_id: 'mock.resource.read',
+          status: 'executed',
+          result: {
+            status: 'found',
+            data: {
+              kind: 'list',
+              result_mode: 'list',
+              resource_type: 'invoice',
+              payment_status: 'overdue',
+              lookup_mode: 'by_customer',
+              records: [
+                {
+                  invoice_id: 'F26/1931',
+                  docNumber: 'F26/1931',
+                  customer_name: 'Granapublic Xx Sl',
+                  products: [{ name: 'MUPIS PAPEL' }],
+                  paymentsPending: 1200,
+                  dueDate: '2024-07-03T00:00:00.000Z',
+                  total_amount: 1200,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                },
+                {
+                  invoice_id: 'F26/1932',
+                  docNumber: 'F26/1932',
+                  customer_name: 'Granapublic Xx Sl',
+                  products: [{ name: 'Vinilo Monomérico Plus' }],
+                  paymentsPending: 1300,
+                  dueDate: '2024-07-02T00:00:00.000Z',
+                  total_amount: 1300,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                },
+                {
+                  invoice_id: 'F26/1930',
+                  docNumber: 'F26/1930',
+                  customer_name: 'Granapublic Xx Sl',
+                  paymentsPending: 1100,
+                  dueDate: '2024-03-09T00:00:00.000Z',
+                  total_amount: 1100,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                }
+              ],
+              aggregate: {
+                count: 3,
+                paymentsPendingTotal: 3600
+              },
+              source_evidence: [
+                {
+                  source_id: 'source-2',
+                  source_type: 'document',
+                  source_system: 'Holded',
+                  resource_id: 'F26/1931',
+                  record_id: 'F26/1931',
+                  field_path: 'invoice',
+                  observed_at: '2026-06-30T00:00:00.000Z',
+                  correlation_id: 'corr-invoice-list'
+                }
+              ],
+              error: null
+            },
+            processed_at: '2026-06-30T00:00:00.000Z'
+          },
+          processed_at: '2026-06-30T00:00:00.000Z'
+        },
+        error: null,
+        evidence_links: ['evidence-3'],
+        created_at: '2026-06-30T00:00:00.000Z',
+        evidence_reference: 'evidence-3',
+        reason: 'ok'
+      },
+      evidence_links: ['evidence-3'],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      steps: [],
+      evidence_trace: {
+        evidence_ids: ['evidence-3'],
+        record_types: ['workflow_response_created']
+      }
+    },
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'invoice list retrieved from runtime',
+      data: {
+        kind: 'list',
+        result_mode: 'list',
+        resource_type: 'invoice',
+        payment_status: 'overdue',
+        lookup_mode: 'by_customer',
+        records: [
+          {
+            invoice_id: 'F26/1931',
+            docNumber: 'F26/1931',
+            customer_name: 'Granapublic Xx Sl',
+            products: [{ name: 'MUPIS PAPEL' }],
+            paymentsPending: 1200,
+            dueDate: '2024-07-03T00:00:00.000Z',
+            total_amount: 1200,
+            currency: 'EUR',
+            source_system: 'Holded'
+          },
+          {
+            invoice_id: 'F26/1932',
+            docNumber: 'F26/1932',
+            customer_name: 'Granapublic Xx Sl',
+            products: [{ name: 'Vinilo Monomérico Plus' }],
+            paymentsPending: 1300,
+            dueDate: '2024-07-02T00:00:00.000Z',
+            total_amount: 1300,
+            currency: 'EUR',
+            source_system: 'Holded'
+          },
+          {
+            invoice_id: 'F26/1930',
+            docNumber: 'F26/1930',
+            customer_name: 'Granapublic Xx Sl',
+            paymentsPending: 1100,
+            dueDate: '2024-03-09T00:00:00.000Z',
+            total_amount: 1100,
+            currency: 'EUR',
+            source_system: 'Holded'
+          }
+        ],
+        aggregate: {
+          count: 3,
+          paymentsPendingTotal: 3600
+        }
+      }
+    },
+    evidence_links: ['evidence-3'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const safeText = buildTelegramOutboundText(listOutcome);
+  assert.equal(safeText.includes('Última factura de Granapublic Xx Sl:'), true);
+  assert.equal(safeText.includes('3 facturas vencidas'), true);
+  assert.equal(safeText.includes('pendientes'), true);
+  assert.equal(safeText.includes('3600') || safeText.includes('3.600'), true);
+  assert.equal(safeText.includes('F26/1931 — MUPIS PAPEL'), true);
+  assert.equal(safeText.includes('F26/1932 — Vinilo Monomérico Plus'), true);
+  assert.equal(safeText.includes('F26/1930 —'), true);
+  assert.equal(safeText.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(safeText.includes('{'), false);
+  assert.equal(safeText.includes('parse_mode'), false);
+});
+
 test('Telegram outbound text reports runtime failure states honestly', () => {
   const cases = [
     {

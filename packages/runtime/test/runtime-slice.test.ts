@@ -82,7 +82,10 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
   } satisfies RuntimeInstallationConfig;
 }
 
-function buildQwenTransport(resource_type: 'estimate' | 'invoice' = 'estimate'): QwenChatCompletionsTransport {
+function buildQwenTransport(
+  resource_type: 'estimate' | 'invoice' = 'estimate',
+  payment_status: 'pending' | 'paid' | 'overdue' | null = null
+): QwenChatCompletionsTransport {
   return {
     chatCompletions() {
       const choice: QwenChatCompletionChoice = {
@@ -100,7 +103,9 @@ function buildQwenTransport(resource_type: 'estimate' | 'invoice' = 'estimate'):
                         name: 'mock.resource.read',
                         arguments: {
                           customer_id: 'Granapublic',
-                          resource_type
+                          resource_type,
+                          ...(payment_status ? { payment_status } : {}),
+                          ...(payment_status ? {} : { estimate_id: 'estimate-12345' })
                         }
                       })
                     }
@@ -132,6 +137,9 @@ function buildHoldedFetch(calls: Array<{ url: string; init?: RequestInit }>, res
               customer_name: 'Granapublic Xx Sl',
               contact: 'contact-granapublic',
               contactName: 'Granapublic Xx Sl',
+              status: 0,
+              paymentsPending: 1100,
+              dueDate: '2024-03-09T00:00:00.000Z',
               total_amount: 1100,
               currency: 'EUR',
               date: '2024-03-09T00:00:00.000Z'
@@ -146,6 +154,9 @@ function buildHoldedFetch(calls: Array<{ url: string; init?: RequestInit }>, res
               contact: 'contact-granapublic',
               contactName: 'Granapublic Xx Sl',
               products: [{ name: 'MUPIS PAPEL' }],
+              status: 0,
+              paymentsPending: 1200,
+              dueDate: '2024-07-03T00:00:00.000Z',
               total_amount: 1200,
               currency: 'EUR',
               date: '2024-07-03T00:00:00.000Z'
@@ -160,6 +171,9 @@ function buildHoldedFetch(calls: Array<{ url: string; init?: RequestInit }>, res
               contact: 'contact-granapublic',
               contactName: 'Granapublic Xx Sl',
               products: [{ name: 'Vinilo Monomérico Plus' }],
+              status: 0,
+              paymentsPending: 1300,
+              dueDate: '2024-07-02T00:00:00.000Z',
               total_amount: 1300,
               currency: 'EUR',
               date: '2024-07-02T00:00:00.000Z'
@@ -405,6 +419,68 @@ test('runtime slice can read invoices and formats Telegram output safely', () =>
   assert.equal(sentMessages[0].text.includes('Última factura de Granapublic Xx Sl:'), true);
   assert.equal(sentMessages[0].text.includes('F26/1931'), true);
   assert.equal(sentMessages[0].text.includes('MUPIS PAPEL'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice can read invoice payment-status lists and formats Telegram output safely', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 4,
+      message: {
+        message_id: 400,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito las facturas vencidas de Granapublic',
+        date: 1_751_472_120,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport('invoice', 'overdue'),
+    holdedFetch: buildHoldedFetch([], 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  assert.equal(result.status, 'sent');
+  assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  const responseData = result.orchestration_outcome?.response.data as
+    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.payment_status, 'overdue');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('Última factura de Granapublic Xx Sl:'), true);
+  assert.equal(sentMessages[0].text.includes('3 facturas vencidas'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1932'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1930'), true);
   assert.equal(sentMessages[0].text.includes('Fuente: Holded · documento F26/1931'), true);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);

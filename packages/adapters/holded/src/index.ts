@@ -11,6 +11,9 @@ import {
   type ExternalResourceNotFound,
   type ExternalSystemError,
   type ExternalSystemUnavailable,
+  type ResourceListAggregate,
+  type ResourceListRecord,
+  type ResourceListResultData,
   type ResourceFoundResult,
   type ResourceQuery,
   type ResourceResult,
@@ -91,6 +94,11 @@ function normalizeDocumentType(value: unknown): 'estimate' | 'invoice' | null {
   return candidate === 'estimate' || candidate === 'invoice' ? candidate : null;
 }
 
+function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' | null {
+  const candidate = normalizeOptionalString(value);
+  return candidate === 'pending' || candidate === 'paid' || candidate === 'overdue' ? candidate : null;
+}
+
 function normalizeSearchText(value: unknown): string | null {
   const candidate = normalizeOptionalString(value);
   if (!candidate) {
@@ -160,6 +168,9 @@ function validateQuery(input: ResourceQuery): string | null {
   if (normalizeOptionalString(input.correlation_id) === null) return 'resource query invalid';
   if (input.actor === null || normalizeOptionalString(input.actor.principal_id) === null) return 'resource query invalid';
   if (normalizeDocumentType(input.resource_type) === null) return 'resource query invalid';
+  const payment_status = input.payment_status === null || input.payment_status === undefined ? null : normalizePaymentStatus(input.payment_status);
+  if (input.payment_status !== null && input.payment_status !== undefined && payment_status === null) return 'resource query invalid';
+  if (payment_status && normalizeDocumentType(input.resource_type) !== 'invoice') return 'payment_status only applies to invoice';
   const resource_id = normalizeOptionalString(input.resource_id);
   const customer_id = input.filters && typeof input.filters.customer_id === 'string' ? normalizeOptionalString(input.filters.customer_id) : null;
   const contact_id = input.filters && typeof input.filters.contact_id === 'string' ? normalizeOptionalString(input.filters.contact_id) : null;
@@ -177,11 +188,14 @@ function validateQuery(input: ResourceQuery): string | null {
       : input.filters && typeof input.filters.customerName === 'string'
         ? normalizeOptionalString(input.filters.customerName)
         : null;
-  if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name) return 'resource query invalid';
+  if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name && !payment_status) return 'resource query invalid';
   return null;
 }
 
-function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' {
+function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status' {
+  if (normalizePaymentStatus(query.payment_status)) {
+    return collectQueryLookupTerms(query).length > 0 ? 'by_customer' : 'by_status';
+  }
   return collectQueryLookupTerms(query).length > 0 ? 'by_customer' : 'by_id';
 }
 
@@ -343,27 +357,101 @@ function compareOptionalNumbersDesc(left: number | null, right: number | null): 
   return right - left;
 }
 
-function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery): boolean {
+function normalizeRecordStatus(record: Record<string, unknown>): number | null {
+  const candidate = record.status;
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    return candidate;
+  }
+  if (typeof candidate === 'string') {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizePaymentsPending(record: Record<string, unknown>): number | null {
+  const candidate = record.paymentsPending;
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    return candidate;
+  }
+  if (typeof candidate === 'string') {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeDueDate(record: Record<string, unknown>): number | null {
+  const candidate = record.dueDate;
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    return candidate;
+  }
+  if (typeof candidate === 'string' && candidate.trim().length > 0) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+    const dateParsed = Date.parse(candidate);
+    if (Number.isFinite(dateParsed)) {
+      return dateParsed;
+    }
+  }
+  return null;
+}
+
+function recordMatchesInvoicePaymentStatus(
+  record: Record<string, unknown>,
+  payment_status: 'pending' | 'paid' | 'overdue',
+  now: () => Date
+): boolean {
+  const status = normalizeRecordStatus(record);
+  const paymentsPending = normalizePaymentsPending(record);
+  const dueDate = normalizeDueDate(record);
+  const isPending = status === 0 || (paymentsPending !== null && paymentsPending > 0);
+  const isPaid = status === 1 || (paymentsPending !== null && paymentsPending <= 0);
+  const isOverdue = isPending && dueDate !== null && dueDate < now().getTime();
+
+  switch (payment_status) {
+    case 'pending':
+      return isPending;
+    case 'paid':
+      return isPaid;
+    case 'overdue':
+      return isOverdue;
+  }
+}
+
+function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery, now: () => Date): boolean {
+  const payment_status = normalizePaymentStatus(query.payment_status);
+  if (payment_status && !recordMatchesInvoicePaymentStatus(record, payment_status, now)) {
+    return false;
+  }
+
   const lookupTerms = collectQueryLookupTerms(query);
   if (lookupTerms.length > 0) {
     const candidateTerms = collectRecordLookupCandidates(record);
-    return candidateTerms.some((candidate) => lookupTerms.some((lookup) => candidate.includes(lookup)));
+    const matchesLookup = candidateTerms.some((candidate) => lookupTerms.some((lookup) => candidate.includes(lookup)));
+    return matchesLookup;
   }
 
   const resource_id = normalizeOptionalString(query.resource_id);
   if (!resource_id) {
-    return false;
+    return payment_status !== null || lookupTerms.length > 0;
   }
   const candidate = extractRecordId(record);
   return candidate !== null && normalizeSearchText(candidate) === normalizeSearchText(resource_id);
 }
 
-function selectMatchingRecord(records: Record<string, unknown>[], query: ResourceQuery): Record<string, unknown> | null {
-  const matches = records.filter((record) => recordMatchesQuery(record, query));
+function selectMatchingRecords(
+  records: Record<string, unknown>[],
+  query: ResourceQuery,
+  now: () => Date
+): Record<string, unknown>[] {
+  const matches = records.filter((record) => recordMatchesQuery(record, query, now));
   if (matches.length === 0) {
-    return null;
+    return [];
   }
-  const ranked = matches
+  return matches
     .map((record) => ({
       record,
       timestamp: normalizeDateCandidate(record),
@@ -384,8 +472,16 @@ function selectMatchingRecord(records: Record<string, unknown>[], query: Resourc
         return idComparison;
       }
       return 0;
-    });
-  return ranked[0]?.record ?? null;
+    })
+    .map((entry) => entry.record);
+}
+
+function selectMatchingRecord(records: Record<string, unknown>[], query: ResourceQuery, now: () => Date): Record<string, unknown> | null {
+  const matches = selectMatchingRecords(records, query, now);
+  if (matches.length === 0) {
+    return null;
+  }
+  return matches[0] ?? null;
 }
 
 function createSourceEvidenceForRecord(input: {
@@ -415,6 +511,124 @@ function createSourceEvidenceForRecord(input: {
     })
   );
   return evidence as [SourceEvidence, ...SourceEvidence[]];
+}
+
+function buildListRecord(input: {
+  query: ResourceQuery;
+  record: Record<string, unknown>;
+  record_id: string;
+  observed_at: string;
+}): ResourceListRecord {
+  const record_id = normalizeOptionalString(input.record_id) ?? 'unknown';
+  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? 'pending';
+  const total =
+    typeof input.record.total === 'number' && Number.isFinite(input.record.total)
+      ? input.record.total
+      : typeof input.record.total_amount === 'number' && Number.isFinite(input.record.total_amount)
+        ? input.record.total_amount
+        : null;
+  return {
+    ...structuredClone(input.record),
+    record_id,
+    resource_type: 'invoice',
+    payment_status,
+    status: normalizeRecordStatus(input.record),
+    paymentsPending: normalizePaymentsPending(input.record),
+    dueDate: normalizeDueDate(input.record),
+    total,
+    docNumber: extractRecordDocumentNumber(input.record),
+    contactName:
+      normalizeOptionalString(input.record.contactName) ??
+      normalizeOptionalString(input.record.customer_name) ??
+      normalizeOptionalString(input.record.customerName) ??
+      normalizeOptionalString(input.record.contact_name) ??
+      normalizeOptionalString(input.record.contact) ??
+      null,
+    source_evidence: createSourceEvidenceForRecord({
+      query: input.query,
+      record: input.record,
+      record_id,
+      observed_at: input.observed_at
+    }),
+    data: structuredClone(input.record)
+  };
+}
+
+function buildListAggregate(records: ResourceListRecord[]): ResourceListAggregate {
+  return {
+    count: records.length,
+    paymentsPendingTotal: records.reduce((sum, record) => sum + (record.paymentsPending ?? 0), 0)
+  };
+}
+
+function buildListFoundResult(input: {
+  query: ResourceQuery;
+  adapter_id: string;
+  authorization: ExternalReadAdapterAuthorization;
+  resource_id: string | null;
+  records: Record<string, unknown>[];
+  observed_at: string;
+}): ResourceResult {
+  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? 'pending';
+  const listRecords = input.records
+    .map((record) => {
+      const record_id = extractRecordId(record) ?? extractRecordDocumentNumber(record);
+      return record_id
+        ? buildListRecord({
+            query: input.query,
+            record,
+            record_id,
+            observed_at: input.observed_at
+          })
+        : null;
+    })
+    .filter((record): record is ResourceListRecord => Boolean(record));
+  if (listRecords.length === 0) {
+    return createTerminalResult({
+      query: input.query,
+      adapter_id: input.adapter_id,
+      status: 'not_found',
+      reason: `Holded invoice list empty for ${payment_status}`,
+      authorization: input.authorization,
+      resource_id: input.resource_id,
+      produced_by_adapter: true
+    });
+  }
+  const result = validateResourceResult({
+    ...createBaseResult({
+      query: input.query,
+      adapter_id: input.adapter_id,
+      status: 'found',
+      reason: `Holded invoice list found for ${payment_status}`,
+      authorization: input.authorization,
+      resource_id: input.resource_id,
+      produced_by_adapter: true
+    }),
+    status: 'found',
+    data: {
+      kind: 'list',
+      result_mode: 'list',
+      resource_type: 'invoice',
+      payment_status,
+      lookup_mode: lookupMode(input.query) === 'by_customer' ? 'by_customer' : 'by_status',
+      records: listRecords,
+      aggregate: buildListAggregate(listRecords)
+    } as unknown as Record<string, unknown>,
+    source_evidence: listRecords.flatMap((record) => [...record.source_evidence]) as [SourceEvidence, ...SourceEvidence[]],
+    error: null
+  } as ResourceFoundResult);
+  if (result.status !== 'found') {
+    return createTerminalResult({
+      query: input.query,
+      adapter_id: input.adapter_id,
+      status: 'error',
+      reason: 'Holded invoice list source evidence unavailable',
+      authorization: input.authorization,
+      resource_id: input.resource_id,
+      produced_by_adapter: true
+    });
+  }
+  return result;
 }
 
 function createBaseResult(input: {
@@ -499,7 +713,7 @@ function isInactiveReason(reason: string): boolean {
 }
 
 function isBlockedReason(reason: string): boolean {
-  return reason.includes('invalid') || reason.includes('unsupported');
+  return reason.includes('invalid') || reason.includes('unsupported') || reason.includes('payment_status only applies to invoice');
 }
 
 function parseJsonSafely(rawText: string): { ok: true; value: unknown } | { ok: false; reason: string } {
@@ -635,6 +849,7 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     const normalized = normalizeResourceQuery(query);
     const authorization = this.authorize(normalized);
     const resource_id = normalizeOptionalString(normalized.resource_id) ?? normalizeOptionalString(normalized.filters?.customer_id) ?? null;
+    const payment_status = normalizePaymentStatus(normalized.payment_status);
 
     if (!authorization.authorized) {
       const reason = authorization.reason;
@@ -750,8 +965,34 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
         })
       );
     }
-    const record = selectMatchingRecord(payload.records, normalized);
     const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
+    if (payment_status) {
+      const records = selectMatchingRecords(payload.records, normalized, this.now);
+      if (records.length === 0) {
+        return cloneResourceResult(
+          createTerminalResult({
+            query: normalized,
+            adapter_id: this.adapter_id,
+            status: 'not_found',
+            reason: `Holded ${documentType} list empty for ${payment_status}`,
+            authorization,
+            resource_id,
+            produced_by_adapter: true
+          })
+        );
+      }
+      return cloneResourceResult(
+        buildListFoundResult({
+          query: normalized,
+          adapter_id: this.adapter_id,
+          authorization,
+          resource_id,
+          records,
+          observed_at: this.now().toISOString()
+        })
+      );
+    }
+    const record = selectMatchingRecord(payload.records, normalized, this.now);
     if (!record) {
       return cloneResourceResult(
         createTerminalResult({
