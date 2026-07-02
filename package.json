@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --import tsx packages/compliance-tests/src/run-tests.ts",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "test": "npm run check:boundaries && node --test scripts/check-boundaries.test.mjs && node --import tsx packages/compliance-tests/src/run-tests.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
