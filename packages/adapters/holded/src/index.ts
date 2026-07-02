@@ -273,11 +273,11 @@ function buildYearRangeQueryParams(year: string | null | undefined): Array<[stri
     return [];
   }
   const yearNumber = Number(normalized);
-  const starttmp = new Date(Date.UTC(yearNumber, 0, 1, 0, 0, 0, 0)).toISOString();
-  const endtmp = new Date(Date.UTC(yearNumber, 11, 31, 23, 59, 59, 999)).toISOString();
+  const starttmp = Math.floor(Date.UTC(yearNumber, 0, 1, 0, 0, 0, 0) / 1000);
+  const endtmp = Math.floor(Date.UTC(yearNumber, 11, 31, 23, 59, 59, 999) / 1000);
   return [
-    ['starttmp', starttmp],
-    ['endtmp', endtmp]
+    ['starttmp', String(starttmp)],
+    ['endtmp', String(endtmp)]
   ];
 }
 
