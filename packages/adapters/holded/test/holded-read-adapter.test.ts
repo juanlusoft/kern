@@ -197,7 +197,7 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
         contactName: 'Granapublic Xx Sl',
         products: [{ name: 'MUPIS PAPEL' }],
         paymentsPending: 1200,
-        dueDate: '2024-07-03T00:00:00.000Z',
+        dueDate: '2025-07-03T00:00:00.000Z',
         total_amount: 1200,
         currency: 'EUR',
         date: '2024-07-03T00:00:00.000Z'
@@ -280,7 +280,7 @@ test('Holded adapter returns year-based invoice lists and converts the year into
         dueDate: '2024-07-03T00:00:00.000Z',
         total_amount: 1200,
         currency: 'EUR',
-        date: '2024-07-03T00:00:00.000Z'
+        date: '2025-07-03T00:00:00.000Z'
       }
     ]
   });
@@ -298,7 +298,7 @@ test('Holded adapter returns year-based invoice lists and converts the year into
   const result = adapter.read(
     buildQuery('invoice', {
       resource_id: null,
-      year: '2024',
+      year: '2025',
       filters: { customer_id: 'granapublic' },
       requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
     })
@@ -308,8 +308,16 @@ test('Holded adapter returns year-based invoice lists and converts the year into
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /holded\.example\.test\/api\/invoicing\/v1\/documents\/invoice/);
   const requestUrl = new URL(calls[0].url);
-  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01T00:00:00.000Z');
-  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31T23:59:59.999Z');
+  assert.equal(requestUrl.searchParams.get('starttmp'), '1735689600');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '1767225599');
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('starttmp') ?? ''), true);
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('endtmp') ?? ''), true);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('.') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('.') ?? false, false);
   assert.equal((calls[0].init?.headers as Record<string, string> | undefined)?.key, sentinel);
   assert.equal(result.status, 'found');
   assert.equal(result.produced_by_adapter, true);
@@ -318,7 +326,7 @@ test('Holded adapter returns year-based invoice lists and converts the year into
   assert.equal(listData.result_mode, 'list');
   assert.equal(listData.resource_type, 'invoice');
   assert.equal(listData.lookup_mode, 'by_year');
-  assert.equal(listData.year, '2024');
+  assert.equal(listData.year, '2025');
   assert.equal(listData.payment_status, null);
   assert.equal(listData.records.length, 1);
   assert.equal(listData.records[0]?.record_id, 'F26/1931');
@@ -382,6 +390,65 @@ test('Holded adapter paginates invoice list queries across pages and aggregates 
   assert.equal(listData.truncated, undefined);
   assert.equal(listData.records[0]?.record_id, 'F26/1120');
   assert.equal(listData.records[listData.records.length - 1]?.record_id, 'F26/0001');
+});
+
+test('Holded adapter returns year-based invoice lists for 2023 with epoch second filters', () => {
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F23/0042',
+        docNumber: 'F23/0042',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 900,
+        dueDate: '2023-10-03T00:00:00.000Z',
+        total_amount: 900,
+        currency: 'EUR',
+        date: '2023-10-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'secret_test_token_must_not_leak',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2023',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 1);
+  const requestUrl = new URL(calls[0].url);
+  assert.equal(requestUrl.searchParams.get('starttmp'), '1672531200');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '1704067199');
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('starttmp') ?? ''), true);
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('endtmp') ?? ''), true);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('.') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('.') ?? false, false);
+  assert.equal(result.status, 'found');
+  assert.equal(result.produced_by_adapter, true);
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.year, '2023');
+  assert.equal(listData.records[0]?.record_id, 'F23/0042');
 });
 
 test('Holded adapter stops after a short page and does not ask for the next page', () => {
@@ -565,10 +632,9 @@ test('Holded adapter preserves list query params while paginating', () => {
     buildQuery('invoice', {
       resource_id: null,
       payment_status: 'overdue',
+      year: '2024',
       filters: {
-        customer_id: 'granapublic',
-        starttmp: '2024-01-01',
-        endtmp: '2024-12-31'
+        customer_id: 'granapublic'
       },
       requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
     })
@@ -578,14 +644,14 @@ test('Holded adapter preserves list query params while paginating', () => {
   const requestUrl = new URL(calls[0].url);
   assert.equal(requestUrl.searchParams.get('page'), '1');
   assert.equal(requestUrl.searchParams.get('customer_id'), 'granapublic');
-  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01');
-  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31');
+  assert.equal(requestUrl.searchParams.get('starttmp'), '1704067200');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '1735689599');
   assert.equal(result.status, 'found');
   assert.equal(calls.length, 2);
   assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
   assert.equal(new URL(calls[1].url).searchParams.get('customer_id'), 'granapublic');
-  assert.equal(new URL(calls[1].url).searchParams.get('starttmp'), '2024-01-01');
-  assert.equal(new URL(calls[1].url).searchParams.get('endtmp'), '2024-12-31');
+  assert.equal(new URL(calls[1].url).searchParams.get('starttmp'), '1704067200');
+  assert.equal(new URL(calls[1].url).searchParams.get('endtmp'), '1735689599');
 });
 
 test('Holded adapter keeps direct lookup by id on a single fetch path', () => {

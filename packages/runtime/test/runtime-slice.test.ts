@@ -623,8 +623,16 @@ test('runtime slice can read year-based invoice lists and converts year filters 
   assert.equal(qwenRequest.messages?.[0]?.content?.includes('do not compute date ranges or timestamps'), true);
   assert.equal(holdedCalls.length > 0, true);
   const requestUrl = new URL(holdedCalls[0].url);
-  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01T00:00:00.000Z');
-  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31T23:59:59.999Z');
+  assert.equal(requestUrl.searchParams.get('starttmp'), '1704067200');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '1735689599');
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('starttmp') ?? ''), true);
+  assert.equal(/^\d+$/.test(requestUrl.searchParams.get('endtmp') ?? ''), true);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('T') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('-') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('starttmp')?.includes('.') ?? false, false);
+  assert.equal(requestUrl.searchParams.get('endtmp')?.includes('.') ?? false, false);
   assert.equal(result.status, 'sent');
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
