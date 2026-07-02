@@ -206,8 +206,14 @@ function normalizeCustomerLookupParam(value: unknown): string | null {
   return normalizeOptionalString(value);
 }
 
+function normalizeYear(value: unknown): string | null {
+  const candidate = normalizeOptionalString(value);
+  return candidate && /^\d{4}$/.test(candidate) ? candidate : null;
+}
+
 function isValidMockResourceReadProposal(params: Record<string, unknown>): boolean {
   const estimate_id = normalizeOptionalString(params.estimate_id);
+  const year = normalizeYear(params.year);
   const customer_id =
     normalizeCustomerLookupParam(params.customer_id) ??
     normalizeCustomerLookupParam(params.customer_name) ??
@@ -223,7 +229,11 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
     return false;
   }
 
-  return Boolean(estimate_id || customer_id || payment_status);
+  if (params.year !== undefined && params.year !== null && year === null) {
+    return false;
+  }
+
+  return Boolean(estimate_id || customer_id || payment_status || year);
 }
 
 function resolveWorkflowRequest(
@@ -233,6 +243,7 @@ function resolveWorkflowRequest(
   if (proposal.capability_key === 'mock.resource.read') {
     const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
     const resource_type = proposal.params.resource_type === 'invoice' ? 'invoice' : 'estimate';
+    const year = normalizeYear(proposal.params.year);
     const payment_status = normalizeResourceQuery({
       payment_status: proposal.params.payment_status ?? null
     }).payment_status;
@@ -242,7 +253,7 @@ function resolveWorkflowRequest(
       normalizeCustomerLookupParam(proposal.params.contact_name) ??
       normalizeCustomerLookupParam(proposal.params.contactName) ??
       normalizeCustomerLookupParam(proposal.params.contact);
-    if (!estimate_id && !customer_id && !payment_status) {
+    if (!estimate_id && !customer_id && !payment_status && !year) {
       return null;
     }
     return {
@@ -253,6 +264,7 @@ function resolveWorkflowRequest(
       correlation_id: request.correlation_id,
       resource_type,
       payment_status,
+      year,
       estimate_id,
       customer_id,
       claimed_result: request.claimed_result ?? null,
@@ -746,7 +758,8 @@ export class InMemoryOrchestrationBoundary {
             normalizeCustomerLookupParam(proposal.params.contactName) ??
             normalizeCustomerLookupParam(proposal.params.contact) ??
             proposal.params.customer_id ??
-            null
+            null,
+          year: normalizeYear(proposal.params.year) ?? proposal.params.year ?? null
         }),
         capability_active: true,
         capability_known: true

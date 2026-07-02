@@ -75,11 +75,16 @@ function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record
     resource_type: input.resource_type ?? 'estimate',
     estimate_id: input.estimate_id ?? null,
     customer_id: input.customer_id ?? null,
-    payment_status: input.payment_status ?? null
+    payment_status: input.payment_status ?? null,
+    year: input.year ?? null
   };
 }
 
-function buildInvoiceListResponseData(resourceResult: ResourceResult, payment_status: string | null): Record<string, unknown> | null {
+function buildInvoiceListResponseData(
+  resourceResult: ResourceResult,
+  payment_status: string | null,
+  year: string | null
+): Record<string, unknown> | null {
   if (resourceResult.status !== 'found') {
     return null;
   }
@@ -95,8 +100,9 @@ function buildInvoiceListResponseData(resourceResult: ResourceResult, payment_st
     kind: 'list',
     result_mode: 'list',
     resource_type: 'invoice',
-    payment_status: typeof payment_status === 'string' && payment_status.length > 0 ? payment_status : data?.payment_status ?? 'overdue',
-    lookup_mode: typeof data?.lookup_mode === 'string' ? data.lookup_mode : 'by_status',
+    payment_status: typeof payment_status === 'string' && payment_status.length > 0 ? payment_status : data?.payment_status ?? null,
+    lookup_mode: typeof data?.lookup_mode === 'string' ? data.lookup_mode : year ? 'by_year' : 'by_status',
+    year: typeof year === 'string' && year.length > 0 ? year : typeof data?.year === 'string' ? data.year : null,
     records,
     aggregate: {
       count: records.length,
@@ -117,6 +123,7 @@ function createMockResourceQuery(input: {
   delegated_identity: string | null;
   resource_type?: 'estimate' | 'invoice';
   payment_status?: 'pending' | 'paid' | 'overdue' | null;
+  year?: string | null;
   estimate_id?: string | null;
   customer_id?: string | null;
   claimed_result?: unknown;
@@ -136,11 +143,13 @@ function createMockResourceQuery(input: {
     resource_type: input.resource_type ?? 'estimate',
     resource_id: input.payment_status ? null : input.estimate_id ?? null,
     payment_status: input.payment_status ?? null,
+    year: input.year ?? null,
     filters:
-      input.customer_id || input.payment_status
+      input.customer_id || input.payment_status || input.year
         ? {
             ...(input.customer_id ? { customer_id: input.customer_id } : {}),
-            ...(input.payment_status ? { payment_status: input.payment_status } : {})
+            ...(input.payment_status ? { payment_status: input.payment_status } : {}),
+            ...(input.year ? { year: input.year } : {})
           }
         : null,
     requested_fields:
@@ -193,6 +202,7 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
     const estimate_id = input.estimate_id?.trim() || null;
 
     const customer_id = input.customer_id?.trim() || null;
+    const year = input.year?.trim() || null;
 
     const coreRequest = createWorkflowCoreRequest({
 
@@ -218,6 +228,14 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
               : `Read ${input.payment_status} invoices`
 
+            : year
+
+              ? customer_id
+
+                ? `Read invoices for ${customer_id} in ${year}`
+
+                : `Read invoices for ${year}`
+
             : customer_id
 
               ? `Read latest invoice for ${customer_id}`
@@ -236,6 +254,10 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
           ? customer_id
             ? `${resource_type}/customer/${customer_id}/status/${input.payment_status}`
             : `${resource_type}/status/${input.payment_status}`
+          : year
+            ? customer_id
+              ? `${resource_type}/customer/${customer_id}/year/${year}`
+              : `${resource_type}/year/${year}`
           : customer_id
             ? `${resource_type}/customer/${customer_id}`
             : `${resource_type}/${estimate_id ?? 'unknown'}`,
@@ -286,6 +308,8 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
         customer_id,
 
+        year,
+
         claimed_result: input.claimed_result ?? null,
 
         claimed_output: input.claimed_output ?? null,
@@ -314,7 +338,7 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
       evidence_reference: intentEvidence.evidence_id,
 
-      details: { resource_type, estimate_id, customer_id }
+      details: { resource_type, estimate_id, customer_id, year }
 
     }));
 
@@ -429,6 +453,8 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
       resource_type,
 
       payment_status: input.payment_status ?? null,
+
+      year: input.year ?? null,
 
       estimate_id,
 
@@ -1012,9 +1038,13 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
           ? governedResourceQuery.payment_status && resource_type === 'invoice'
 
-            ? buildInvoiceListResponseData(resourceResult, governedResourceQuery.payment_status)
+            ? buildInvoiceListResponseData(resourceResult, governedResourceQuery.payment_status, governedResourceQuery.year ?? null)
 
-            : resourceResult.data
+            : resource_type === 'invoice' && governedResourceQuery.year
+
+              ? buildInvoiceListResponseData(resourceResult, null, governedResourceQuery.year)
+
+              : resourceResult.data
 
           : capability_result.output?.result && typeof capability_result.output.result === 'object'
 

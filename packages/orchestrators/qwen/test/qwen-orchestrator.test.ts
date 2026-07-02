@@ -14,7 +14,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates or invoices from the runtime by customer or exact document id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
         required: ['resource_type'],
@@ -26,6 +26,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
           { required: ['contactName'] },
           { required: ['contact'] },
           { required: ['payment_status'] },
+          { required: ['year'] },
           { required: ['estimate_id'] },
           { required: ['invoice_id'] },
           { required: ['resource_id'] }
@@ -48,6 +49,11 @@ function buildToolCatalog(): QwenToolDefinition[] {
             type: 'string',
             enum: ['pending', 'paid', 'overdue'],
             description: 'Use only with resource_type="invoice" to list invoices by payment state.'
+          },
+          year: {
+            type: 'string',
+            description: 'Four-digit year from the user request. Use it for year-based document lists and let the runtime convert it to a UTC start/end range.',
+            pattern: '^\\d{4}$'
           },
           customer_id: {
             type: 'string',
@@ -322,6 +328,46 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+});
+
+test('Qwen orchestrator extracts year as a tool param without computing ranges', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall({
+    resource_type: 'invoice',
+    year: '2025'
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-year',
+    user_message: 'facturas del 2025',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-year',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some((candidate) => candidate.required?.includes('year') && candidate.required?.length === 1),
+    true
+  );
+  assert.equal(requests[0].messages[0].content?.includes('year-based document lists'), true);
+  assert.equal(requests[0].messages[0].content?.includes('{ "resource_type": "invoice", "year": "2025" }'), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+  assert.equal(outcome.proposal?.params.resource_type, 'invoice');
+  assert.equal(outcome.proposal?.params.year, '2025');
+  assert.equal('customer_id' in (outcome.proposal?.params ?? {}), false);
 });
 
 test('Qwen orchestrator supports invoice payment-status lists and keeps estimate queries out of payment status mode', () => {

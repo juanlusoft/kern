@@ -115,6 +115,11 @@ function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' 
   return candidate === 'pending' || candidate === 'paid' || candidate === 'overdue' ? candidate : null;
 }
 
+function normalizeYear(value: unknown): string | null {
+  const candidate = normalizeOptionalString(value);
+  return candidate && /^\d{4}$/.test(candidate) ? candidate : null;
+}
+
 function normalizeSearchText(value: unknown): string | null {
   const candidate = normalizeOptionalString(value);
   if (!candidate) {
@@ -195,6 +200,7 @@ function validateQuery(input: ResourceQuery): string | null {
   if (normalizeOptionalString(input.correlation_id) === null) return 'resource query invalid';
   if (input.actor === null || normalizeOptionalString(input.actor.principal_id) === null) return 'resource query invalid';
   if (normalizeDocumentType(input.resource_type) === null) return 'resource query invalid';
+  if (input.year !== undefined && input.year !== null && normalizeYear(input.year) === null) return 'resource query invalid';
   const payment_status = input.payment_status === null || input.payment_status === undefined ? null : normalizePaymentStatus(input.payment_status);
   if (input.payment_status !== null && input.payment_status !== undefined && payment_status === null) return 'resource query invalid';
   if (payment_status && normalizeDocumentType(input.resource_type) !== 'invoice') return 'payment_status only applies to invoice';
@@ -215,11 +221,14 @@ function validateQuery(input: ResourceQuery): string | null {
       : input.filters && typeof input.filters.customerName === 'string'
         ? normalizeOptionalString(input.filters.customerName)
         : null;
-  if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name && !payment_status) return 'resource query invalid';
+  if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name && !payment_status && normalizeYear(input.year) === null) return 'resource query invalid';
   return null;
 }
 
-function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status' {
+function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status' | 'by_year' {
+  if (normalizeYear(query.year)) {
+    return 'by_year';
+  }
   if (normalizePaymentStatus(query.payment_status)) {
     return collectQueryLookupTerms(query).length > 0 ? 'by_customer' : 'by_status';
   }
@@ -247,6 +256,9 @@ function collectHoldedPreservedQueryParams(query: ResourceQuery): Array<[string,
   }
   const entries: Array<[string, string]> = [];
   for (const [key, value] of Object.entries(filters)) {
+    if (key === 'year') {
+      continue;
+    }
     const candidate = normalizeQueryParamValue(value);
     if (candidate !== null) {
       entries.push([key, candidate]);
@@ -255,9 +267,26 @@ function collectHoldedPreservedQueryParams(query: ResourceQuery): Array<[string,
   return entries;
 }
 
+function buildYearRangeQueryParams(year: string | null | undefined): Array<[string, string]> {
+  const normalized = normalizeYear(year);
+  if (!normalized) {
+    return [];
+  }
+  const yearNumber = Number(normalized);
+  const starttmp = new Date(Date.UTC(yearNumber, 0, 1, 0, 0, 0, 0)).toISOString();
+  const endtmp = new Date(Date.UTC(yearNumber, 11, 31, 23, 59, 59, 999)).toISOString();
+  return [
+    ['starttmp', starttmp],
+    ['endtmp', endtmp]
+  ];
+}
+
 function buildEndpointWithPage(baseUrl: string, query: ResourceQuery, page: number | null): string {
   const endpoint = new URL(`${trimBaseUrl(baseUrl)}/api/invoicing/v1/documents/${normalizeDocumentType(query.resource_type) ?? 'estimate'}`);
   for (const [key, value] of collectHoldedPreservedQueryParams(query)) {
+    endpoint.searchParams.set(key, value);
+  }
+  for (const [key, value] of buildYearRangeQueryParams(query.year)) {
     endpoint.searchParams.set(key, value);
   }
   if (page !== null) {
@@ -446,6 +475,23 @@ function normalizeDueDate(record: Record<string, unknown>): number | null {
   return normalizeTimestampMilliseconds(record.dueDate);
 }
 
+function deriveInvoicePaymentStatus(record: Record<string, unknown>, now: () => Date): 'pending' | 'paid' | 'overdue' {
+  const status = normalizeRecordStatus(record);
+  const paymentsPending = normalizePaymentsPending(record);
+  const dueDate = normalizeDueDate(record);
+  const isPending = status === 0 || (paymentsPending !== null && paymentsPending > 0);
+  const isPaid = status === 1 || (paymentsPending !== null && paymentsPending <= 0);
+  const isOverdue = isPending && dueDate !== null && dueDate < now().getTime();
+
+  if (isPaid) {
+    return 'paid';
+  }
+  if (isOverdue) {
+    return 'overdue';
+  }
+  return 'pending';
+}
+
 function recordMatchesInvoicePaymentStatus(
   record: Record<string, unknown>,
   payment_status: 'pending' | 'paid' | 'overdue',
@@ -469,6 +515,13 @@ function recordMatchesInvoicePaymentStatus(
 }
 
 function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuery, now: () => Date): boolean {
+  const year = normalizeYear(query.year);
+  if (year) {
+    const timestamp = normalizeDateCandidate(record);
+    if (timestamp === null || new Date(timestamp).getUTCFullYear() !== Number(year)) {
+      return false;
+    }
+  }
   const payment_status = normalizePaymentStatus(query.payment_status);
   if (payment_status && !recordMatchesInvoicePaymentStatus(record, payment_status, now)) {
     return false;
@@ -565,9 +618,10 @@ function buildListRecord(input: {
   record: Record<string, unknown>;
   record_id: string;
   observed_at: string;
+  now: () => Date;
 }): ResourceListRecord {
   const record_id = normalizeOptionalString(input.record_id) ?? 'unknown';
-  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? 'pending';
+  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? deriveInvoicePaymentStatus(input.record, input.now);
   const total =
     typeof input.record.total === 'number' && Number.isFinite(input.record.total)
       ? input.record.total
@@ -615,9 +669,12 @@ function buildListFoundResult(input: {
   resource_id: string | null;
   records: Record<string, unknown>[];
   observed_at: string;
+  now: () => Date;
   truncated?: boolean;
 }): ResourceResult {
-  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? 'pending';
+  const payment_status = normalizePaymentStatus(input.query.payment_status);
+  const lookup_mode = lookupMode(input.query);
+  const listLabel = payment_status ?? (normalizeYear(input.query.year) ? input.query.year : 'list');
   const listRecords = input.records
     .map((record) => {
       const record_id = extractRecordId(record) ?? extractRecordDocumentNumber(record);
@@ -626,7 +683,8 @@ function buildListFoundResult(input: {
             query: input.query,
             record,
             record_id,
-            observed_at: input.observed_at
+            observed_at: input.observed_at,
+            now: input.now
           })
         : null;
     })
@@ -636,7 +694,7 @@ function buildListFoundResult(input: {
       query: input.query,
       adapter_id: input.adapter_id,
       status: 'not_found',
-      reason: `Holded invoice list empty for ${payment_status}`,
+      reason: `Holded invoice list empty for ${listLabel}`,
       authorization: input.authorization,
       resource_id: input.resource_id,
       produced_by_adapter: true
@@ -658,7 +716,8 @@ function buildListFoundResult(input: {
       result_mode: 'list',
       resource_type: 'invoice',
       payment_status,
-      lookup_mode: lookupMode(input.query) === 'by_customer' ? 'by_customer' : 'by_status',
+      lookup_mode,
+      ...(input.query.year ? { year: input.query.year } : {}),
       records: listRecords,
       aggregate: buildListAggregate(listRecords),
       ...(input.truncated ? { truncated: true } : {})
@@ -1118,8 +1177,9 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       );
     }
 
-    if (payment_status) {
+    if (payment_status || normalizeYear(normalized.year)) {
       const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
+      const listLabel = payment_status ?? (normalizeYear(normalized.year) ? normalized.year : 'list');
       const paginated = fetchHoldedDocumentPages({
         query: normalized,
         adapter_id: this.adapter_id,
@@ -1154,7 +1214,7 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
             query: normalized,
             adapter_id: this.adapter_id,
             status: 'not_found',
-            reason: `Holded ${documentType} list empty for ${payment_status}`,
+            reason: `Holded ${documentType} list empty for ${listLabel}`,
             authorization,
             resource_id,
             produced_by_adapter: true
@@ -1169,6 +1229,7 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
           resource_id,
           records,
           observed_at: this.now().toISOString(),
+          now: this.now,
           truncated: paginated.truncated
         })
       );

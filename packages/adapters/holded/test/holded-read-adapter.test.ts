@@ -264,6 +264,74 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
   assert.equal(serialized.includes(sentinel), false);
 });
 
+test('Holded adapter returns year-based invoice lists and converts the year into Holded range filters', () => {
+  const sentinel = 'secret_test_token_must_not_leak';
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/1931',
+        docNumber: 'F26/1931',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 1200,
+        dueDate: '2024-07-03T00:00:00.000Z',
+        total_amount: 1200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: sentinel,
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2024',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+  const serialized = JSON.stringify(result);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /holded\.example\.test\/api\/invoicing\/v1\/documents\/invoice/);
+  const requestUrl = new URL(calls[0].url);
+  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01T00:00:00.000Z');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31T23:59:59.999Z');
+  assert.equal((calls[0].init?.headers as Record<string, string> | undefined)?.key, sentinel);
+  assert.equal(result.status, 'found');
+  assert.equal(result.produced_by_adapter, true);
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.kind, 'list');
+  assert.equal(listData.result_mode, 'list');
+  assert.equal(listData.resource_type, 'invoice');
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.year, '2024');
+  assert.equal(listData.payment_status, null);
+  assert.equal(listData.records.length, 1);
+  assert.equal(listData.records[0]?.record_id, 'F26/1931');
+  assert.equal(listData.aggregate.count, 1);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 1200);
+  assert.ok(result.source_evidence);
+  assert.ok(result.source_evidence.length > 0);
+  assert.equal(result.source_evidence[0].source_type, 'invoice');
+  assert.equal(result.source_evidence[0].resource_id, 'F26/1931');
+  assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
+  assert.equal(serialized.includes(sentinel), false);
+});
+
 test('Holded adapter paginates invoice list queries across pages and aggregates deduplicated records', () => {
   const makeRecord = (index: number) => ({
     invoice_id: `F26/${String(index).padStart(4, '0')}`,
