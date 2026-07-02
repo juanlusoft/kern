@@ -83,9 +83,15 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
 }
 
 function buildQwenTransport(
-  resource_type: 'estimate' | 'invoice' = 'estimate',
-  payment_status: 'pending' | 'paid' | 'overdue' | null = null
+  options: {
+    resource_type?: 'estimate' | 'invoice';
+    payment_status?: 'pending' | 'paid' | 'overdue' | null;
+    customer_id?: string | null;
+  } = {}
 ): QwenChatCompletionsTransport {
+  const resource_type = options.resource_type ?? 'estimate';
+  const payment_status = options.payment_status ?? null;
+  const customer_id = options.customer_id ?? 'Granapublic';
   return {
     chatCompletions() {
       const choice: QwenChatCompletionChoice = {
@@ -102,8 +108,8 @@ function buildQwenTransport(
                       arguments: JSON.stringify({
                         name: 'mock.resource.read',
                         arguments: {
-                          customer_id: 'Granapublic',
                           resource_type,
+                          ...(customer_id ? { customer_id } : {}),
                           ...(payment_status ? { payment_status } : {}),
                           ...(payment_status ? {} : { estimate_id: 'estimate-12345' })
                         }
@@ -399,7 +405,7 @@ test('runtime slice can read invoices and formats Telegram output safely', () =>
     rawConfig: buildInstallationConfig(),
     env: buildEnv(),
     telegramTransport,
-    qwenTransport: buildQwenTransport('invoice'),
+    qwenTransport: buildQwenTransport({ resource_type: 'invoice' }),
     holdedFetch: buildHoldedFetch([], 'invoice')
   });
 
@@ -453,7 +459,7 @@ test('runtime slice can read invoice payment-status lists and formats Telegram o
     rawConfig: buildInstallationConfig(),
     env: buildEnv(),
     telegramTransport,
-    qwenTransport: buildQwenTransport('invoice', 'overdue'),
+    qwenTransport: buildQwenTransport({ resource_type: 'invoice', payment_status: 'overdue' }),
     holdedFetch: buildHoldedFetch([], 'invoice')
   });
 
@@ -482,6 +488,66 @@ test('runtime slice can read invoice payment-status lists and formats Telegram o
   assert.equal(sentMessages[0].text.includes('F26/1932'), true);
   assert.equal(sentMessages[0].text.includes('F26/1930'), true);
   assert.equal(sentMessages[0].text.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice can read invoice payment-status lists without a customer and formats Telegram output safely', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 5,
+      message: {
+        message_id: 500,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito las facturas pendientes',
+        date: 1_751_472_180,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport({ resource_type: 'invoice', payment_status: 'pending', customer_id: null }),
+    holdedFetch: buildHoldedFetch([], 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  assert.equal(result.status, 'sent');
+  assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  const responseData = result.orchestration_outcome?.response.data as
+    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.payment_status, 'pending');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('3 facturas pendientes'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente: Holded'), true);
+  assert.equal(sentMessages[0].text.includes('documento F26/1931'), true);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
 });
