@@ -57,6 +57,29 @@ function createFetchStub(response: { status: number; body: unknown; headers?: Re
   return { fetchStub, calls };
 }
 
+function createPagedFetchStub(pages: Record<number, unknown[]>, responseStatus = 200) {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchStub = (url: string | URL | Request, init?: RequestInit): HoldedFetchResponse => {
+    calls.push({ url: String(url), init });
+    const requestUrl = new URL(String(url));
+    const page = Number(requestUrl.searchParams.get('page') ?? '1');
+    const body = pages[page] ?? [];
+    return {
+      ok: responseStatus >= 200 && responseStatus < 300,
+      status: responseStatus,
+      statusText: responseStatus === 200 ? 'OK' : 'ERROR',
+      text: () => JSON.stringify(body),
+      json: () => body,
+      headers: {
+        get(name: string) {
+          return null;
+        }
+      }
+    };
+  };
+  return { fetchStub, calls };
+}
+
 test('Holded adapter returns found with SourceEvidence and hides API key from outputs', () => {
   const sentinel = 'secret_test_token_must_not_leak';
   const { fetchStub, calls } = createFetchStub({
@@ -239,6 +262,298 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
   assert.equal(result.source_evidence[0].resource_id, 'F26/1931');
   assert.equal(result.source_evidence[0].correlation_id, 'corr-1');
   assert.equal(serialized.includes(sentinel), false);
+});
+
+test('Holded adapter paginates invoice list queries across pages and aggregates deduplicated records', () => {
+  const makeRecord = (index: number) => ({
+    invoice_id: `F26/${String(index).padStart(4, '0')}`,
+    docNumber: `F26/${String(index).padStart(4, '0')}`,
+    customer_id: 'granapublic',
+    customer_name: 'Granapublic Xx Sl',
+    contactName: 'Granapublic Xx Sl',
+    paymentsPending: 10,
+    dueDate: '2024-03-09T00:00:00.000Z',
+    total_amount: 10,
+    currency: 'EUR',
+    date: '2024-03-09T00:00:00.000Z'
+  });
+  const page1 = Array.from({ length: 500 }, (_, index) => makeRecord(index + 1));
+  const page2 = Array.from({ length: 500 }, (_, index) => makeRecord(index + 501));
+  const page3 = Array.from({ length: 120 }, (_, index) => makeRecord(index + 1001));
+  const { fetchStub, calls } = createPagedFetchStub({ 1: page1, 2: page2, 3: page3 });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
+  assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
+  assert.equal(new URL(calls[2].url).searchParams.get('page'), '3');
+  assert.equal(new URL(calls[0].url).searchParams.get('customer_id'), 'granapublic');
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData & { truncated?: boolean };
+  assert.equal(listData.records.length, 1120);
+  assert.equal(listData.aggregate.count, 1120);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 11200);
+  assert.equal(listData.truncated, undefined);
+  assert.equal(listData.records[0]?.record_id, 'F26/1120');
+  assert.equal(listData.records[listData.records.length - 1]?.record_id, 'F26/0001');
+});
+
+test('Holded adapter stops after a short page and does not ask for the next page', () => {
+  const makeRecord = (index: number) => ({
+    invoice_id: `F26/${String(index).padStart(4, '0')}`,
+    docNumber: `F26/${String(index).padStart(4, '0')}`,
+    customer_id: 'granapublic',
+    customer_name: 'Granapublic Xx Sl',
+    contactName: 'Granapublic Xx Sl',
+    paymentsPending: 10,
+    dueDate: '2024-03-09T00:00:00.000Z',
+    total_amount: 10,
+    currency: 'EUR',
+    date: '2024-03-09T00:00:00.000Z'
+  });
+  const { fetchStub, calls } = createPagedFetchStub({ 1: Array.from({ length: 120 }, (_, index) => makeRecord(index + 1)) });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
+  assert.equal(new URL(calls[0].url).searchParams.get('customer_id'), 'granapublic');
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData & { truncated?: boolean };
+  assert.equal(listData.records.length, 120);
+  assert.equal(listData.aggregate.count, 120);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 1200);
+  assert.equal(listData.truncated, undefined);
+});
+
+test('Holded adapter marks invoice lists as truncated when MAX_PAGES is reached with a full page', () => {
+  const makeRecord = (index: number) => ({
+    invoice_id: `F26/${String(index).padStart(4, '0')}`,
+    docNumber: `F26/${String(index).padStart(4, '0')}`,
+    customer_id: 'granapublic',
+    customer_name: 'Granapublic Xx Sl',
+    contactName: 'Granapublic Xx Sl',
+    paymentsPending: 10,
+    dueDate: '2024-03-09T00:00:00.000Z',
+    total_amount: 10,
+    currency: 'EUR',
+    date: '2024-03-09T00:00:00.000Z'
+  });
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: [makeRecord(1), makeRecord(2)],
+    2: [makeRecord(3), makeRecord(4)],
+    3: [makeRecord(5), makeRecord(6)]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    page_size: 2,
+    max_pages: 3,
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(new URL(calls[2].url).searchParams.get('page'), '3');
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData & { truncated?: boolean };
+  assert.equal(listData.records.length, 6);
+  assert.equal(listData.aggregate.count, 6);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 60);
+  assert.equal(listData.truncated, true);
+});
+
+test('Holded adapter deduplicates invoice records by id across pages', () => {
+  const makeRecord = (id: string, amount: number) => ({
+    invoice_id: id,
+    docNumber: id,
+    customer_id: 'granapublic',
+    customer_name: 'Granapublic Xx Sl',
+    contactName: 'Granapublic Xx Sl',
+    paymentsPending: amount,
+    dueDate: '2024-03-09T00:00:00.000Z',
+    total_amount: amount,
+    currency: 'EUR',
+    date: '2024-03-09T00:00:00.000Z'
+  });
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: [makeRecord('F26/5001', 10), makeRecord('F26/5002', 20)],
+    2: [makeRecord('F26/5002', 20), makeRecord('F26/5003', 30)],
+    3: []
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    page_size: 2,
+    max_pages: 3,
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: { customer_id: 'granapublic' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData & { truncated?: boolean };
+  assert.equal(listData.records.length, 3);
+  assert.equal(listData.aggregate.count, 3);
+  assert.equal(listData.aggregate.paymentsPendingTotal, 60);
+  assert.equal(listData.truncated, undefined);
+  assert.equal(listData.records[0]?.record_id, 'F26/5003');
+  assert.equal(listData.records[1]?.record_id, 'F26/5002');
+  assert.equal(listData.records[2]?.record_id, 'F26/5001');
+});
+
+test('Holded adapter preserves list query params while paginating', () => {
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: [
+      {
+        invoice_id: 'F26/6001',
+        docNumber: 'F26/6001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 10,
+        dueDate: '2024-03-09T00:00:00.000Z',
+        total_amount: 10,
+        currency: 'EUR',
+        date: '2024-03-09T00:00:00.000Z'
+      }
+    ],
+    2: []
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    page_size: 1,
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      payment_status: 'overdue',
+      filters: {
+        customer_id: 'granapublic',
+        starttmp: '2024-01-01',
+        endtmp: '2024-12-31'
+      },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 2);
+  const requestUrl = new URL(calls[0].url);
+  assert.equal(requestUrl.searchParams.get('page'), '1');
+  assert.equal(requestUrl.searchParams.get('customer_id'), 'granapublic');
+  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31');
+  assert.equal(result.status, 'found');
+  assert.equal(calls.length, 2);
+  assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
+  assert.equal(new URL(calls[1].url).searchParams.get('customer_id'), 'granapublic');
+  assert.equal(new URL(calls[1].url).searchParams.get('starttmp'), '2024-01-01');
+  assert.equal(new URL(calls[1].url).searchParams.get('endtmp'), '2024-12-31');
+});
+
+test('Holded adapter keeps direct lookup by id on a single fetch path', () => {
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F26/7001',
+        docNumber: 'F26/7001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        paymentsPending: 10,
+        dueDate: '2024-03-09T00:00:00.000Z',
+        total_amount: 10,
+        currency: 'EUR',
+        date: '2024-03-09T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2024-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(buildQuery('invoice', { resource_id: 'F26/7001' }));
+
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), null);
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.invoice_id, 'F26/7001');
 });
 
 test('Holded adapter normalizes due dates from seconds milliseconds and ISO strings', () => {
