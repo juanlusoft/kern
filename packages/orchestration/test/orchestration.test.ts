@@ -306,7 +306,7 @@ test('M8 accepts invoice payment-status proposals without a customer', () => {
       customer_name: 'Granapublic Xx Sl',
       contact: 'contact-granapublic',
       contactName: 'Granapublic Xx Sl',
-      products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
+      products: [{ name: 'Vinilo Monomérico Plus' }],
       status: 0,
       paymentsPending: 1300,
       dueDate: '2024-07-02T00:00:00.000Z',
@@ -431,6 +431,50 @@ test('M8 validates invoice payment-status proposals for pending and paid without
   assert.equal(pendingOutcome.validation?.status, 'proposal');
   assert.equal(paidOutcome.status, 'proposal');
   assert.equal(paidOutcome.validation?.status, 'proposal');
+});
+
+test('M8 validates invoice year proposals without a customer', () => {
+  const boundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        year: '2024'
+      }, ['2024'])]
+    })
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'facturas de 2024',
+      correlation_id: 'corr-invoice-year'
+    })
+  );
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.validation?.status, 'proposal');
+});
+
+test('M8 blocks invalid invoice year proposals', () => {
+  const boundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        year: '20a4'
+      }, ['2024'])]
+    })
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'facturas de 2024',
+      correlation_id: 'corr-invoice-year-invalid'
+    })
+  );
+
+  assert.equal(outcome.status, 'blocked');
+  assert.equal(outcome.reason, 'proposal params invalid');
 });
 
 test('M8 blocks empty proposals and unknown invoice payment status', () => {

@@ -87,11 +87,13 @@ function buildQwenTransport(
     resource_type?: 'estimate' | 'invoice';
     payment_status?: 'pending' | 'paid' | 'overdue' | null;
     customer_id?: string | null;
+    year?: string | null;
   } = {}
 ): QwenChatCompletionsTransport {
   const resource_type = options.resource_type ?? 'estimate';
   const payment_status = options.payment_status ?? null;
   const customer_id = options.customer_id ?? 'Granapublic';
+  const year = options.year ?? null;
   return {
     chatCompletions() {
       const choice: QwenChatCompletionChoice = {
@@ -103,18 +105,19 @@ function buildQwenTransport(
                   {
                     id: 'tool-call-1',
                     type: 'function',
-                    function: {
-                      name: 'mock.resource.read',
-                      arguments: JSON.stringify({
+                      function: {
                         name: 'mock.resource.read',
-                        arguments: {
-                          resource_type,
-                          ...(customer_id ? { customer_id } : {}),
-                          ...(payment_status ? { payment_status } : {}),
-                          ...(payment_status ? {} : { estimate_id: 'estimate-12345' })
-                        }
-                      })
-                    }
+                        arguments: JSON.stringify({
+                          name: 'mock.resource.read',
+                          arguments: {
+                            resource_type,
+                            ...(customer_id ? { customer_id } : {}),
+                            ...(year ? { year } : {}),
+                            ...(payment_status ? { payment_status } : {}),
+                            ...(!payment_status && !year && !customer_id ? { estimate_id: 'estimate-12345' } : {})
+                          }
+                        })
+                      }
                   }
                 ]
         }
@@ -319,6 +322,11 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
         parameters?: {
           required?: string[];
           anyOf?: Array<{ required?: string[] }>;
+          properties?: {
+            year?: {
+              pattern?: string;
+            };
+          };
         };
       };
     }>;
@@ -338,6 +346,13 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     true
   );
   assert.equal(
+    qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some(
+      (candidate) => candidate.required?.includes('year') && candidate.required?.length === 1
+    ),
+    true
+  );
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.properties?.year?.pattern, '^\\d{4}$');
+  assert.equal(
     qwenRequest.messages?.[0]?.content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
     true
   );
@@ -345,6 +360,8 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     qwenRequest.messages?.[0]?.content?.includes('Do not invent estimate_id or invoice_id.'),
     true
   );
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('year-based document lists'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('do not compute date ranges or timestamps'), true);
   assert.equal(channelResult.status, 'sent');
   assert.equal(channelResult.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
@@ -548,6 +565,81 @@ test('runtime slice can read invoice payment-status lists without a customer and
   assert.equal(sentMessages[0].text.includes('F26/1931'), true);
   assert.equal(sentMessages[0].text.includes('Fuente: Holded'), true);
   assert.equal(sentMessages[0].text.includes('documento F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice can read year-based invoice lists and converts year filters into Holded date ranges', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 6,
+      message: {
+        message_id: 600,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito las facturas de 2024',
+        date: 1_751_472_240,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const qwenCalls: Array<unknown> = [];
+  const holdedCalls: Array<{ url: string; init?: RequestInit }> = [];
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: {
+      chatCompletions(request) {
+        qwenCalls.push(request);
+        return buildQwenTransport({ resource_type: 'invoice', year: '2024', customer_id: null }).chatCompletions(request);
+      }
+    },
+    holdedFetch: buildHoldedFetch(holdedCalls, 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  assert.equal(qwenCalls.length > 0, true);
+  const qwenRequest = qwenCalls[0] as {
+    messages?: Array<{ content?: string | null }>;
+  };
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('year-based document lists'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('do not compute date ranges or timestamps'), true);
+  assert.equal(holdedCalls.length > 0, true);
+  const requestUrl = new URL(holdedCalls[0].url);
+  assert.equal(requestUrl.searchParams.get('starttmp'), '2024-01-01T00:00:00.000Z');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '2024-12-31T23:59:59.999Z');
+  assert.equal(result.status, 'sent');
+  assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  const responseData = result.orchestration_outcome?.response.data as
+    | { kind?: string; lookup_mode?: string; year?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.lookup_mode, 'by_year');
+  assert.equal(responseData?.year, '2024');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('2024'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), true);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
 });

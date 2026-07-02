@@ -1,4 +1,4 @@
-import {
+﻿import {
   createEvidenceRecord,
   type ChannelAdapter,
   type ChannelInstallationConfig,
@@ -295,7 +295,9 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   if (records.length === 0) {
     return buildCompletedOutboundText(outcome);
   }
-  const paymentStatus = toTrimmedString(responseData.payment_status) ?? 'overdue';
+  const paymentStatus = toTrimmedString(responseData.payment_status);
+  const lookupMode = toTrimmedString(responseData.lookup_mode);
+  const year = toTrimmedString(responseData.year) ?? toTrimmedString(resourceResult?.year);
   const firstRecord = records[0] ?? null;
   const customerName =
     firstStringFromKeys(firstRecord, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
@@ -310,12 +312,22 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
     firstStringFromKeys(resourceResult, ['currency', 'currency_code']);
   const totalPendingText = totalPending !== null ? formatCurrencyAmount(totalPending, currency) : null;
   const lines: string[] = [];
-  lines.push(customerName ? `${documentTitle('invoice')} de ${customerName}:` : `${documentTitle('invoice')}:`);
-  lines.push(
-    paymentStatus === 'paid'
-      ? `${count} facturas pagadas`
-      : `${count} facturas ${paymentStatusLabel(paymentStatus)}${totalPendingText ? ` · ${totalPendingText} pendientes` : ''}`
-  );
+  const scope =
+    lookupMode === 'by_year' && year
+      ? `${customerName ? ` de ${customerName}` : ''} en ${year}`
+      : customerName
+        ? ` de ${customerName}`
+        : '';
+  lines.push(`${documentTitle('invoice')}${scope}:`);
+  if (lookupMode === 'by_year' && year && !paymentStatus) {
+    lines.push(`${count} facturas de ${year}`);
+  } else if (paymentStatus === 'paid') {
+    lines.push(`${count} facturas pagadas${year ? ` de ${year}` : ''}`);
+  } else {
+    lines.push(
+      `${count} facturas ${paymentStatusLabel(paymentStatus)}${year ? ` de ${year}` : ''}${totalPendingText ? ` · ${totalPendingText} pendientes` : ''}`
+    );
+  }
   records.slice(0, 3).forEach((record) => {
     const documentId =
       firstStringFromKeys(record, ['docNumber', 'documentNo', 'document_number', 'invoice_id', 'resource_id', 'id']) ??
@@ -327,7 +339,14 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
         : numberFromKeys(record, ['paymentsPending', 'total', 'total_amount', 'amount']);
     const recordCurrency = firstStringFromKeys(record, ['currency', 'currency_code']) ?? currency;
     const recordAmountText = formatCurrencyAmount(recordAmount, recordCurrency);
-    const statusSuffix = paymentStatus === 'paid' ? 'pagada' : paymentStatus === 'overdue' ? 'vencida' : 'pendiente';
+    const statusSuffix =
+      lookupMode === 'by_year' && year && !paymentStatus
+        ? ''
+        : paymentStatus === 'paid'
+          ? 'pagada'
+          : paymentStatus === 'overdue'
+            ? 'vencida'
+            : 'pendiente';
     const detailParts = [documentId, productSummary, recordAmountText ? `${recordAmountText} ${statusSuffix}` : statusSuffix].filter(
       (value): value is string => Boolean(value)
     );

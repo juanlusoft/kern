@@ -234,6 +234,7 @@ test('normalizeResourceQuery preserves query shape while ignoring claimed result
     },
     resource_type: 'estimate',
     resource_id: 'estimate-123',
+    year: '2024',
     filters: { status: 'open' },
     requested_fields: ['estimate_id', 'customer_name'],
     claimed_result: { injected: true },
@@ -249,6 +250,7 @@ test('normalizeResourceQuery preserves query shape while ignoring claimed result
   assert.equal(query.model_claimed_result && typeof query.model_claimed_result === 'object', true);
   assert.equal(query.caller_result && typeof query.caller_result === 'object', true);
   assert.equal(query.assistant_result && typeof query.assistant_result === 'object', true);
+  assert.equal(query.year, '2024');
 });
 
 test('validateResourceResult rejects found results without source evidence', () => {

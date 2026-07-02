@@ -366,8 +366,9 @@ export interface ResourceListResultData {
   kind: 'list';
   result_mode: 'list';
   resource_type: 'invoice';
-  payment_status: ResourcePaymentStatus;
-  lookup_mode: 'by_status' | 'by_customer';
+  payment_status: ResourcePaymentStatus | null;
+  lookup_mode: 'by_status' | 'by_customer' | 'by_year';
+  year?: string | null;
   records: [ResourceListRecord, ...ResourceListRecord[]] | ResourceListRecord[];
   aggregate: ResourceListAggregate;
 }
@@ -461,6 +462,7 @@ export interface ResourceQuery {
   actor: TurnActor | null;
   resource_type: string;
   payment_status?: ResourcePaymentStatus | null;
+  year?: string | null;
   resource_id: string | null;
   filters: Record<string, unknown> | null;
   requested_fields: string[] | null;
@@ -518,6 +520,7 @@ export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBa
   kind: 'mock.estimate.read';
   resource_type?: 'estimate' | 'invoice';
   payment_status?: ResourcePaymentStatus | null;
+  year?: string | null;
   estimate_id?: string | null;
   customer_id?: string | null;
   capability_id?: string | null;
@@ -831,6 +834,7 @@ export function normalizeResourceQuery(input: unknown): ResourceQuery {
       candidate.payment_status === 'pending' || candidate.payment_status === 'paid' || candidate.payment_status === 'overdue'
         ? candidate.payment_status
         : null,
+    year: typeof candidate.year === 'string' && candidate.year.trim().length > 0 ? candidate.year.trim() : null,
     resource_id: typeof candidate.resource_id === 'string' ? candidate.resource_id : null,
     filters: candidate.filters && typeof candidate.filters === 'object' ? (candidate.filters as Record<string, unknown>) : null,
     requested_fields: requestedFields,
@@ -849,6 +853,7 @@ export function fingerprintResourceQuery(query: ResourceQuery): string {
     actor: query.actor,
     resource_type: query.resource_type,
     payment_status: query.payment_status,
+    year: query.year,
     resource_id: query.resource_id,
     filters: query.filters,
     requested_fields: query.requested_fields ? [...query.requested_fields].sort() : null

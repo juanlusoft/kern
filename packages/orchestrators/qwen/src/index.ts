@@ -20,6 +20,7 @@ export interface QwenParameterSchemaProperty {
   type: QwenParameterType;
   description?: string;
   enum?: string[];
+  pattern?: string;
 }
 
 export interface QwenParameterSchema {
@@ -241,7 +242,7 @@ function buildSystemPrompt(input: {
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
-    'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, and search terms.',
+    'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, year, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
     'User: "ultimo presupuesto de Granapublic"',
@@ -256,6 +257,9 @@ function buildSystemPrompt(input: {
     '{ "resource_type": "invoice", "payment_status": "overdue" }',
     '{ "resource_type": "invoice", "payment_status": "pending", "customer_id": "Granapublic" }',
     '{ "resource_type": "invoice", "payment_status": "paid", "customer_id": "Petroprix" }',
+    'For year-based document lists, use year with a four-digit string like "2025" and do not compute date ranges or timestamps.',
+    '{ "resource_type": "invoice", "year": "2025" }',
+    '{ "resource_type": "invoice", "year": "2025", "customer_id": "Granapublic" }',
     'Do not use payment_status with resource_type="estimate".',
     'Do not invent estimate_id or invoice_id.',
     `organization_id=${input.organization_id ?? 'null'}`,
