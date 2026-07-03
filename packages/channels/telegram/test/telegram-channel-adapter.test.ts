@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InMemoryGovernedWorkflowRuntime } from '../../../workflows/src/index';
 import { InMemoryOrchestrationBoundary } from '../../../orchestration/src/index';
@@ -291,7 +291,6 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
         data: {
           contactName: 'Granapublic Xx Sl',
           estimate_id: 'P26/04366',
-          products: [{ name: 'Vinilo Monomérico' }],
           total_amount: 6.1,
           tax_amount: 1.26,
           currency: 'EUR',
@@ -320,7 +319,6 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
     data: {
       contactName: 'Granapublic Xx Sl',
       estimate_id: 'P26/04366',
-      products: [{ name: 'Vinilo Monomérico' }],
       total_amount: 6.1,
       tax_amount: 1.26,
       currency: 'EUR',
@@ -367,7 +365,6 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
       data: {
         contactName: 'Granapublic Xx Sl',
         estimate_id: 'P26/04366',
-        products: [{ name: 'Vinilo Monomérico' }],
         total_amount: 6.1,
         tax_amount: 1.26,
         currency: 'EUR',
@@ -383,8 +380,8 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
   } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
 
   const safeText = buildTelegramOutboundText(completedOutcome);
-  assert.equal(safeText.includes('Último presupuesto de Granapublic Xx Sl (P26/04366):'), true);
-  assert.equal(safeText.includes('Vinilo Monomérico'), true);
+  assert.equal(safeText.includes('Último presupuesto'), true);
+  assert.equal(safeText.includes('P26/04366'), true);
   assert.equal(safeText.includes('6,10'), true);
   assert.equal(safeText.includes('IVA incl.'), true);
   assert.equal(safeText.includes('Fuente:'), false);
@@ -393,6 +390,191 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
   assert.equal(safeText.includes('line_id'), false);
   assert.equal(safeText.includes('s_iva_21'), false);
   assert.equal(safeText.includes('parse_mode'), false);
+
+  const latestNEstimateOutcome = {
+    request_id: 'telegram:req-estimate-latest-n',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-estimate-latest-n',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: {
+      workflow_id: 'wf-estimate-latest-n',
+      workflow_kind: 'mock.estimate.read',
+      organization_id: 'org-granapublic-live-test',
+      correlation_id: 'corr-estimate-latest-n',
+      turn_id: null,
+      status: 'completed',
+      response: {
+        response_source: 'runtime_result',
+        workflow_kind: 'mock.estimate.read',
+        status: 'completed',
+        message: 'estimate list retrieved from runtime',
+        data: {
+          kind: 'list',
+          result_mode: 'list',
+          resource_type: 'estimate',
+          payment_status: null,
+          lookup_mode: 'latest_n',
+          customer: 'Granapublic',
+          records: [
+            {
+              estimate_id: 'P26/04368',
+              docNumber: 'P26/04368',
+              customer_name: 'Granapublic Xx Sl',
+              total_amount: 2300,
+              currency: 'EUR',
+              source_system: 'Holded'
+            },
+            {
+              estimate_id: 'P26/04367',
+              docNumber: 'P26/04367',
+              customer_name: 'Granapublic Xx Sl',
+              total_amount: 2200,
+              currency: 'EUR',
+              source_system: 'Holded'
+            }
+          ],
+          aggregate: {
+            count: 2,
+            paymentsPendingTotal: 0,
+            totalAmount: 4500
+          }
+        }
+      },
+      capability_result: {
+        invocation_id: 'capability-invocation-estimate-latest-n',
+        capability_id: 'mock.resource.read',
+        organization_id: 'org-granapublic-live-test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        correlation_id: 'corr-estimate-latest-n',
+        status: 'executed',
+        runtime_decision: 'executed',
+        binding_id: null,
+        decision_binding_id: null,
+        policy_decision_id: null,
+        executed_by_runtime: true,
+        output: {
+          capability_id: 'mock.resource.read',
+          status: 'executed',
+          result: {
+            status: 'found',
+            data: {
+              kind: 'list',
+              result_mode: 'list',
+              resource_type: 'estimate',
+              payment_status: null,
+              lookup_mode: 'latest_n',
+              customer: 'Granapublic',
+              records: [
+                {
+                  estimate_id: 'P26/04368',
+                  docNumber: 'P26/04368',
+                  customer_name: 'Granapublic Xx Sl',
+                  total_amount: 2300,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                },
+                {
+                  estimate_id: 'P26/04367',
+                  docNumber: 'P26/04367',
+                  customer_name: 'Granapublic Xx Sl',
+                  total_amount: 2200,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                }
+              ],
+              aggregate: {
+                count: 2,
+                paymentsPendingTotal: 0,
+                totalAmount: 4500
+              },
+              source_evidence: [
+                {
+                  source_id: 'source-estimate-latest-n',
+                  source_type: 'document',
+                  source_system: 'Holded',
+                  resource_id: 'P26/04368',
+                  record_id: 'P26/04368',
+                  field_path: 'estimate',
+                  observed_at: '2026-06-30T00:00:00.000Z',
+                  correlation_id: 'corr-estimate-latest-n'
+                }
+              ],
+              error: null
+            },
+            processed_at: '2026-06-30T00:00:00.000Z'
+          },
+          processed_at: '2026-06-30T00:00:00.000Z'
+        },
+        error: null,
+        evidence_links: ['evidence-estimate-latest-n'],
+        created_at: '2026-06-30T00:00:00.000Z',
+        evidence_reference: 'evidence-estimate-latest-n',
+        reason: 'ok'
+      },
+      evidence_links: ['evidence-estimate-latest-n'],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      steps: [],
+      evidence_trace: {
+        evidence_ids: ['evidence-estimate-latest-n'],
+        record_types: ['workflow_response_created']
+      }
+    },
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'estimate list retrieved from runtime',
+      data: {
+        kind: 'list',
+        result_mode: 'list',
+        resource_type: 'estimate',
+        payment_status: null,
+        lookup_mode: 'latest_n',
+        customer: 'Granapublic',
+        records: [
+          {
+            estimate_id: 'P26/04368',
+            docNumber: 'P26/04368',
+            customer_name: 'Granapublic Xx Sl',
+            total_amount: 2300,
+            currency: 'EUR',
+            source_system: 'Holded'
+          },
+          {
+            estimate_id: 'P26/04367',
+            docNumber: 'P26/04367',
+            customer_name: 'Granapublic Xx Sl',
+            total_amount: 2200,
+            currency: 'EUR',
+            source_system: 'Holded'
+          }
+        ],
+        aggregate: {
+          count: 2,
+          paymentsPendingTotal: 0,
+          totalAmount: 4500
+        }
+      }
+    },
+    evidence_links: ['evidence-estimate-latest-n'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const latestNEstimateText = buildTelegramOutboundText(latestNEstimateOutcome);
+  assert.equal(latestNEstimateText.includes('Últimos 2 presupuestos de Granapublic:'), true);
+  assert.equal(latestNEstimateText.includes('2 · 4500,00 € presupuestado'), true);
+  assert.equal(latestNEstimateText.includes('P26/04368'), true);
+  assert.equal(latestNEstimateText.includes('Fuente:'), false);
+  assert.equal(latestNEstimateText.includes('{'), false);
+  assert.equal(latestNEstimateText.includes('parse_mode'), false);
 
   const longOutcome = {
     request_id: 'telegram:req-long',
@@ -413,7 +595,6 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
       data: {
         contactName: `Granapublic ${'X'.repeat(5000)}`,
         estimate_id: 'P26/04366',
-        products: [{ name: 'Vinilo Monomérico' }],
         total_amount: 6.1,
         currency: 'EUR',
         lookup_mode: 'by_customer'
@@ -554,7 +735,7 @@ test('Telegram outbound text deduplicates repeated products in document summarie
 
   const safeText = buildTelegramOutboundText(duplicatedProductsOutcome);
   assert.equal(safeText.includes('Lona Frontlit 510gr'), true);
-  assert.equal((safeText.match(/Lona Frontlit 510gr/g) ?? []).length, 1);
+  assert.equal((safeText.match(/Lona Frontlit 510gr/g) || []).length, 1);
   assert.equal(safeText.includes('Fuente:'), false);
   assert.equal(safeText.includes('\n'), false);
 });
@@ -604,7 +785,6 @@ test('Telegram outbound text formats invoice lists safely and summarizes aggrega
               invoice_id: 'F26/1932',
               docNumber: 'F26/1932',
               customer_name: 'Granapublic Xx Sl',
-              products: [{ name: 'Vinilo Monomérico Plus' }],
               paymentsPending: 1300,
               dueDate: '2024-07-02T00:00:00.000Z',
               total_amount: 1300,
@@ -667,7 +847,6 @@ test('Telegram outbound text formats invoice lists safely and summarizes aggrega
                   invoice_id: 'F26/1932',
                   docNumber: 'F26/1932',
                   customer_name: 'Granapublic Xx Sl',
-                  products: [{ name: 'Vinilo Monomérico Plus' }],
                   paymentsPending: 1300,
                   dueDate: '2024-07-02T00:00:00.000Z',
                   total_amount: 1300,
@@ -749,7 +928,6 @@ test('Telegram outbound text formats invoice lists safely and summarizes aggrega
             invoice_id: 'F26/1932',
             docNumber: 'F26/1932',
             customer_name: 'Granapublic Xx Sl',
-            products: [{ name: 'Vinilo Monomérico Plus' }],
             paymentsPending: 1300,
             dueDate: '2024-07-02T00:00:00.000Z',
             total_amount: 1300,
@@ -785,6 +963,220 @@ test('Telegram outbound text formats invoice lists safely and summarizes aggrega
   assert.equal(safeText.includes('F26/1931'), true);
   assert.equal(safeText.includes('MUPIS PAPEL'), true);
   assert.equal(safeText.includes('vencida'), true);
+  assert.equal(safeText.includes('Fuente:'), false);
+  assert.equal(safeText.includes('{'), false);
+  assert.equal(safeText.includes('parse_mode'), false);
+});
+
+test('Telegram outbound text formats latest N invoice lists safely', () => {
+  const latestNOutcome = {
+    request_id: 'telegram:req-invoice-latest-n',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-invoice-latest-n',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: {
+      workflow_id: 'wf-invoice-latest-n',
+      workflow_kind: 'mock.estimate.read',
+      organization_id: 'org-granapublic-live-test',
+      correlation_id: 'corr-invoice-latest-n',
+      turn_id: null,
+      status: 'completed',
+      response: {
+        response_source: 'runtime_result',
+        workflow_kind: 'mock.estimate.read',
+        status: 'completed',
+        message: 'invoice list retrieved from runtime',
+        data: {
+          kind: 'list',
+          result_mode: 'list',
+          resource_type: 'invoice',
+          payment_status: null,
+          lookup_mode: 'latest_n',
+          customer: 'Granapublic',
+          records: [
+            {
+              invoice_id: 'F26/1932',
+              docNumber: 'F26/1932',
+              customer_name: 'Granapublic Xx Sl',
+              total_amount: 1300,
+              currency: 'EUR',
+              source_system: 'Holded'
+            },
+            {
+              invoice_id: 'F26/1931',
+              docNumber: 'F26/1931',
+              customer_name: 'Granapublic Xx Sl',
+              products: [{ name: 'MUPIS PAPEL' }],
+              total_amount: 1200,
+              currency: 'EUR',
+              source_system: 'Holded'
+            },
+            {
+              invoice_id: 'F26/1930',
+              docNumber: 'F26/1930',
+              customer_name: 'Granapublic Xx Sl',
+              total_amount: 1100,
+              currency: 'EUR',
+              source_system: 'Holded'
+            }
+          ],
+          aggregate: {
+            count: 3,
+            paymentsPendingTotal: 0,
+            totalAmount: 3600
+          }
+        }
+      },
+      capability_result: {
+        invocation_id: 'capability-invocation-latest-n',
+        capability_id: 'mock.resource.read',
+        organization_id: 'org-granapublic-live-test',
+        principal_id: 'principal-gema-granapublic-live-test',
+        correlation_id: 'corr-invoice-latest-n',
+        status: 'executed',
+        runtime_decision: 'executed',
+        binding_id: null,
+        decision_binding_id: null,
+        policy_decision_id: null,
+        executed_by_runtime: true,
+        output: {
+          capability_id: 'mock.resource.read',
+          status: 'executed',
+          result: {
+            status: 'found',
+            data: {
+              kind: 'list',
+              result_mode: 'list',
+              resource_type: 'invoice',
+              payment_status: null,
+              lookup_mode: 'latest_n',
+              customer: 'Granapublic',
+              records: [
+                {
+                  invoice_id: 'F26/1932',
+                  docNumber: 'F26/1932',
+                  customer_name: 'Granapublic Xx Sl',
+                  total_amount: 1300,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                },
+                {
+                  invoice_id: 'F26/1931',
+                  docNumber: 'F26/1931',
+                  customer_name: 'Granapublic Xx Sl',
+                  products: [{ name: 'MUPIS PAPEL' }],
+                  total_amount: 1200,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                },
+                {
+                  invoice_id: 'F26/1930',
+                  docNumber: 'F26/1930',
+                  customer_name: 'Granapublic Xx Sl',
+                  total_amount: 1100,
+                  currency: 'EUR',
+                  source_system: 'Holded'
+                }
+              ],
+              aggregate: {
+                count: 3,
+                paymentsPendingTotal: 0,
+                totalAmount: 3600
+              },
+              source_evidence: [
+                {
+                  source_id: 'source-latest-n',
+                  source_type: 'document',
+                  source_system: 'Holded',
+                  resource_id: 'F26/1932',
+                  record_id: 'F26/1932',
+                  field_path: 'invoice',
+                  observed_at: '2026-06-30T00:00:00.000Z',
+                  correlation_id: 'corr-invoice-latest-n'
+                }
+              ],
+              error: null
+            },
+            processed_at: '2026-06-30T00:00:00.000Z'
+          },
+          processed_at: '2026-06-30T00:00:00.000Z'
+        },
+        error: null,
+        evidence_links: ['evidence-latest-n'],
+        created_at: '2026-06-30T00:00:00.000Z',
+        evidence_reference: 'evidence-latest-n',
+        reason: 'ok'
+      },
+      evidence_links: ['evidence-latest-n'],
+      created_at: '2026-06-30T00:00:00.000Z',
+      updated_at: '2026-06-30T00:00:00.000Z',
+      steps: [],
+      evidence_trace: {
+        evidence_ids: ['evidence-latest-n'],
+        record_types: ['workflow_response_created']
+      }
+    },
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'invoice list retrieved from runtime',
+      data: {
+        kind: 'list',
+        result_mode: 'list',
+        resource_type: 'invoice',
+        payment_status: null,
+        lookup_mode: 'latest_n',
+        customer: 'Granapublic',
+        records: [
+          {
+            invoice_id: 'F26/1932',
+            docNumber: 'F26/1932',
+            customer_name: 'Granapublic Xx Sl',
+            total_amount: 1300,
+            currency: 'EUR',
+            source_system: 'Holded'
+          },
+          {
+            invoice_id: 'F26/1931',
+            docNumber: 'F26/1931',
+            customer_name: 'Granapublic Xx Sl',
+            products: [{ name: 'MUPIS PAPEL' }],
+            total_amount: 1200,
+            currency: 'EUR',
+            source_system: 'Holded'
+          },
+          {
+            invoice_id: 'F26/1930',
+            docNumber: 'F26/1930',
+            customer_name: 'Granapublic Xx Sl',
+            total_amount: 1100,
+            currency: 'EUR',
+            source_system: 'Holded'
+          }
+        ],
+        aggregate: {
+          count: 3,
+          paymentsPendingTotal: 0,
+          totalAmount: 3600
+        }
+      }
+    },
+    evidence_links: ['evidence-latest-n'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const safeText = buildTelegramOutboundText(latestNOutcome);
+  assert.equal(safeText.includes('Últimas 3 facturas de Granapublic:'), true);
+  assert.equal(safeText.includes('3 · 3600,00 € facturado'), true);
+  assert.equal(safeText.includes('F26/1932'), true);
   assert.equal(safeText.includes('Fuente:'), false);
   assert.equal(safeText.includes('{'), false);
   assert.equal(safeText.includes('parse_mode'), false);

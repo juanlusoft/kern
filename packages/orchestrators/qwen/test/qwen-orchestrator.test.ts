@@ -14,7 +14,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For latest N estimates or invoices of a customer, provide customer_id together with a positive integer limit. Use limit only with customer_id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object',
         required: ['resource_type'],
@@ -44,6 +44,12 @@ function buildToolCatalog(): QwenToolDefinition[] {
           invoice_id: {
             type: 'string',
             description: 'Known exact invoice/document id only if the user explicitly provided one.'
+          },
+          limit: {
+            type: 'integer',
+            description: 'Number of latest documents to return when the user asks for the latest N documents of a customer.',
+            minimum: 1,
+            maximum: 20
           },
           payment_status: {
             type: 'string',
@@ -260,6 +266,17 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
     ),
     true
   );
+  assert.equal(requests[0].tools[0].function.parameters.properties?.limit?.type, 'integer');
+  assert.equal(requests[0].tools[0].function.parameters.properties?.limit?.minimum, 1);
+  assert.equal(requests[0].tools[0].function.parameters.properties?.limit?.maximum, 20);
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some((candidate) => candidate.required?.includes('limit')),
+    false
+  );
+  assert.equal(
+    requests[0].tools[0].function.parameters.anyOf?.some((candidate) => candidate.required?.includes('customer_id')),
+    true
+  );
   assert.equal(
     requests[0].tools[0].function.parameters.anyOf?.some(
       (candidate) => candidate.required?.includes('estimate_id') && candidate.required?.length === 1
@@ -289,6 +306,9 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
     requests[0].messages[0].content?.includes('"customer_id": "Granapublic"'),
     true
   );
+  assert.equal(requests[0].messages[0].content?.includes('latest N estimates or invoices'), true);
+  assert.equal(requests[0].messages[0].content?.includes('Use limit only with customer_id.'), true);
+  assert.equal(requests[0].messages[0].content?.includes('{ "resource_type": "invoice", "customer_id": "Granapublic", "limit": 3 }'), true);
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
   assert.equal(outcome.proposal?.params.estimate_id, 'estimate-123');
@@ -328,6 +348,43 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+});
+
+test('Qwen orchestrator supports latest N customer document limits without inventing ids', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall({
+    resource_type: 'invoice',
+    customer_id: 'Granapublic',
+    limit: 3
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-limit',
+    user_message: 'Necesito las 3 últimas facturas de Granapublic',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-limit',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].messages[0].content?.includes('latest N estimates or invoices'), true);
+  assert.equal(requests[0].messages[0].content?.includes('Use limit only with customer_id.'), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
+  assert.equal(outcome.proposal?.params.limit, 3);
+  assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+  assert.equal('invoice_id' in (outcome.proposal?.params ?? {}), false);
 });
 
 test('Qwen orchestrator extracts year as a tool param without computing ranges', () => {
@@ -732,7 +789,9 @@ test('Qwen orchestrator fails closed for invalid tool arguments and unknown capa
                       function: {
                         name: 'mock.resource.read',
                         arguments: JSON.stringify({
-                          resource_type: 'estimate'
+                          resource_type: 'estimate',
+                          customer_id: 'Granapublic',
+                          limit: 21
                         })
                       }
                     }
