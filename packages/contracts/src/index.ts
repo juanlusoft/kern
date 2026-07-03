@@ -114,6 +114,106 @@ export type EvidenceRecordType =
 
 export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
 export type ResourcePaymentStatus = 'pending' | 'paid' | 'overdue';
+export type PresenceStatus = 'inside' | 'outside' | 'unknown' | 'no_data' | 'unsupported';
+export type PresenceDirection = 'in' | 'out' | 'neutral';
+export type PresenceScopeKind = 'self' | 'organization' | 'explicit' | 'unsupported';
+
+export interface PresenceSourceCitation {
+  tables: string[];
+  queryId: string;
+  rowCount: number;
+  truncated: boolean;
+}
+
+export interface PresenceScope {
+  kind: PresenceScopeKind;
+  requester_principal_id: string;
+  organization_id: string;
+  employee_ids: string[];
+  reason: string;
+}
+
+export interface PresenceEmployeeRecord {
+  employee_id: string;
+  principal_id: string | null;
+  display_name: string;
+  email: string | null;
+  active: boolean;
+}
+
+export interface PresenceEmployeeFindParams {
+  organization_id: string;
+  correlation_id: string;
+  term: string;
+  limit: number;
+}
+
+export interface PresenceEmployeeFindResult {
+  query_id: 'employee.find';
+  organization_id: string;
+  correlation_id: string;
+  search_term: string;
+  records: PresenceEmployeeRecord[];
+  truncated: boolean;
+  citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+}
+
+export interface PresencePunchRecord {
+  punch_id: string;
+  employee_id: string;
+  display_name: string;
+  direction: PresenceDirection;
+  punched_at: string;
+  source_table: string;
+  source_record_id: string;
+}
+
+export interface PresencePunchesListParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id: string | null;
+  limit: number;
+  offset: number;
+}
+
+export interface PresencePunchesListResult {
+  query_id: 'punches.list';
+  organization_id: string;
+  correlation_id: string;
+  employee_id: string | null;
+  records: PresencePunchRecord[];
+  truncated: boolean;
+  citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+}
+
+export interface PresenceCurrentParams {
+  organization_id: string;
+  correlation_id: string;
+  scope: PresenceScope;
+  active_window_days?: number;
+  current_window_hours?: number;
+}
+
+export interface PresenceCurrentResult {
+  query_id: 'presence.current';
+  organization_id: string;
+  correlation_id: string;
+  scope: PresenceScope;
+  status: PresenceStatus;
+  employee_id: string | null;
+  display_name: string | null;
+  direction: PresenceDirection | null;
+  observed_at: string | null;
+  row_count: number;
+  truncated: boolean;
+  citations: PresenceSourceCitation[];
+}
+
+export interface PresenceReadPort {
+  findEmployee(input: PresenceEmployeeFindParams): PresenceEmployeeFindResult;
+  listPunches(input: PresencePunchesListParams): PresencePunchesListResult;
+  currentPresence(input: PresenceCurrentParams): PresenceCurrentResult;
+}
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
   force_policy_defer?: boolean;
