@@ -450,8 +450,8 @@ export interface ResourceListAggregate {
 
 export interface ResourceListRecord {
   record_id: string;
-  resource_type: 'invoice';
-  payment_status: ResourcePaymentStatus;
+  resource_type: 'estimate' | 'invoice';
+  payment_status: ResourcePaymentStatus | null;
   status: number | null;
   paymentsPending: number | null;
   dueDate: number | null;
@@ -465,9 +465,9 @@ export interface ResourceListRecord {
 export interface ResourceListResultData {
   kind: 'list';
   result_mode: 'list';
-  resource_type: 'invoice';
+  resource_type: 'estimate' | 'invoice';
   payment_status: ResourcePaymentStatus | null;
-  lookup_mode: 'by_status' | 'by_customer' | 'by_year';
+  lookup_mode: 'by_status' | 'by_customer' | 'by_year' | 'latest_n';
   customer?: string | null;
   year?: string | null;
   records: [ResourceListRecord, ...ResourceListRecord[]] | ResourceListRecord[];
@@ -562,6 +562,7 @@ export interface ResourceQuery {
   correlation_id: string | null;
   actor: TurnActor | null;
   resource_type: string;
+  limit?: number | null;
   payment_status?: ResourcePaymentStatus | null;
   year?: string | null;
   resource_id: string | null;
@@ -621,6 +622,7 @@ export interface GovernedWorkflowRequestBase {
 export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBase {
   kind: 'mock.estimate.read';
   resource_type?: 'estimate' | 'invoice';
+  limit?: number | null;
   payment_status?: ResourcePaymentStatus | null;
   year?: string | null;
   estimate_id?: string | null;
@@ -909,6 +911,17 @@ export function normalizeRequestedScope(requested_scope: CoreRequestPayload['req
   return [];
 }
 
+function normalizeOptionalLimit(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 export function normalizeResourceQuery(input: unknown): ResourceQuery {
   const candidate = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const actorCandidate = candidate.actor && typeof candidate.actor === 'object' ? (candidate.actor as Record<string, unknown>) : null;
@@ -932,6 +945,7 @@ export function normalizeResourceQuery(input: unknown): ResourceQuery {
         }
       : null,
     resource_type: typeof candidate.resource_type === 'string' ? candidate.resource_type : '',
+    limit: normalizeOptionalLimit(candidate.limit),
     payment_status:
       candidate.payment_status === 'pending' || candidate.payment_status === 'paid' || candidate.payment_status === 'overdue'
         ? candidate.payment_status
@@ -954,6 +968,7 @@ export function fingerprintResourceQuery(query: ResourceQuery): string {
     correlation_id: query.correlation_id,
     actor: query.actor,
     resource_type: query.resource_type,
+    limit: query.limit ?? null,
     payment_status: query.payment_status,
     year: query.year,
     resource_id: query.resource_id,
