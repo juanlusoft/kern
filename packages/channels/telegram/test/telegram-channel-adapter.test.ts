@@ -1385,7 +1385,7 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     {
       status: 'no_proposal',
       message: 'no proposal',
-      expected: 'No he entendido bien la consulta. Prueba pidiendo la última factura de un cliente, sus impagados, o las facturas de un año.'
+      expected: 'No tengo suficiente contexto para responder. Dime el cliente o el documento que buscas.'
     }
   ] as const;
 
@@ -1421,6 +1421,40 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
       assert.equal(text.includes('runtime'), false);
     }
   }
+});
+
+test('Telegram outbound text uses structured clarification reasons when available', () => {
+  const text = buildTelegramOutboundText({
+    request_id: 'telegram:req-clarification',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-clarification',
+    installation_id: 'telegram-installation',
+    status: 'no_proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: null,
+    workflow_result: null,
+    response: {
+      response_source: 'workflow_blocked',
+      workflow_kind: null,
+      status: 'no_proposal',
+      message: 'Falta el cliente para buscar el documento correcto.',
+      data: {
+        kind: 'request_clarification',
+        missing: 'customer',
+        reason: 'Falta el cliente para buscar el documento correcto.'
+      }
+    },
+    evidence_links: [],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'Falta el cliente para buscar el documento correcto.'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0]);
+
+  assert.equal(text, '¿De qué cliente?');
+  assert.equal(text.includes('{'), false);
+  assert.equal(text.includes('parse_mode'), false);
 });
 
 test('Telegram adapter surfaces transport failures as error without leaking the token', () => {

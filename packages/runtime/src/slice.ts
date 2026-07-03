@@ -197,79 +197,98 @@ function hasRequiredModules(registry: RuntimeModuleRegistry): boolean {
 }
 
 function buildQwenToolCatalog() {
-  return [
-    {
-      capability_key: 'mock.resource.read',
-      description:
-        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For latest N estimates or invoices of a customer, provide customer_id together with a positive integer limit. Use limit only with customer_id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
-      parameters_schema: {
-        type: 'object' as const,
-        required: ['resource_type'],
-        additionalProperties: false as const,
-        anyOf: [
-          { required: ['customer_id'] },
-          { required: ['customer_name'] },
-          { required: ['contact_name'] },
-          { required: ['contactName'] },
-          { required: ['contact'] },
-          { required: ['payment_status'] },
-          { required: ['year'] },
-          { required: ['estimate_id'] },
-          { required: ['invoice_id'] },
-          { required: ['resource_id'] }
-        ],
-        properties: {
-          resource_type: {
-            type: 'string' as const,
-            enum: ['estimate', 'invoice'],
-            description: "Use 'estimate' for budget/estimate lookup and 'invoice' for invoice lookup."
-          },
-          estimate_id: { type: 'string' as const },
-          invoice_id: { type: 'string' as const },
-          limit: {
-            type: 'integer' as const,
-            description: 'Number of latest documents to return when the user asks for the latest N documents of a customer.',
-            minimum: 1,
-            maximum: 20
-          },
-          payment_status: {
-            type: 'string' as const,
-            enum: ['pending', 'paid', 'overdue'],
-            description: 'Use only with resource_type="invoice" to list invoices by payment state.'
-          },
-          year: {
-            type: 'string' as const,
-            description: 'Four-digit year from the user request. Use it for year-based document lists and let the runtime convert it to a UTC start/end range.',
-            pattern: '^\\d{4}$'
-          },
-          resource_id: {
-            type: 'string' as const,
-            description: 'Known resource id if the user explicitly provided one.'
-          },
-          customer_id: {
-            type: 'string' as const,
-            description: "Customer name or search term extracted from the user's request. Required when the user asks for the latest estimate or invoice of a customer."
-          },
-          customer_name: {
-            type: 'string' as const,
-            description: 'Alias for customer_id when the user gave a customer name.'
-          },
-          contact_name: {
-            type: 'string' as const,
-            description: 'Alias for customer_id when the user gave a contact name.'
-          },
-          contactName: {
-            type: 'string' as const,
-            description: 'Alias for customer_id when the user gave a contact name.'
-          },
-          contact: {
-            type: 'string' as const,
-            description: 'Alias for customer_id when the user gave a contact.'
-          }
+  const readTool: QwenToolDefinition = {
+    capability_key: 'mock.resource.read',
+    description:
+      'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For latest N estimates or invoices of a customer, provide customer_id together with a positive integer limit. Use limit only with customer_id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. If the request is incomplete or unsupported, prefer request_clarification rather than inventing params. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+    parameters_schema: {
+      type: 'object' as const,
+      required: ['resource_type'],
+      additionalProperties: false as const,
+      anyOf: [
+        { required: ['customer_id'] },
+        { required: ['customer_name'] },
+        { required: ['contact_name'] },
+        { required: ['contactName'] },
+        { required: ['contact'] },
+        { required: ['payment_status'] },
+        { required: ['year'] },
+        { required: ['estimate_id'] },
+        { required: ['invoice_id'] },
+        { required: ['resource_id'] }
+      ],
+      properties: {
+        resource_type: {
+          type: 'string' as const,
+          enum: ['estimate', 'invoice'],
+          description: "Use 'estimate' for budget/estimate lookup and 'invoice' for invoice lookup."
+        },
+        estimate_id: { type: 'string' as const },
+        invoice_id: { type: 'string' as const },
+        limit: {
+          type: 'integer' as const,
+          description: 'Number of latest documents to return when the user asks for the latest N documents of a customer.',
+          minimum: 1,
+          maximum: 20
+        },
+        payment_status: {
+          type: 'string' as const,
+          enum: ['pending', 'paid', 'overdue'],
+          description: 'Use only with resource_type="invoice" to list invoices by payment state.'
+        },
+        year: {
+          type: 'string' as const,
+          description: 'Four-digit year from the user request. Use it for year-based document lists and let the runtime convert it to a UTC start/end range.',
+          pattern: '^\\d{4}$'
+        },
+        resource_id: {
+          type: 'string' as const,
+          description: 'Known resource id if the user explicitly provided one.'
+        },
+        customer_id: {
+          type: 'string' as const,
+          description: "Customer name or search term extracted from the user's request. Required when the user asks for the latest estimate or invoice of a customer."
+        },
+        customer_name: {
+          type: 'string' as const,
+          description: 'Alias for customer_id when the user gave a customer name.'
+        },
+        contact_name: {
+          type: 'string' as const,
+          description: 'Alias for customer_id when the user gave a contact name.'
+        },
+        contactName: {
+          type: 'string' as const,
+          description: 'Alias for customer_id when the user gave a contact name.'
+        },
+        contact: {
+          type: 'string' as const,
+          description: 'Alias for customer_id when the user gave a contact.'
         }
       }
     }
-  ] satisfies QwenToolDefinition[];
+  };
+  const clarificationTool: QwenToolDefinition = {
+    capability_key: 'request_clarification',
+    description: 'Ask the user to clarify missing or unsupported details without inventing parameters.',
+    parameters_schema: {
+      type: 'object' as const,
+      required: ['missing', 'reason'],
+      additionalProperties: false as const,
+      properties: {
+        missing: {
+          type: 'string' as const,
+          enum: ['customer', 'document_id', 'ambiguous', 'unsupported'],
+          description: 'What information is missing or unsupported.'
+        },
+        reason: {
+          type: 'string' as const,
+          description: 'Short human-readable explanation to share with the user.'
+        }
+      }
+    }
+  };
+  return [readTool, clarificationTool];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {

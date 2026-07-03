@@ -41,6 +41,14 @@ export interface QwenToolDefinition {
   parameters_schema: QwenParameterSchema;
 }
 
+type QwenClarificationMissing = 'customer' | 'document_id' | 'ambiguous' | 'unsupported';
+
+interface QwenClarificationResponseData {
+  kind: 'request_clarification';
+  missing: QwenClarificationMissing;
+  reason: string;
+}
+
 export interface QwenChatTool {
   type: 'function';
   function: {
@@ -181,13 +189,14 @@ function mergeLists(...lists: Array<string[] | null | undefined>): string[] {
 function buildResponse(input: {
   status: OrchestrationStatus;
   message: string;
+  data?: QwenClarificationResponseData | Record<string, unknown> | null;
 }): OrchestrationResponse {
   return {
     response_source: 'workflow_blocked',
     workflow_kind: null,
     status: input.status,
     message: input.message,
-    data: null
+    data: input.data ? (structuredClone(input.data) as Record<string, unknown>) : null
   };
 }
 
@@ -212,6 +221,22 @@ function appendEvidence(
       created_at: now().toISOString()
     })
   );
+}
+
+function clarificationDataFromArguments(argumentsObject: Record<string, unknown>): QwenClarificationResponseData | null {
+  const missing = normalizeOptionalString(argumentsObject.missing);
+  const reason = normalizeOptionalString(argumentsObject.reason);
+  if (!missing || !reason) {
+    return null;
+  }
+  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported') {
+    return null;
+  }
+  return {
+    kind: 'request_clarification',
+    missing,
+    reason
+  };
 }
 
 function normalizeToolChoice(
@@ -247,11 +272,16 @@ function buildSystemPrompt(input: {
     'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, year, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
-    'User: "ultimo presupuesto de Granapublic"',
+    'If the request is incomplete, ambiguous, or unsupported, call request_clarification instead of inventing params.',
+    'Use request_clarification with missing="customer" when the user did not give a customer.',
+    'Use request_clarification with missing="document_id" when the user needs an exact document id.',
+    'Use request_clarification with missing="ambiguous" when more context is needed.',
+    'Use request_clarification with missing="unsupported" when the request is outside the supported governed reads.',
+    'User: "ultimo presupuesto de ACME SL"',
     'Correct tool params:',
     '{',
     '  "resource_type": "estimate",',
-    '  "customer_id": "Granapublic"',
+    '  "customer_id": "ACME SL"',
     '}',
     "For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user's request.",
     'If the user asks for the latest N estimates or invoices of a customer, set limit to that positive integer and still provide customer_id.',
@@ -260,12 +290,12 @@ function buildSystemPrompt(input: {
     'For invoice payment-status lists, use resource_type="invoice" together with payment_status="pending", "paid", or "overdue".',
     'Examples:',
     '{ "resource_type": "invoice", "payment_status": "overdue" }',
-    '{ "resource_type": "invoice", "payment_status": "pending", "customer_id": "Granapublic" }',
-    '{ "resource_type": "invoice", "payment_status": "paid", "customer_id": "Petroprix" }',
-    '{ "resource_type": "invoice", "customer_id": "Granapublic", "limit": 3 }',
+    '{ "resource_type": "invoice", "payment_status": "pending", "customer_id": "Cliente Ejemplo SL" }',
+    '{ "resource_type": "invoice", "payment_status": "paid", "customer_id": "Cliente Demo SL" }',
+    '{ "resource_type": "invoice", "customer_id": "ACME SL", "limit": 3 }',
     'For year-based document lists, use year with a four-digit string like "2025" and do not compute date ranges or timestamps.',
     '{ "resource_type": "invoice", "year": "2025" }',
-    '{ "resource_type": "invoice", "year": "2025", "customer_id": "Granapublic" }',
+    '{ "resource_type": "invoice", "year": "2025", "customer_id": "Cliente Ejemplo SL" }',
     'Do not use payment_status with resource_type="estimate".',
     'Do not invent estimate_id or invoice_id.',
     `organization_id=${input.organization_id ?? 'null'}`,
@@ -440,6 +470,7 @@ function buildProposalOutcome(input: {
   status: OrchestrationStatus;
   reason: string;
   evidence_links: string[];
+  response_data?: QwenClarificationResponseData | Record<string, unknown> | null;
 }): OrchestrationOutcome {
   return cloneOutcome({
     request_id: input.request.request_id,
@@ -472,7 +503,8 @@ function buildProposalOutcome(input: {
     workflow_result: null,
     response: buildResponse({
       status: input.status,
-      message: input.reason
+      message: input.reason,
+      data: input.response_data ?? null
     }),
     evidence_links: input.evidence_links,
     created_at: new Date().toISOString(),
@@ -647,7 +679,9 @@ export class QwenOrchestrator implements OrchestratorPort {
       });
     }
 
-    const availableTools = this.toolCatalog.filter((tool) => active_capabilities.includes(tool.capability_key));
+    const availableTools = this.toolCatalog.filter(
+      (tool) => tool.capability_key === 'request_clarification' || active_capabilities.includes(tool.capability_key)
+    );
     const forcedCapabilityKey = normalizeOptionalString(request.context?.force_capability_key ?? null);
     const forcedTool = chooseActiveTool(active_capabilities, this.toolCatalog, forcedCapabilityKey);
     if (forcedCapabilityKey && !forcedTool) {
@@ -831,6 +865,39 @@ export class QwenOrchestrator implements OrchestratorPort {
         proposal: null,
         status: 'blocked',
         reason: 'tool arguments invalid',
+        evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+      });
+    }
+
+    if (matchingTool.capability_key === 'request_clarification') {
+      const clarification = clarificationDataFromArguments(parsedArguments);
+      if (!clarification) {
+        appendEvidence(this.evidenceLedger, now, {
+          organization_id: organization_id ?? 'unknown',
+          correlation_id,
+          record_type: 'model_orchestration_error',
+          subject: this.model,
+          data: {
+            request_id,
+            model: this.model,
+            capability_key: matchingTool.capability_key,
+            error: 'clarification arguments invalid'
+          }
+        });
+        return buildProposalOutcome({
+          request,
+          proposal: null,
+          status: 'blocked',
+          reason: 'clarification arguments invalid',
+          evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
+        });
+      }
+      return buildProposalOutcome({
+        request,
+        proposal: null,
+        status: 'no_proposal',
+        reason: clarification.reason,
+        response_data: clarification,
         evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)
       });
     }
