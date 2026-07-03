@@ -18,6 +18,7 @@ import {
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
   type PrincipalType,
+  type PresenceReadPort,
   type ResourceQuery,
   type ResourceResult,
   type WorkflowEvidenceTrace,
@@ -25,7 +26,7 @@ import {
   type WorkflowStep
 } from '../../contracts/src/index';
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
-import { InMemoryCapabilityRuntime, createMockResourceReadCapability } from '../../capabilities/src/index';
+import { InMemoryCapabilityRuntime, createMockResourceReadCapability, createPresenceCapabilitySet } from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 import { evaluatePolicy } from '../../policy/src/index';
@@ -43,6 +44,7 @@ export interface GovernedWorkflowRuntimeOptions {
   capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
   externalReadAdapter?: ExternalReadAdapter;
+  presenceReadPort?: PresenceReadPort;
   resolveOrganizationContext?: typeof resolveOrganizationContext;
   resolveIdentityContext?: typeof resolveIdentityContext;
   now?: () => Date;
@@ -54,6 +56,7 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly capabilityRuntime: InMemoryCapabilityRuntime;
   private readonly turnRuntime: InMemoryTurnRuntime;
   private readonly externalReadAdapter: ExternalReadAdapter;
+  private readonly presenceReadPort: PresenceReadPort | null;
   private readonly resolveOrganizationContext: typeof resolveOrganizationContext;
   private readonly resolveIdentityContext: typeof resolveIdentityContext;
   private readonly now: () => Date;
@@ -63,6 +66,7 @@ export class InMemoryGovernedWorkflowRuntime {
     this.evidenceLedger = options.evidenceLedger ?? new InMemoryEvidenceLedger();
     this.bindingStore = options.bindingStore ?? new InMemoryDecisionBindingStore();
     this.externalReadAdapter = options.externalReadAdapter ?? createMockExternalReadAdapter({ now: options.now });
+    this.presenceReadPort = options.presenceReadPort ?? null;
     this.resolveOrganizationContext = options.resolveOrganizationContext ?? resolveOrganizationContext;
     this.resolveIdentityContext = options.resolveIdentityContext ?? resolveIdentityContext;
     this.capabilityRuntime =
@@ -75,6 +79,11 @@ export class InMemoryGovernedWorkflowRuntime {
       this.registerCapability(createMockEstimateReadCapability());
       this.registerCapability(createMockEmailPreviewCapability());
       this.registerCapability(createMockEmailSendCapability());
+      if (this.presenceReadPort) {
+        for (const capability of createPresenceCapabilitySet(this.presenceReadPort)) {
+          this.registerCapability(capability);
+        }
+      }
     }
   }
 

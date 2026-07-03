@@ -114,6 +114,106 @@ export type EvidenceRecordType =
 
 export type ResourceReadStatus = 'found' | 'not_found' | 'unavailable' | 'error' | 'denied' | 'blocked';
 export type ResourcePaymentStatus = 'pending' | 'paid' | 'overdue';
+export type PresenceStatus = 'inside' | 'outside' | 'unknown' | 'no_data' | 'unsupported';
+export type PresenceDirection = 'in' | 'out' | 'neutral';
+export type PresenceScopeKind = 'self' | 'organization' | 'explicit' | 'unsupported';
+
+export interface PresenceSourceCitation {
+  tables: string[];
+  queryId: string;
+  rowCount: number;
+  truncated: boolean;
+}
+
+export interface PresenceScope {
+  kind: PresenceScopeKind;
+  requester_principal_id: string;
+  organization_id: string;
+  employee_ids: string[];
+  reason: string;
+}
+
+export interface PresenceEmployeeRecord {
+  employee_id: string;
+  principal_id: string | null;
+  display_name: string;
+  email: string | null;
+  active: boolean;
+}
+
+export interface PresenceEmployeeFindParams {
+  organization_id: string;
+  correlation_id: string;
+  term: string;
+  limit: number;
+}
+
+export interface PresenceEmployeeFindResult {
+  query_id: 'employee.find';
+  organization_id: string;
+  correlation_id: string;
+  search_term: string;
+  records: PresenceEmployeeRecord[];
+  truncated: boolean;
+  citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+}
+
+export interface PresencePunchRecord {
+  punch_id: string;
+  employee_id: string;
+  display_name: string;
+  direction: PresenceDirection;
+  punched_at: string;
+  source_table: string;
+  source_record_id: string;
+}
+
+export interface PresencePunchesListParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id: string | null;
+  limit: number;
+  offset: number;
+}
+
+export interface PresencePunchesListResult {
+  query_id: 'punches.list';
+  organization_id: string;
+  correlation_id: string;
+  employee_id: string | null;
+  records: PresencePunchRecord[];
+  truncated: boolean;
+  citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+}
+
+export interface PresenceCurrentParams {
+  organization_id: string;
+  correlation_id: string;
+  scope: PresenceScope;
+  active_window_days?: number;
+  current_window_hours?: number;
+}
+
+export interface PresenceCurrentResult {
+  query_id: 'presence.current';
+  organization_id: string;
+  correlation_id: string;
+  scope: PresenceScope;
+  status: PresenceStatus;
+  employee_id: string | null;
+  display_name: string | null;
+  direction: PresenceDirection | null;
+  observed_at: string | null;
+  row_count: number;
+  truncated: boolean;
+  citations: PresenceSourceCitation[];
+}
+
+export interface PresenceReadPort {
+  findEmployee(input: PresenceEmployeeFindParams): PresenceEmployeeFindResult;
+  listPunches(input: PresencePunchesListParams): PresencePunchesListResult;
+  currentPresence(input: PresenceCurrentParams): PresenceCurrentResult;
+}
 
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
@@ -351,8 +451,8 @@ export interface ResourceListAggregate {
 
 export interface ResourceListRecord {
   record_id: string;
-  resource_type: 'invoice';
-  payment_status: ResourcePaymentStatus;
+  resource_type: 'estimate' | 'invoice';
+  payment_status: ResourcePaymentStatus | null;
   status: number | null;
   paymentsPending: number | null;
   dueDate: number | null;
@@ -366,9 +466,9 @@ export interface ResourceListRecord {
 export interface ResourceListResultData {
   kind: 'list';
   result_mode: 'list';
-  resource_type: 'invoice';
+  resource_type: 'estimate' | 'invoice';
   payment_status: ResourcePaymentStatus | null;
-  lookup_mode: 'by_status' | 'by_customer' | 'by_year';
+  lookup_mode: 'by_status' | 'by_customer' | 'by_year' | 'latest_n';
   customer?: string | null;
   year?: string | null;
   records: [ResourceListRecord, ...ResourceListRecord[]] | ResourceListRecord[];
@@ -463,6 +563,7 @@ export interface ResourceQuery {
   correlation_id: string | null;
   actor: TurnActor | null;
   resource_type: string;
+  limit?: number | null;
   payment_status?: ResourcePaymentStatus | null;
   year?: string | null;
   resource_id: string | null;
@@ -522,6 +623,7 @@ export interface GovernedWorkflowRequestBase {
 export interface MockReadEstimateWorkflowInput extends GovernedWorkflowRequestBase {
   kind: 'mock.estimate.read';
   resource_type?: 'estimate' | 'invoice';
+  limit?: number | null;
   payment_status?: ResourcePaymentStatus | null;
   year?: string | null;
   estimate_id?: string | null;
@@ -810,6 +912,17 @@ export function normalizeRequestedScope(requested_scope: CoreRequestPayload['req
   return [];
 }
 
+function normalizeOptionalLimit(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 export function normalizeResourceQuery(input: unknown): ResourceQuery {
   const candidate = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const actorCandidate = candidate.actor && typeof candidate.actor === 'object' ? (candidate.actor as Record<string, unknown>) : null;
@@ -833,6 +946,7 @@ export function normalizeResourceQuery(input: unknown): ResourceQuery {
         }
       : null,
     resource_type: typeof candidate.resource_type === 'string' ? candidate.resource_type : '',
+    limit: normalizeOptionalLimit(candidate.limit),
     payment_status:
       candidate.payment_status === 'pending' || candidate.payment_status === 'paid' || candidate.payment_status === 'overdue'
         ? candidate.payment_status
@@ -855,6 +969,7 @@ export function fingerprintResourceQuery(query: ResourceQuery): string {
     correlation_id: query.correlation_id,
     actor: query.actor,
     resource_type: query.resource_type,
+    limit: query.limit ?? null,
     payment_status: query.payment_status,
     year: query.year,
     resource_id: query.resource_id,

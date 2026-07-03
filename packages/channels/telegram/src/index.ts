@@ -290,6 +290,7 @@ function formatListCount(value: number): string {
 }
 
 function buildInvoiceListHeader(input: {
+  resourceType: 'estimate' | 'invoice';
   paymentStatus: string | null;
   lookupMode: string | null;
   customerName: string | null;
@@ -301,28 +302,44 @@ function buildInvoiceListHeader(input: {
   const countText = formatListCount(input.count);
   const paymentsPendingTotal = numberFromKeys(input.aggregate, ['paymentsPendingTotal']);
   const totalAmount = numberFromKeys(input.aggregate, ['totalAmount']);
+  const latestPrefix =
+    input.resourceType === 'invoice'
+      ? input.count === 1
+        ? 'Última factura'
+        : `Últimas ${countText} facturas`
+      : input.count === 1
+        ? 'Último presupuesto'
+        : `Últimos ${countText} presupuestos`;
+  const amountLabel = input.resourceType === 'invoice' ? 'facturado' : 'presupuestado';
+  if (input.lookupMode === 'latest_n') {
+    const scope = [latestPrefix, input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+      (value): value is string => Boolean(value)
+    );
+    const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
+    return `${scope.join(' ')}: ${countText} · ${amountText} ${amountLabel}`;
+  }
   if (input.lookupMode === 'by_year' && !input.paymentStatus) {
-    const scope = ['Facturas', input.year ? `de ${input.year}` : null, input.customerName ? `de ${input.customerName}` : null].filter(
+    const scope = [input.resourceType === 'invoice' ? 'Facturas' : 'Presupuestos', input.year ? `de ${input.year}` : null, input.customerName ? `de ${input.customerName}` : null].filter(
       (value): value is string => Boolean(value)
     );
     const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
     return `${scope.join(' ')}: ${countText} · ${amountText} facturado`;
   }
   if (input.paymentStatus === 'paid') {
-    const scope = ['Facturas pagadas', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+    const scope = [input.resourceType === 'invoice' ? 'Facturas pagadas' : 'Presupuestos pagados', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
       (value): value is string => Boolean(value)
     );
     const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
     return `${scope.join(' ')}: ${countText} · ${amountText} facturado`;
   }
   if (input.paymentStatus === 'pending' || input.paymentStatus === 'overdue') {
-    const scope = ['Facturas', paymentStatusLabel(input.paymentStatus), input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+    const scope = [input.resourceType === 'invoice' ? 'Facturas' : 'Presupuestos', paymentStatusLabel(input.paymentStatus), input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
       (value): value is string => Boolean(value)
     );
     const amountText = formatCurrencyAmount(paymentsPendingTotal ?? 0, input.currency) ?? '0,00 €';
     return `${scope.join(' ')}: ${countText} · ${amountText} pendientes`;
   }
-  const scope = ['Facturas', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+  const scope = [input.resourceType === 'invoice' ? 'Facturas' : 'Presupuestos', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
     (value): value is string => Boolean(value)
   );
   const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
@@ -363,6 +380,7 @@ function buildInvoiceListRecordLine(input: {
 function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
+  const resourceType = resourceTypeFromOutcome(outcome);
   if (!responseData || !isPlainObject(responseData) || responseData.kind !== 'list' || !Array.isArray(responseData.records)) {
     return buildCompletedOutboundText(outcome);
   }
@@ -385,6 +403,7 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   const lines: string[] = [];
   lines.push(
     buildInvoiceListHeader({
+      resourceType,
       paymentStatus,
       lookupMode,
       customerName,

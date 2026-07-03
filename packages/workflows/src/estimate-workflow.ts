@@ -75,6 +75,7 @@ function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record
     resource_type: input.resource_type ?? 'estimate',
     estimate_id: input.estimate_id ?? null,
     customer_id: input.customer_id ?? null,
+    limit: input.limit ?? null,
     payment_status: input.payment_status ?? null,
     year: input.year ?? null
   };
@@ -82,8 +83,10 @@ function createMockEstimatePayload(input: MockReadEstimateWorkflowInput): Record
 
 function buildInvoiceListResponseData(
   resourceResult: ResourceResult,
+  resource_type: 'estimate' | 'invoice',
   payment_status: string | null,
-  year: string | null
+  year: string | null,
+  lookup_mode: string | null
 ): Record<string, unknown> | null {
   if (resourceResult.status !== 'found') {
     return null;
@@ -99,9 +102,9 @@ function buildInvoiceListResponseData(
     ...structuredClone(data ?? {}),
     kind: 'list',
     result_mode: 'list',
-    resource_type: 'invoice',
+    resource_type,
     payment_status: typeof payment_status === 'string' && payment_status.length > 0 ? payment_status : data?.payment_status ?? null,
-    lookup_mode: typeof data?.lookup_mode === 'string' ? data.lookup_mode : year ? 'by_year' : 'by_status',
+    lookup_mode: typeof data?.lookup_mode === 'string' ? data.lookup_mode : lookup_mode ?? (year ? 'by_year' : payment_status ? 'by_status' : 'by_customer'),
     year: typeof year === 'string' && year.length > 0 ? year : typeof data?.year === 'string' ? data.year : null,
     records,
     aggregate: {
@@ -126,6 +129,7 @@ function createMockResourceQuery(input: {
   principal_type: PrincipalType | null;
   delegated_identity: string | null;
   resource_type?: 'estimate' | 'invoice';
+  limit?: number | null;
   payment_status?: 'pending' | 'paid' | 'overdue' | null;
   year?: string | null;
   estimate_id?: string | null;
@@ -145,6 +149,7 @@ function createMockResourceQuery(input: {
     delegated_identity: input.delegated_identity
     },
     resource_type: input.resource_type ?? 'estimate',
+    limit: input.limit ?? null,
     resource_id: input.payment_status ? null : input.estimate_id ?? null,
     payment_status: input.payment_status ?? null,
     year: input.year ?? null,
@@ -455,6 +460,8 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
       delegated_identity: identityContext.delegated_identity,
 
       resource_type,
+
+      limit: input.limit ?? null,
 
       payment_status: input.payment_status ?? null,
 
@@ -1031,31 +1038,28 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
       });
 
     }
-
-
+    const responseHasListData =
+      resourceResult?.status === 'found' &&
+      resourceResult.data !== null &&
+      typeof resourceResult.data === 'object' &&
+      !Array.isArray(resourceResult.data) &&
+      resourceResult.data.kind === 'list';
 
     const responseData =
-
       capability_result.status === 'executed'
-
         ? resourceResult?.status === 'found'
-
-          ? governedResourceQuery.payment_status && resource_type === 'invoice'
-
-            ? buildInvoiceListResponseData(resourceResult, governedResourceQuery.payment_status, governedResourceQuery.year ?? null)
-
-            : resource_type === 'invoice' && governedResourceQuery.year
-
-              ? buildInvoiceListResponseData(resourceResult, null, governedResourceQuery.year)
-
-              : resourceResult.data
-
+          ? responseHasListData
+            ? buildInvoiceListResponseData(
+                resourceResult,
+                resource_type,
+                governedResourceQuery.payment_status ?? null,
+                governedResourceQuery.year ?? null,
+                governedResourceQuery.limit && governedResourceQuery.limit > 1 ? 'latest_n' : null
+              )
+            : resourceResult.data
           : capability_result.output?.result && typeof capability_result.output.result === 'object'
-
             ? (capability_result.output.result as { data?: Record<string, unknown> | null }).data ?? null
-
             : null
-
         : null;
 
     const response = createRuntimeResponse({
@@ -1086,24 +1090,20 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
         capability_result.status === 'executed'
 
-          ? resource_type === 'invoice'
-
-            ? governedResourceQuery.payment_status
-
+          ? responseHasListData
+            ? resource_type === 'invoice'
               ? 'invoice list retrieved from runtime'
-
-              : 'invoice retrieved from runtime'
-
-            : 'estimate retrieved from runtime'
+              : 'estimate list retrieved from runtime'
+            : resource_type === 'invoice'
+              ? 'invoice retrieved from runtime'
+              : 'estimate retrieved from runtime'
 
           : capability_result.status === 'not_found'
 
             ? resource_type === 'invoice'
 
-              ? governedResourceQuery.payment_status
-
+              ? responseHasListData
                 ? 'invoice list not found'
-
                 : 'invoice not found'
 
               : 'estimate not found'
@@ -1112,10 +1112,8 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
               ? resource_type === 'invoice'
 
-                ? governedResourceQuery.payment_status
-
+                ? responseHasListData
                   ? 'invoice list runtime unavailable'
-
                   : 'invoice runtime unavailable'
 
                 : 'estimate runtime unavailable'
@@ -1124,20 +1122,16 @@ function createMockEmailPayload(input: MockEmailSendWorkflowInput): Record<strin
 
                 ? resource_type === 'invoice'
 
-                  ? governedResourceQuery.payment_status
-
+                  ? responseHasListData
                     ? 'invoice list runtime error'
-
                     : 'invoice runtime error'
 
                   : 'estimate runtime error'
 
                 : resource_type === 'invoice'
 
-                  ? governedResourceQuery.payment_status
-
+                  ? responseHasListData
                     ? 'invoice list denied'
-
                     : 'invoice denied'
 
                   : 'estimate denied',

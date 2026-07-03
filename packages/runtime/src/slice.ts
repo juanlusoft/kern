@@ -201,7 +201,7 @@ function buildQwenToolCatalog() {
     {
       capability_key: 'mock.resource.read',
       description:
-        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
+        'Read governed estimates or invoices from the runtime by customer, exact document id, or year. For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user request. For latest N estimates or invoices of a customer, provide customer_id together with a positive integer limit. Use limit only with customer_id. For invoice payment-status lists, use resource_type="invoice" with payment_status="pending", "paid", or "overdue". For year-based document lists, provide year as a four-digit string like "2025" and do not compute date ranges or timestamps. Do not invent estimate_id or invoice_id. Only provide estimate_id or invoice_id if the user explicitly gave an exact estimate or document id.',
       parameters_schema: {
         type: 'object' as const,
         required: ['resource_type'],
@@ -226,6 +226,12 @@ function buildQwenToolCatalog() {
           },
           estimate_id: { type: 'string' as const },
           invoice_id: { type: 'string' as const },
+          limit: {
+            type: 'integer' as const,
+            description: 'Number of latest documents to return when the user asks for the latest N documents of a customer.',
+            minimum: 1,
+            maximum: 20
+          },
           payment_status: {
             type: 'string' as const,
             enum: ['pending', 'paid', 'overdue'],

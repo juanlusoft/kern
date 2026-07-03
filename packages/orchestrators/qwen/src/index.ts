@@ -21,6 +21,8 @@ export interface QwenParameterSchemaProperty {
   description?: string;
   enum?: string[];
   pattern?: string;
+  minimum?: number;
+  maximum?: number;
 }
 
 export interface QwenParameterSchema {
@@ -252,11 +254,15 @@ function buildSystemPrompt(input: {
     '  "customer_id": "Granapublic"',
     '}',
     "For latest estimate or invoice of a named customer, always provide customer_id with the customer name from the user's request.",
+    'If the user asks for the latest N estimates or invoices of a customer, set limit to that positive integer and still provide customer_id.',
+    'Use limit only with customer_id.',
+    'Do not use limit with payment_status, year, estimate_id, invoice_id, or resource_id.',
     'For invoice payment-status lists, use resource_type="invoice" together with payment_status="pending", "paid", or "overdue".',
     'Examples:',
     '{ "resource_type": "invoice", "payment_status": "overdue" }',
     '{ "resource_type": "invoice", "payment_status": "pending", "customer_id": "Granapublic" }',
     '{ "resource_type": "invoice", "payment_status": "paid", "customer_id": "Petroprix" }',
+    '{ "resource_type": "invoice", "customer_id": "Granapublic", "limit": 3 }',
     'For year-based document lists, use year with a four-digit string like "2025" and do not compute date ranges or timestamps.',
     '{ "resource_type": "invoice", "year": "2025" }',
     '{ "resource_type": "invoice", "year": "2025", "customer_id": "Granapublic" }',
@@ -406,6 +412,10 @@ function validateToolArguments(definition: QwenToolDefinition, params: Record<st
     if (property.type === 'array' && !Array.isArray(value)) return false;
     if (property.type === 'object' && !isPlainObject(value)) return false;
     if (property.enum && typeof value === 'string' && !property.enum.includes(value)) return false;
+    if (typeof value === 'number') {
+      if (typeof property.minimum === 'number' && value < property.minimum) return false;
+      if (typeof property.maximum === 'number' && value > property.maximum) return false;
+    }
   }
   return true;
 }

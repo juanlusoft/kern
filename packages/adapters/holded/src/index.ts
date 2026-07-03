@@ -120,6 +120,17 @@ function normalizeYear(value: unknown): string | null {
   return candidate && /^\d{4}$/.test(candidate) ? candidate : null;
 }
 
+function normalizeLimit(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 function normalizeSearchText(value: unknown): string | null {
   const candidate = normalizeOptionalString(value);
   if (!candidate) {
@@ -221,11 +232,21 @@ function validateQuery(input: ResourceQuery): string | null {
       : input.filters && typeof input.filters.customerName === 'string'
         ? normalizeOptionalString(input.filters.customerName)
         : null;
+  const limit = input.limit === undefined || input.limit === null ? null : normalizeLimit(input.limit);
   if (!resource_id && !customer_id && !contact_id && !contact && !contact_name && !customer_name && !payment_status && normalizeYear(input.year) === null) return 'resource query invalid';
+  if (input.limit !== undefined && input.limit !== null) {
+    if (limit === null) return 'resource query invalid';
+    if (!customer_id && !contact_id && !contact && !contact_name && !customer_name) return 'resource query invalid';
+    if (payment_status || normalizeYear(input.year) !== null || resource_id) return 'resource query invalid';
+  }
   return null;
 }
 
-function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status' | 'by_year' {
+function lookupMode(query: ResourceQuery): 'by_id' | 'by_customer' | 'by_status' | 'by_year' | 'latest_n' {
+  const limit = normalizeLimit(query.limit);
+  if (limit !== null && limit > 1 && collectQueryLookupTerms(query).length > 0 && !normalizePaymentStatus(query.payment_status) && !normalizeYear(query.year) && !normalizeOptionalString(query.resource_id)) {
+    return 'latest_n';
+  }
   if (normalizeYear(query.year)) {
     return 'by_year';
   }
@@ -621,7 +642,11 @@ function buildListRecord(input: {
   now: () => Date;
 }): ResourceListRecord {
   const record_id = normalizeOptionalString(input.record_id) ?? 'unknown';
-  const payment_status = normalizePaymentStatus(input.query.payment_status) ?? deriveInvoicePaymentStatus(input.record, input.now);
+  const resource_type = normalizeDocumentType(input.query.resource_type) ?? 'estimate';
+  const payment_status =
+    resource_type === 'invoice'
+      ? normalizePaymentStatus(input.query.payment_status) ?? deriveInvoicePaymentStatus(input.record, input.now)
+      : null;
   const total =
     typeof input.record.total === 'number' && Number.isFinite(input.record.total)
       ? input.record.total
@@ -631,7 +656,7 @@ function buildListRecord(input: {
   return {
     ...structuredClone(input.record),
     record_id,
-    resource_type: 'invoice',
+    resource_type,
     payment_status,
     status: normalizeRecordStatus(input.record),
     paymentsPending: normalizePaymentsPending(input.record),
@@ -681,10 +706,14 @@ function buildListFoundResult(input: {
   now: () => Date;
   truncated?: boolean;
 }): ResourceResult {
+  const documentType = normalizeDocumentType(input.query.resource_type) ?? 'estimate';
   const payment_status = normalizePaymentStatus(input.query.payment_status);
   const lookup_mode = lookupMode(input.query);
-  const listLabel = payment_status ?? (normalizeYear(input.query.year) ? input.query.year : 'list');
   const customer = normalizeOptionalString(input.query.filters?.customer_id ?? input.query.customer_id);
+  const listLabel =
+    lookup_mode === 'latest_n'
+      ? customer ?? (documentType === 'invoice' ? 'latest invoice list' : 'latest estimate list')
+      : payment_status ?? (normalizeYear(input.query.year) ? input.query.year : 'list');
   const listRecords = input.records
     .map((record) => {
       const record_id = extractRecordId(record) ?? extractRecordDocumentNumber(record);
@@ -724,7 +753,7 @@ function buildListFoundResult(input: {
     data: {
       kind: 'list',
       result_mode: 'list',
-      resource_type: 'invoice',
+      resource_type: documentType,
       payment_status,
       lookup_mode,
       ...(customer ? { customer } : {}),
@@ -1171,6 +1200,15 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
     const authorization = this.authorize(normalized);
     const resource_id = normalizeOptionalString(normalized.resource_id) ?? normalizeOptionalString(normalized.filters?.customer_id) ?? null;
     const payment_status = normalizePaymentStatus(normalized.payment_status);
+    const limit = normalizeLimit(normalized.limit);
+    const customerLookupTerms = collectQueryLookupTerms(normalized);
+    const wantsLatestCustomerList =
+      limit !== null &&
+      limit > 1 &&
+      customerLookupTerms.length > 0 &&
+      !payment_status &&
+      !normalizeYear(normalized.year) &&
+      normalizeOptionalString(normalized.resource_id) === null;
 
     if (!authorization.authorized) {
       const reason = authorization.reason;
@@ -1188,9 +1226,9 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       );
     }
 
-    if (payment_status || normalizeYear(normalized.year)) {
+    if (payment_status || normalizeYear(normalized.year) || wantsLatestCustomerList) {
       const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
-      const listLabel = payment_status ?? (normalizeYear(normalized.year) ? normalized.year : 'list');
+      const listLabel = payment_status ?? (normalizeYear(normalized.year) ? normalized.year : wantsLatestCustomerList ? resource_id ?? 'latest customer documents' : 'list');
       const paginated = fetchHoldedDocumentPages({
         query: normalized,
         adapter_id: this.adapter_id,
@@ -1232,13 +1270,14 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
           })
         );
       }
+      const limitedRecords = wantsLatestCustomerList && limit !== null ? records.slice(0, limit) : records;
       return cloneResourceResult(
         buildListFoundResult({
           query: normalized,
           adapter_id: this.adapter_id,
           authorization,
           resource_id,
-          records,
+          records: limitedRecords,
           observed_at: this.now().toISOString(),
           now: this.now,
           truncated: paginated.truncated
