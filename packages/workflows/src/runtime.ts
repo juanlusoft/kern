@@ -17,6 +17,7 @@ import {
   type GovernedWorkflowKind,
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
+  type PresenceReadPort,
   type PrincipalType,
   type ResourceQuery,
   type ResourceResult,
@@ -25,7 +26,11 @@ import {
   type WorkflowStep
 } from '../../contracts/src/index';
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
-import { InMemoryCapabilityRuntime, createMockResourceReadCapability } from '../../capabilities/src/index';
+import {
+  InMemoryCapabilityRuntime,
+  createMockResourceReadCapability,
+  createPresenceCapabilitySet
+} from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 import { evaluatePolicy } from '../../policy/src/index';
@@ -43,6 +48,7 @@ export interface GovernedWorkflowRuntimeOptions {
   capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
   externalReadAdapter?: ExternalReadAdapter;
+  presenceReadPort?: PresenceReadPort | null;
   resolveOrganizationContext?: typeof resolveOrganizationContext;
   resolveIdentityContext?: typeof resolveIdentityContext;
   now?: () => Date;
@@ -75,6 +81,11 @@ export class InMemoryGovernedWorkflowRuntime {
       this.registerCapability(createMockEstimateReadCapability());
       this.registerCapability(createMockEmailPreviewCapability());
       this.registerCapability(createMockEmailSendCapability());
+      if (options.presenceReadPort) {
+        for (const capability of createPresenceCapabilitySet(options.presenceReadPort)) {
+          this.registerCapability(capability);
+        }
+      }
     }
   }
 

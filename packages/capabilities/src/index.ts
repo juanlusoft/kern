@@ -889,3 +889,5 @@ export function createMockResourceReadCapability(
     ...overrides
   };
 }
+
+export * from './presence-capabilities';
