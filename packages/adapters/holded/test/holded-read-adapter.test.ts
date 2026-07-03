@@ -1272,6 +1272,72 @@ test('Holded adapter chooses the latest estimate by date before comparing docume
   assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04367');
 });
 
+test('Holded adapter returns the latest N estimates for a customer in descending order and keeps aggregate totals', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'P26/04366',
+        docNumber: 'P26/04366',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2100,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'P26/04367',
+        docNumber: 'P26/04367',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2200,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      },
+      {
+        estimate_id: 'P26/04368',
+        docNumber: 'P26/04368',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 2300,
+        currency: 'EUR',
+        date: '2024-07-04T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      limit: 2,
+      filters: { customer_id: 'granapublic' }
+    })
+  );
+
+  const listData = result.data as ResourceListResultData | null;
+  assert.equal(result.status, 'found');
+  assert.equal(listData?.kind, 'list');
+  assert.equal(listData?.resource_type, 'estimate');
+  assert.equal(listData?.lookup_mode, 'latest_n');
+  assert.equal(listData?.aggregate.count, 2);
+  assert.equal(listData?.aggregate.totalAmount, 4500);
+  assert.equal(listData?.aggregate.paymentsPendingTotal, 0);
+  assert.equal(listData?.records[0]?.record_id, 'P26/04368');
+  assert.equal(listData?.records[1]?.record_id, 'P26/04367');
+  assert.equal(listData?.records[0]?.source_evidence[0]?.record_id, 'P26/04368');
+  assert.equal(listData?.records[1]?.source_evidence[0]?.record_id, 'P26/04367');
+});
+
 test('Holded adapter chooses the latest estimate by normalized date before comparing document numbers', () => {
   const { fetchStub } = createFetchStub({
     status: 200,

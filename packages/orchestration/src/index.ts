@@ -211,6 +211,17 @@ function normalizeYear(value: unknown): string | null {
   return candidate && /^\d{4}$/.test(candidate) ? candidate : null;
 }
 
+function normalizeLimit(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 function isValidMockResourceReadProposal(params: Record<string, unknown>): boolean {
   const estimate_id = normalizeOptionalString(params.estimate_id);
   const year = normalizeYear(params.year);
@@ -224,6 +235,8 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
   const payment_status = normalizeResourceQuery({
     payment_status: params.payment_status ?? null
   }).payment_status;
+  const limit = normalizeLimit(params.limit);
+  const hasCustomerLookup = customer_id !== null;
 
   if (payment_status && resource_type !== 'invoice') {
     return false;
@@ -233,7 +246,13 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
     return false;
   }
 
-  return Boolean(estimate_id || customer_id || payment_status || year);
+  if (params.limit !== undefined && params.limit !== null) {
+    if (limit === null || !hasCustomerLookup || payment_status !== null || year !== null || estimate_id !== null) {
+      return false;
+    }
+  }
+
+  return Boolean(estimate_id || customer_id || payment_status || year || limit);
 }
 
 function resolveWorkflowRequest(
@@ -247,13 +266,19 @@ function resolveWorkflowRequest(
     const payment_status = normalizeResourceQuery({
       payment_status: proposal.params.payment_status ?? null
     }).payment_status;
+    const limit = normalizeLimit(proposal.params.limit);
     const customer_id =
       normalizeCustomerLookupParam(proposal.params.customer_id) ??
       normalizeCustomerLookupParam(proposal.params.customer_name) ??
       normalizeCustomerLookupParam(proposal.params.contact_name) ??
       normalizeCustomerLookupParam(proposal.params.contactName) ??
       normalizeCustomerLookupParam(proposal.params.contact);
-    if (!estimate_id && !customer_id && !payment_status && !year) {
+    if (proposal.params.limit !== undefined && proposal.params.limit !== null) {
+      if (limit === null || !customer_id || payment_status || year || estimate_id) {
+        return null;
+      }
+    }
+    if (!estimate_id && !customer_id && !payment_status && !year && limit === null) {
       return null;
     }
     return {
@@ -263,6 +288,7 @@ function resolveWorkflowRequest(
       principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
       correlation_id: request.correlation_id,
       resource_type,
+      limit,
       payment_status,
       year,
       estimate_id,

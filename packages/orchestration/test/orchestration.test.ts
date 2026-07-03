@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHoldedReadAdapter, type HoldedFetchResponse } from '../../adapters/holded/src/index';
 import { MockOrchestrator, createMockOrchestrator } from '../../orchestrators/mock/src/index';
@@ -88,7 +88,8 @@ function buildBoundary(options: Partial<OrchestrationBoundaryOptions> = {}) {
   return new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     workflowRuntime: runtime,
-    orchestrator: options.orchestrator ?? createMockOrchestrator({ now: () => new Date('2026-06-29T00:00:00.000Z') }),
+    orchestrator:
+      options.orchestrator ?? createMockOrchestrator({ now: () => new Date('2026-06-29T00:00:00.000Z') }),
     installationCapabilities: {
       'install-acme': ['mock.resource.read'],
       'install-email': ['mock.email.send']
@@ -431,6 +432,156 @@ test('M8 validates invoice payment-status proposals for pending and paid without
   assert.equal(pendingOutcome.validation?.status, 'proposal');
   assert.equal(paidOutcome.status, 'proposal');
   assert.equal(paidOutcome.validation?.status, 'proposal');
+});
+
+test('M8 accepts latest N invoice proposals with a customer and forwards the limit into runtime results', () => {
+  const invoiceHolded = buildHoldedFetch(200, [
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1930',
+      docNumber: 'F26/1930',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      status: 0,
+      paymentsPending: 1100,
+      dueDate: '2024-03-09T00:00:00.000Z',
+      total_amount: 1100,
+      currency: 'EUR',
+      date: '2024-03-09T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1931',
+      docNumber: 'F26/1931',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'MUPIS PAPEL' }],
+      status: 0,
+      paymentsPending: 1200,
+      dueDate: '2024-07-03T00:00:00.000Z',
+      total_amount: 1200,
+      currency: 'EUR',
+      date: '2024-07-03T00:00:00.000Z'
+    },
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1932',
+      docNumber: 'F26/1932',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      products: [{ name: 'Vinilo Monomérico Plus' }],
+      status: 0,
+      paymentsPending: 1300,
+      dueDate: '2024-07-02T00:00:00.000Z',
+      total_amount: 1300,
+      currency: 'EUR',
+      date: '2024-07-02T00:00:00.000Z'
+    }
+  ]);
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    externalReadAdapter: createHoldedReadAdapter({
+      apiKey: 'token',
+      fetch: invoiceHolded.fetch,
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      installation: {
+        installation_id: 'install-acme',
+        active_modules: ['holded-read']
+      }
+    })
+  });
+  const boundary = new InMemoryOrchestrationBoundary({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    workflowRuntime: runtime,
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        customer_id: 'Granapublic',
+        limit: 3
+      }, ['facturas', '3'])]
+    }),
+    installationCapabilities: {
+      'install-acme': ['mock.resource.read']
+    }
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'Necesito las 3 últimas facturas de Granapublic',
+      correlation_id: 'corr-invoice-latest-n'
+    })
+  );
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.response.response_source, 'runtime_result');
+  assert.equal(outcome.response.status, 'completed');
+  const responseData = outcome.response.data as
+    | {
+        kind?: string;
+        lookup_mode?: string;
+        aggregate?: { count?: number; totalAmount?: number };
+        records?: Array<{ invoice_id?: string }>;
+      }
+    | null
+    | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.lookup_mode, 'latest_n');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.totalAmount, 3600);
+  assert.equal(responseData?.records?.[0]?.invoice_id, 'F26/1931');
+  assert.equal(responseData?.records?.[1]?.invoice_id, 'F26/1932');
+  assert.equal(responseData?.records?.[2]?.invoice_id, 'F26/1930');
+});
+
+test('M8 rejects latest N proposals that omit a customer or misuse limit', () => {
+  const missingCustomerBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        limit: 3
+      }, ['últimas'])]
+    })
+  });
+  const badLimitBoundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [buildReadProposal({
+        resource_type: 'invoice',
+        customer_id: 'Granapublic',
+        payment_status: 'overdue',
+        limit: 3
+      }, ['últimas'])]
+    })
+  });
+
+  const missingCustomerOutcome = missingCustomerBoundary.execute(
+    buildRequest({
+      user_message: 'Necesito las 3 últimas facturas',
+      correlation_id: 'corr-missing-customer-limit'
+    })
+  );
+  const badLimitOutcome = badLimitBoundary.execute(
+    buildRequest({
+      user_message: 'Necesito las 3 facturas vencidas de Granapublic',
+      correlation_id: 'corr-limit-with-status'
+    })
+  );
+
+  assert.equal(missingCustomerOutcome.status, 'blocked');
+  assert.equal(missingCustomerOutcome.reason, 'proposal params invalid');
+  assert.equal(badLimitOutcome.status, 'no_proposal');
+  assert.equal(badLimitOutcome.reason, 'no proposal');
 });
 
 test('M8 validates invoice year proposals without a customer', () => {

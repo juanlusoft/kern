@@ -87,12 +87,14 @@ function buildQwenTransport(
     resource_type?: 'estimate' | 'invoice';
     payment_status?: 'pending' | 'paid' | 'overdue' | null;
     customer_id?: string | null;
+    limit?: number | null;
     year?: string | null;
   } = {}
 ): QwenChatCompletionsTransport {
   const resource_type = options.resource_type ?? 'estimate';
   const payment_status = options.payment_status ?? null;
   const customer_id = options.customer_id ?? 'Granapublic';
+  const limit = options.limit ?? null;
   const year = options.year ?? null;
   return {
     chatCompletions() {
@@ -112,6 +114,7 @@ function buildQwenTransport(
                           arguments: {
                             resource_type,
                             ...(customer_id ? { customer_id } : {}),
+                            ...(limit ? { limit } : {}),
                             ...(year ? { year } : {}),
                             ...(payment_status ? { payment_status } : {}),
                             ...(!payment_status && !year && !customer_id ? { estimate_id: 'estimate-12345' } : {})
@@ -326,6 +329,11 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
             year?: {
               pattern?: string;
             };
+            limit?: {
+              type?: string;
+              minimum?: number;
+              maximum?: number;
+            };
           };
         };
       };
@@ -339,6 +347,10 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     ),
     true
   );
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some((candidate) => candidate.required?.includes('limit')), false);
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.properties?.limit?.type, 'integer');
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.properties?.limit?.minimum, 1);
+  assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.properties?.limit?.maximum, 20);
   assert.equal(
     qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some(
       (candidate) => candidate.required?.includes('invoice_id') && candidate.required?.length === 1
@@ -356,6 +368,8 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     qwenRequest.messages?.[0]?.content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
     true
   );
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('latest N estimates or invoices of a customer'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Use limit only with customer_id.'), true);
   assert.equal(
     qwenRequest.messages?.[0]?.content?.includes('Do not invent estimate_id or invoice_id.'),
     true
@@ -445,6 +459,124 @@ test('runtime slice can read invoices and formats Telegram output safely', () =>
   assert.equal(sentMessages[0].text.includes('MUPIS PAPEL'), true);
   assert.equal(sentMessages[0].text.includes('Fuente:'), false);
   assert.equal(sentMessages[0].text.includes('\n'), false);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice can read the latest N invoices by customer and keeps Telegram output human-readable', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 31,
+      message: {
+        message_id: 310,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito las 3 últimas facturas de Granapublic',
+        date: 1_751_472_210,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport({ resource_type: 'invoice', customer_id: 'Granapublic', limit: 3 }),
+    holdedFetch: buildHoldedFetch([], 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  const responseData = result.orchestration_outcome?.response.data as
+    | { kind?: string; lookup_mode?: string; aggregate?: { count?: number; totalAmount?: number } }
+    | null
+    | undefined;
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.lookup_mode, 'latest_n');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.totalAmount, 3600);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('Últimas 3 facturas de Granapublic:'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1931'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1932'), true);
+  assert.equal(sentMessages[0].text.includes('F26/1930'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), false);
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice can read the latest N estimates by customer and keeps Telegram output human-readable', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 32,
+      message: {
+        message_id: 320,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'Necesito los 2 últimos presupuestos de Granapublic',
+        date: 1_751_472_220,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport({ resource_type: 'estimate', customer_id: 'Granapublic', limit: 2 }),
+    holdedFetch: buildHoldedFetch([], 'estimate')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  const responseData = result.orchestration_outcome?.response.data as
+    | { kind?: string; lookup_mode?: string; aggregate?: { count?: number; totalAmount?: number } }
+    | null
+    | undefined;
+  assert.equal(result.orchestration_outcome?.response.status, 'completed');
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.lookup_mode, 'latest_n');
+  assert.equal(responseData?.aggregate?.count, 2);
+  assert.equal(responseData?.aggregate?.totalAmount, 4500);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].parse_mode, undefined);
+  assert.equal(sentMessages[0].text.includes('Últimos 2 presupuestos de Granapublic:'), true);
+  assert.equal(sentMessages[0].text.includes('2 · 4500,00 € presupuestado'), true);
+  assert.equal(sentMessages[0].text.includes('P26/04368'), true);
+  assert.equal(sentMessages[0].text.includes('P26/04367'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), false);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
 });
