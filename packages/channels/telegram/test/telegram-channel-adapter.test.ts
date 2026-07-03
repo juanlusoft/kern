@@ -942,7 +942,8 @@ test('Telegram outbound text formats year-based invoice lists safely', () => {
         ],
         aggregate: {
           count: 1,
-          paymentsPendingTotal: 1200
+          paymentsPendingTotal: 1200,
+          totalAmount: 1200
         }
       }
     },
@@ -954,7 +955,7 @@ test('Telegram outbound text formats year-based invoice lists safely', () => {
 
   const safeText = buildTelegramOutboundText(listOutcome);
   assert.equal(safeText.includes('Facturas de 2024:'), true);
-  assert.equal(safeText.includes('1 · 0,00 € facturado'), true);
+  assert.equal(safeText.includes('1 · 1200,00 € facturado'), true);
   assert.equal(safeText.includes('F26/1931'), true);
   assert.equal(safeText.includes('MUPIS PAPEL'), true);
   assert.equal(safeText.includes('Fuente:'), false);
@@ -977,22 +978,22 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     {
       status: 'error',
       message: 'estimate runtime error',
-      expected: 'No he podido completar la consulta por un error del runtime.'
+      expected: 'Ha habido un problema técnico al procesar la consulta. Inténtalo de nuevo.'
     },
     {
       status: 'denied',
       message: 'estimate denied',
-      expected: 'No puedo procesar esa petición con la configuración actual.'
+      expected: 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.'
     },
     {
       status: 'blocked',
       message: 'estimate blocked',
-      expected: 'No puedo procesar esa petición con la configuración actual.'
+      expected: 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.'
     },
     {
       status: 'no_proposal',
       message: 'no proposal',
-      expected: 'No he podido determinar una propuesta válida para esa consulta.'
+      expected: 'No he entendido bien la consulta. Prueba pidiendo la última factura de un cliente, sus impagados, o las facturas de un año.'
     }
   ] as const;
 
@@ -1024,6 +1025,9 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     assert.equal(text, testCase.expected);
     assert.equal(text.includes('{'), false);
     assert.equal(text.includes('parse_mode'), false);
+    if (testCase.status === 'error') {
+      assert.equal(text.includes('runtime'), false);
+    }
   }
 });
 

@@ -109,6 +109,10 @@ function buildInvoiceListResponseData(
       paymentsPendingTotal: records.reduce((sum, record) => {
         const candidate = record.paymentsPending;
         return sum + (typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : 0);
+      }, 0),
+      totalAmount: records.reduce((sum, record) => {
+        const candidate = record.total;
+        return sum + (typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : 0);
       }, 0)
     }
   };
