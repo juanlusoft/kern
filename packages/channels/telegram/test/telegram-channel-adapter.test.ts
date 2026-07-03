@@ -317,13 +317,13 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
           status: 'executed',
           result: {
             status: 'found',
-            data: {
-              contactName: 'Granapublic Xx Sl',
-              estimate_id: 'P26/04366',
-              products: [{ name: 'Vinilo Monomérico' }],
-              total_amount: 6.1,
-              tax_amount: 1.26,
-              currency: 'EUR',
+    data: {
+      contactName: 'Granapublic Xx Sl',
+      estimate_id: 'P26/04366',
+      products: [{ name: 'Vinilo Monomérico' }],
+      total_amount: 6.1,
+      tax_amount: 1.26,
+      currency: 'EUR',
               lookup_mode: 'by_customer',
               line_id: 'line_123',
               s_iva_21: 'yes'
@@ -383,12 +383,12 @@ test('Telegram outbound text summarizes runtime results safely and truncates lon
   } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
 
   const safeText = buildTelegramOutboundText(completedOutcome);
-  assert.equal(safeText.includes('Granapublic Xx Sl'), true);
-  assert.equal(safeText.includes('P26/04366'), true);
+  assert.equal(safeText.includes('Último presupuesto de Granapublic Xx Sl (P26/04366):'), true);
   assert.equal(safeText.includes('Vinilo Monomérico'), true);
   assert.equal(safeText.includes('6,10'), true);
   assert.equal(safeText.includes('IVA incl.'), true);
-  assert.equal(safeText.includes('Fuente: Holded · documento P26/04366'), true);
+  assert.equal(safeText.includes('Fuente:'), false);
+  assert.equal(safeText.includes('\n'), false);
   assert.equal(safeText.includes('{'), false);
   assert.equal(safeText.includes('line_id'), false);
   assert.equal(safeText.includes('s_iva_21'), false);
@@ -455,6 +455,7 @@ test('Telegram outbound text formats invoice results safely and keeps runtime-on
         message: 'invoice retrieved from runtime',
         data: {
           contactName: 'Granapublic Xx Sl',
+          customer: 'Petroprix',
           resource_type: 'invoice',
           source_system: 'Holded',
           invoice_id: 'F26/1931',
@@ -483,11 +484,12 @@ test('Telegram outbound text formats invoice results safely and keeps runtime-on
       workflow_kind: 'mock.estimate.read',
       status: 'completed',
       message: 'invoice retrieved from runtime',
-      data: {
-        contactName: 'Granapublic Xx Sl',
-        resource_type: 'invoice',
-        source_system: 'Holded',
-        invoice_id: 'F26/1931',
+    data: {
+      contactName: 'Granapublic Xx Sl',
+      customer: 'Petroprix',
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1931',
         docNumber: 'F26/1931',
         products: [{ name: 'MUPIS PAPEL' }],
         total_amount: 6.1,
@@ -505,16 +507,56 @@ test('Telegram outbound text formats invoice results safely and keeps runtime-on
   } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
 
   const safeText = buildTelegramOutboundText(invoiceOutcome);
-  assert.equal(safeText.includes('Última factura de Granapublic Xx Sl:'), true);
-  assert.equal(safeText.includes('F26/1931'), true);
+  assert.equal(safeText.includes('Última factura de Petroprix (F26/1931):'), true);
   assert.equal(safeText.includes('MUPIS PAPEL'), true);
-  assert.equal(safeText.includes('6,10'), true);
-  assert.equal(safeText.includes('IVA incl.'), true);
-  assert.equal(safeText.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(safeText.includes('6,10 € IVA incl.'), true);
+  assert.equal(safeText.includes('Fuente:'), false);
+  assert.equal(safeText.includes('\n'), false);
   assert.equal(safeText.includes('{'), false);
   assert.equal(safeText.includes('line_id'), false);
   assert.equal(safeText.includes('raw'), false);
   assert.equal(safeText.includes('parse_mode'), false);
+  assert.equal(safeText.includes('raw'), false);
+  assert.equal(safeText.includes('parse_mode'), false);
+});
+
+test('Telegram outbound text deduplicates repeated products in document summaries', () => {
+  const duplicatedProductsOutcome = {
+    request_id: 'telegram:req-duplicated-products',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-duplicated-products',
+    installation_id: 'telegram-installation',
+    status: 'proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: 'mock.estimate.read',
+    workflow_result: null,
+    response: {
+      response_source: 'runtime_result',
+      workflow_kind: 'mock.estimate.read',
+      status: 'completed',
+      message: 'estimate retrieved from runtime',
+      data: {
+        contactName: 'Granapublic Xx Sl',
+        estimate_id: 'P26/04368',
+        products: [{ name: 'Lona Frontlit 510gr' }, { name: 'Lona Frontlit 510gr' }],
+        total_amount: 41.14,
+        currency: 'EUR',
+        lookup_mode: 'by_customer'
+      }
+    },
+    evidence_links: ['evidence-dup'],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'ok'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
+
+  const safeText = buildTelegramOutboundText(duplicatedProductsOutcome);
+  assert.equal(safeText.includes('Lona Frontlit 510gr'), true);
+  assert.equal((safeText.match(/Lona Frontlit 510gr/g) ?? []).length, 1);
+  assert.equal(safeText.includes('Fuente:'), false);
+  assert.equal(safeText.includes('\n'), false);
 });
 
 test('Telegram outbound text formats invoice lists safely and summarizes aggregate status', () => {
@@ -738,10 +780,12 @@ test('Telegram outbound text formats invoice lists safely and summarizes aggrega
   } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
 
   const safeText = buildTelegramOutboundText(listOutcome);
-  assert.equal(safeText.includes('Granapublic Xx Sl'), true);
+  assert.equal(safeText.includes('Facturas vencidas:'), true);
+  assert.equal(safeText.includes('3 · 3600,00 € pendientes'), true);
   assert.equal(safeText.includes('F26/1931'), true);
   assert.equal(safeText.includes('MUPIS PAPEL'), true);
-  assert.equal(safeText.includes('Fuente:'), true);
+  assert.equal(safeText.includes('vencida'), true);
+  assert.equal(safeText.includes('Fuente:'), false);
   assert.equal(safeText.includes('{'), false);
   assert.equal(safeText.includes('parse_mode'), false);
 });
@@ -791,7 +835,8 @@ test('Telegram outbound text formats year-based invoice lists safely', () => {
           ],
           aggregate: {
             count: 1,
-            paymentsPendingTotal: 1200
+            paymentsPendingTotal: 1200,
+            totalAmount: 1200
           }
         }
       },
@@ -834,7 +879,8 @@ test('Telegram outbound text formats year-based invoice lists safely', () => {
               ],
               aggregate: {
                 count: 1,
-                paymentsPendingTotal: 1200
+                paymentsPendingTotal: 1200,
+                totalAmount: 1200
               },
               source_evidence: [
                 {
@@ -906,13 +952,13 @@ test('Telegram outbound text formats year-based invoice lists safely', () => {
     reason: 'ok'
   } as unknown as Parameters<typeof buildTelegramOutboundText>[0];
 
-      const safeText = buildTelegramOutboundText(listOutcome);
-  assert.equal(safeText.includes('Granapublic Xx Sl'), true);
+  const safeText = buildTelegramOutboundText(listOutcome);
+  assert.equal(safeText.includes('Facturas de 2024:'), true);
+  assert.equal(safeText.includes('1 · 0,00 € facturado'), true);
   assert.equal(safeText.includes('F26/1931'), true);
   assert.equal(safeText.includes('MUPIS PAPEL'), true);
-  assert.equal(safeText.includes('Fuente:'), true);
+  assert.equal(safeText.includes('Fuente:'), false);
   assert.equal(safeText.includes('{'), false);
-  assert.equal(safeText.includes('parse_mode'), false);
   assert.equal(safeText.includes('parse_mode'), false);
 });
 

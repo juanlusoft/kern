@@ -656,9 +656,18 @@ function buildListRecord(input: {
 }
 
 function buildListAggregate(records: ResourceListRecord[]): ResourceListAggregate {
+  const paymentsPendingTotal = records.reduce(
+    (sum, record) => sum + (typeof record.paymentsPending === 'number' && Number.isFinite(record.paymentsPending) ? record.paymentsPending : 0),
+    0
+  );
+  const totalAmount = records.reduce(
+    (sum, record) => sum + (typeof record.total === 'number' && Number.isFinite(record.total) ? record.total : 0),
+    0
+  );
   return {
     count: records.length,
-    paymentsPendingTotal: records.reduce((sum, record) => sum + (record.paymentsPending ?? 0), 0)
+    paymentsPendingTotal,
+    totalAmount
   };
 }
 
@@ -675,6 +684,7 @@ function buildListFoundResult(input: {
   const payment_status = normalizePaymentStatus(input.query.payment_status);
   const lookup_mode = lookupMode(input.query);
   const listLabel = payment_status ?? (normalizeYear(input.query.year) ? input.query.year : 'list');
+  const customer = normalizeOptionalString(input.query.filters?.customer_id ?? input.query.customer_id);
   const listRecords = input.records
     .map((record) => {
       const record_id = extractRecordId(record) ?? extractRecordDocumentNumber(record);
@@ -717,6 +727,7 @@ function buildListFoundResult(input: {
       resource_type: 'invoice',
       payment_status,
       lookup_mode,
+      ...(customer ? { customer } : {}),
       ...(input.query.year ? { year: input.query.year } : {}),
       records: listRecords,
       aggregate: buildListAggregate(listRecords),

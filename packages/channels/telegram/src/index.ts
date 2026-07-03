@@ -217,7 +217,7 @@ function summarizeProductNames(input: Record<string, unknown> | null): string | 
   if (names.length === 0) {
     return null;
   }
-  return names.slice(0, 2).join(', ');
+  return [...new Set(names)].join(', ');
 }
 
 function extractResourceResult(outcome: OrchestrationOutcome): Record<string, unknown> | null {
@@ -285,6 +285,81 @@ function isInvoiceListResponseData(outcome: OrchestrationOutcome): boolean {
   return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'list' && Array.isArray(responseData.records));
 }
 
+function formatListCount(value: number): string {
+  return value.toLocaleString('es-ES');
+}
+
+function buildInvoiceListHeader(input: {
+  paymentStatus: string | null;
+  lookupMode: string | null;
+  customerName: string | null;
+  year: string | null;
+  count: number;
+  aggregate: Record<string, unknown> | null;
+  currency: string | null;
+}): string {
+  const countText = formatListCount(input.count);
+  const paymentsPendingTotal = numberFromKeys(input.aggregate, ['paymentsPendingTotal']);
+  const totalAmount = numberFromKeys(input.aggregate, ['totalAmount']);
+  if (input.lookupMode === 'by_year' && !input.paymentStatus) {
+    const scope = ['Facturas', input.year ? `de ${input.year}` : null, input.customerName ? `de ${input.customerName}` : null].filter(
+      (value): value is string => Boolean(value)
+    );
+    const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
+    return `${scope.join(' ')}: ${countText} · ${amountText} facturado`;
+  }
+  if (input.paymentStatus === 'paid') {
+    const scope = ['Facturas pagadas', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+      (value): value is string => Boolean(value)
+    );
+    const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
+    return `${scope.join(' ')}: ${countText} · ${amountText} facturado`;
+  }
+  if (input.paymentStatus === 'pending' || input.paymentStatus === 'overdue') {
+    const scope = ['Facturas', paymentStatusLabel(input.paymentStatus), input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+      (value): value is string => Boolean(value)
+    );
+    const amountText = formatCurrencyAmount(paymentsPendingTotal ?? 0, input.currency) ?? '0,00 €';
+    return `${scope.join(' ')}: ${countText} · ${amountText} pendientes`;
+  }
+  const scope = ['Facturas', input.customerName ? `de ${input.customerName}` : null, input.year ? `de ${input.year}` : null].filter(
+    (value): value is string => Boolean(value)
+  );
+  const amountText = formatCurrencyAmount(totalAmount ?? 0, input.currency) ?? '0,00 €';
+  return `${scope.join(' ')}: ${countText} · ${amountText} facturado`;
+}
+
+function buildInvoiceListRecordLine(input: {
+  record: Record<string, unknown>;
+  paymentStatus: string | null;
+  lookupMode: string | null;
+  currency: string | null;
+}): string {
+  const documentId =
+    firstStringFromKeys(input.record, ['docNumber', 'documentNo', 'document_number', 'invoice_id', 'resource_id', 'id']) ??
+    'sin identificador';
+  const productSummary = summarizeProductNames(input.record);
+  const amountValue =
+    !input.paymentStatus || (input.lookupMode === 'by_year' && !input.paymentStatus)
+      ? numberFromKeys(input.record, ['total', 'total_amount', 'amount'])
+      : input.paymentStatus === 'paid'
+        ? numberFromKeys(input.record, ['total', 'total_amount', 'amount'])
+        : numberFromKeys(input.record, ['paymentsPending', 'total', 'total_amount', 'amount']);
+  const amountText = formatCurrencyAmount(amountValue, input.currency);
+  const statusSuffix =
+    !input.paymentStatus || (input.lookupMode === 'by_year' && !input.paymentStatus)
+      ? ''
+      : input.paymentStatus === 'paid'
+        ? 'pagada'
+        : input.paymentStatus === 'overdue'
+          ? 'vencida'
+          : 'pendiente';
+  const detailParts = [documentId, productSummary, amountText ? `${amountText}${statusSuffix ? ` ${statusSuffix}` : ''}` : statusSuffix].filter(
+    (value): value is string => Boolean(value)
+  );
+  return detailParts.join(' — ');
+}
+
 function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
@@ -298,78 +373,52 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   const paymentStatus = toTrimmedString(responseData.payment_status);
   const lookupMode = toTrimmedString(responseData.lookup_mode);
   const year = toTrimmedString(responseData.year) ?? toTrimmedString(resourceResult?.year);
-  const firstRecord = records[0] ?? null;
-  const customerName =
-    firstStringFromKeys(firstRecord, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
-    firstStringFromKeys(responseData, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
-    firstStringFromKeys(resourceResult, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']);
+  const customerName = toTrimmedString(responseData.customer);
   const aggregate = isPlainObject(responseData.aggregate) ? responseData.aggregate : null;
   const count = numberFromKeys(aggregate, ['count']) ?? records.length;
   const totalPending = numberFromKeys(aggregate, ['paymentsPendingTotal']);
+  const totalAmount = numberFromKeys(aggregate, ['totalAmount']);
   const currency =
-    firstStringFromKeys(firstRecord, ['currency', 'currency_code']) ??
+    firstStringFromKeys(records[0] ?? null, ['currency', 'currency_code']) ??
     firstStringFromKeys(responseData, ['currency', 'currency_code']) ??
     firstStringFromKeys(resourceResult, ['currency', 'currency_code']);
-  const totalPendingText = totalPending !== null ? formatCurrencyAmount(totalPending, currency) : null;
   const lines: string[] = [];
-  const scope =
-    lookupMode === 'by_year' && year
-      ? `${customerName ? ` de ${customerName}` : ''} en ${year}`
-      : customerName
-        ? ` de ${customerName}`
-        : '';
-  lines.push(`${documentTitle('invoice')}${scope}:`);
-  if (lookupMode === 'by_year' && year && !paymentStatus) {
-    lines.push(`${count} facturas de ${year}`);
-  } else if (paymentStatus === 'paid') {
-    lines.push(`${count} facturas pagadas${year ? ` de ${year}` : ''}`);
-  } else {
-    lines.push(
-      `${count} facturas ${paymentStatusLabel(paymentStatus)}${year ? ` de ${year}` : ''}${totalPendingText ? ` · ${totalPendingText} pendientes` : ''}`
-    );
-  }
+  lines.push(
+    buildInvoiceListHeader({
+      paymentStatus,
+      lookupMode,
+      customerName,
+      year,
+      count,
+      aggregate: {
+        count,
+        paymentsPendingTotal: totalPending,
+        totalAmount
+      },
+      currency
+    })
+  );
   records.slice(0, 3).forEach((record) => {
-    const documentId =
-      firstStringFromKeys(record, ['docNumber', 'documentNo', 'document_number', 'invoice_id', 'resource_id', 'id']) ??
-      'sin identificador';
-    const productSummary = summarizeProductNames(record);
-    const recordAmount =
-      paymentStatus === 'paid'
-        ? numberFromKeys(record, ['total', 'total_amount', 'amount'])
-        : numberFromKeys(record, ['paymentsPending', 'total', 'total_amount', 'amount']);
-    const recordCurrency = firstStringFromKeys(record, ['currency', 'currency_code']) ?? currency;
-    const recordAmountText = formatCurrencyAmount(recordAmount, recordCurrency);
-    const statusSuffix =
-      lookupMode === 'by_year' && year && !paymentStatus
-        ? ''
-        : paymentStatus === 'paid'
-          ? 'pagada'
-          : paymentStatus === 'overdue'
-            ? 'vencida'
-            : 'pendiente';
-    const detailParts = [documentId, productSummary, recordAmountText ? `${recordAmountText} ${statusSuffix}` : statusSuffix].filter(
-      (value): value is string => Boolean(value)
-    );
-    lines.push(detailParts.join(' — '));
+    lines.push(buildInvoiceListRecordLine({
+      record,
+      paymentStatus,
+      lookupMode,
+      currency
+    }));
   });
   if (records.length > 3) {
-    lines.push(`… y ${records.length - 3} más`);
-  }
-  const sourceLine = buildSourceReferenceLine(firstRecord, firstRecord);
-  if (sourceLine) {
-    lines.push(sourceLine);
+    lines.push(`… y ${formatListCount(records.length - 3)} más`);
   }
   return lines.join('\n');
 }
 
 function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
-
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
   const resourceType = resourceTypeFromOutcome(outcome);
   const customerName =
-    firstStringFromKeys(responseData, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']) ??
-    firstStringFromKeys(resourceResult, ['contactName', 'customer_name', 'customerName', 'contact_name', 'contact', 'customer']);
+    firstStringFromKeys(responseData, ['customer', 'customer_name', 'customerName', 'contact_name', 'contactName', 'contact']) ??
+    firstStringFromKeys(resourceResult, ['customer', 'customer_name', 'customerName', 'contact_name', 'contactName', 'contact']);
   const documentId =
     firstStringFromKeys(responseData, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']) ??
     firstStringFromKeys(resourceResult, ['docNumber', 'documentNo', 'document_number', 'estimate_id', 'invoice_id', 'resource_id', 'id']);
@@ -395,19 +444,11 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
   )
     ? ' IVA incl.'
     : '';
-  const lines: string[] = [];
-  lines.push(customerName ? `${documentTitle(resourceType)} de ${customerName}:` : documentTitle(resourceType) + ':');
-  const detailParts = [documentId, productSummary, total ? `${total}${vatInclusion}` : null].filter(
-    (value): value is string => Boolean(value)
-  );
-  if (detailParts.length > 0) {
-    lines.push(detailParts.join(' — '));
-  }
-  const sourceLine = buildSourceReferenceLine(responseData, resourceResult);
-  if (sourceLine) {
-    lines.push(sourceLine);
-  }
-  return lines.join('\n');
+  const header = [documentTitle(resourceType), customerName ? `de ${customerName}` : null, documentId ? `(${documentId})` : null]
+    .filter((value): value is string => Boolean(value))
+    .join(' ');
+  const detailParts = [productSummary, total ? `${total}${vatInclusion}` : null].filter((value): value is string => Boolean(value));
+  return detailParts.length > 0 ? `${header}: ${detailParts.join(' — ')}` : header;
 }
 
 function buildStatusText(outcome: OrchestrationOutcome): string {
