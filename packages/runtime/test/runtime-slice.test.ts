@@ -89,6 +89,11 @@ function buildQwenTransport(
     customer_id?: string | null;
     limit?: number | null;
     year?: string | null;
+    tool_name?: 'mock.resource.read' | 'request_clarification';
+    clarification?: {
+      missing: 'customer' | 'document_id' | 'ambiguous' | 'unsupported';
+      reason: string;
+    };
   } = {}
 ): QwenChatCompletionsTransport {
   const resource_type = options.resource_type ?? 'estimate';
@@ -96,8 +101,24 @@ function buildQwenTransport(
   const customer_id = options.customer_id ?? 'Granapublic';
   const limit = options.limit ?? null;
   const year = options.year ?? null;
+  const toolName = options.tool_name ?? 'mock.resource.read';
   return {
     chatCompletions() {
+      const clarification = options.clarification ?? {
+        missing: 'customer' as const,
+        reason: 'Falta el cliente para buscar el documento correcto.'
+      };
+      const toolArguments =
+        toolName === 'request_clarification'
+          ? clarification
+          : {
+              resource_type,
+              ...(customer_id ? { customer_id } : {}),
+              ...(limit ? { limit } : {}),
+              ...(year ? { year } : {}),
+              ...(payment_status ? { payment_status } : {}),
+              ...(!payment_status && !year && !customer_id ? { estimate_id: 'estimate-12345' } : {})
+            };
       const choice: QwenChatCompletionChoice = {
         index: 0,
         message: {
@@ -108,18 +129,14 @@ function buildQwenTransport(
                     id: 'tool-call-1',
                     type: 'function',
                       function: {
-                        name: 'mock.resource.read',
-                        arguments: JSON.stringify({
-                          name: 'mock.resource.read',
-                          arguments: {
-                            resource_type,
-                            ...(customer_id ? { customer_id } : {}),
-                            ...(limit ? { limit } : {}),
-                            ...(year ? { year } : {}),
-                            ...(payment_status ? { payment_status } : {}),
-                            ...(!payment_status && !year && !customer_id ? { estimate_id: 'estimate-12345' } : {})
-                          }
-                        })
+                        name: toolName,
+                        arguments:
+                          toolName === 'request_clarification'
+                            ? JSON.stringify(toolArguments)
+                            : JSON.stringify({
+                                name: 'mock.resource.read',
+                                arguments: toolArguments
+                              })
                       }
                   }
                 ]
@@ -322,6 +339,7 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
   const qwenRequest = qwenCalls[0] as {
     tools?: Array<{
       function?: {
+        name?: string;
         parameters?: {
           required?: string[];
           anyOf?: Array<{ required?: string[] }>;
@@ -339,8 +357,10 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
       };
     }>;
     messages?: Array<{ role?: string; content?: string | null }>;
+    tool_choice?: string | Record<string, unknown>;
   };
   assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.required?.includes('resource_type'), true);
+  assert.equal(qwenRequest.tools?.some((tool) => tool.function?.name === 'request_clarification'), true);
   assert.equal(
     qwenRequest.tools?.[0]?.function?.parameters?.anyOf?.some(
       (candidate) => candidate.required?.includes('customer_id') && candidate.required?.length === 1
@@ -364,10 +384,18 @@ test('runtime slice wires telegram, qwen, holded and governance evidence end to 
     true
   );
   assert.equal(qwenRequest.tools?.[0]?.function?.parameters?.properties?.year?.pattern, '^\\d{4}$');
+  assert.equal(qwenRequest.tool_choice, 'auto');
   assert.equal(
     qwenRequest.messages?.[0]?.content?.includes('Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.'),
     true
   );
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('request_clarification instead of inventing params'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Use request_clarification with missing="customer"'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('ACME SL'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Cliente Ejemplo SL'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Cliente Demo SL'), true);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Granapublic Xx Sl'), false);
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Petroprix'), false);
   assert.equal(qwenRequest.messages?.[0]?.content?.includes('latest N estimates or invoices of a customer'), true);
   assert.equal(qwenRequest.messages?.[0]?.content?.includes('Use limit only with customer_id.'), true);
   assert.equal(
@@ -579,6 +607,62 @@ test('runtime slice can read the latest N estimates by customer and keeps Telegr
   assert.equal(sentMessages[0].text.includes('Fuente:'), false);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
+});
+
+test('runtime slice asks for clarification honestly when the model requests it', () => {
+  const telegramTransport = new InMemoryTelegramTransport();
+  telegramTransport.seedUpdates([
+    {
+      update_id: 33,
+      message: {
+        message_id: 330,
+        chat: {
+          id: 146574793,
+          type: 'private'
+        },
+        from: {
+          id: 146574793,
+          username: 'gema-granapublic',
+          first_name: 'Gema',
+          last_name: 'Granapublic'
+        },
+        text: 'facturas',
+        date: 1_751_472_230,
+        raw: null
+      },
+      raw: null
+    }
+  ]);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: buildEnv(),
+    telegramTransport,
+    qwenTransport: buildQwenTransport({
+      tool_name: 'request_clarification',
+      clarification: {
+        missing: 'customer',
+        reason: 'Falta el cliente para buscar el documento correcto.'
+      }
+    }),
+    holdedFetch: buildHoldedFetch([], 'invoice')
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  const runtime = runtimeResult.runtime;
+  assert.ok(runtime);
+  const [result] = runtime.pollOnce();
+  const sentMessages = telegramTransport.listSentMessages();
+
+  assert.equal(result.status, 'sent');
+  assert.equal(result.orchestration_outcome?.response.status, 'no_proposal');
+  assert.equal(result.orchestration_outcome?.response.data?.kind, 'request_clarification');
+  assert.equal(result.orchestration_outcome?.response.data?.missing, 'customer');
+  assert.equal(result.orchestration_outcome?.response.data?.reason, 'Falta el cliente para buscar el documento correcto.');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].text, '¿De qué cliente?');
+  assert.equal(sentMessages[0].text.includes('{'), false);
+  assert.equal(sentMessages[0].text.includes('no_proposal'), false);
 });
 
 test('runtime slice can read invoice payment-status lists and formats Telegram output safely', () => {

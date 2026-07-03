@@ -229,6 +229,25 @@ function extractResponseData(outcome: OrchestrationOutcome): Record<string, unkn
   return isPlainObject(outcome.response.data) ? outcome.response.data : null;
 }
 
+function clarificationDataFromOutcome(outcome: OrchestrationOutcome): {
+  missing: 'customer' | 'document_id' | 'ambiguous' | 'unsupported';
+  reason: string;
+} | null {
+  const responseData = extractResponseData(outcome);
+  if (!responseData || responseData.kind !== 'request_clarification') {
+    return null;
+  }
+  const missing = toTrimmedString(responseData.missing);
+  const reason = toTrimmedString(responseData.reason);
+  if (!missing || !reason) {
+    return null;
+  }
+  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported') {
+    return null;
+  }
+  return { missing, reason };
+}
+
 function resourceTypeFromOutcome(outcome: OrchestrationOutcome): 'estimate' | 'invoice' {
   const responseData = extractResponseData(outcome);
   const resourceType =
@@ -431,6 +450,25 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   return lines.join('\n');
 }
 
+function buildClarificationText(outcome: OrchestrationOutcome): string {
+  const clarification = clarificationDataFromOutcome(outcome);
+  if (!clarification) {
+    return 'No tengo suficiente contexto para responder. Dime el cliente o el documento que buscas.';
+  }
+  switch (clarification.missing) {
+    case 'customer':
+      return '¿De qué cliente?';
+    case 'document_id':
+      return 'Necesito el identificador del documento para consultar eso.';
+    case 'ambiguous':
+      return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
+    case 'unsupported':
+      return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
+    default:
+      return clarification.reason;
+  }
+}
+
 function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
   const responseData = extractResponseData(outcome);
   const resourceResult = extractResourceResult(outcome);
@@ -484,7 +522,7 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
     case 'blocked':
       return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
     case 'no_proposal':
-      return 'No he entendido bien la consulta. Prueba pidiendo la última factura de un cliente, sus impagados, o las facturas de un año.';
+      return buildClarificationText(outcome);
     default:
       return `runtime ${outcome.response.status}: ${outcome.response.message}`;
   }
