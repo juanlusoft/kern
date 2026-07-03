@@ -536,7 +536,7 @@ function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuer
 
   const resource_id = normalizeOptionalString(query.resource_id);
   if (!resource_id) {
-    return payment_status !== null || lookupTerms.length > 0;
+    return payment_status !== null || lookupTerms.length > 0 || year !== null;
   }
   const candidate = extractRecordId(record);
   return candidate !== null && normalizeSearchText(candidate) === normalizeSearchText(resource_id);
