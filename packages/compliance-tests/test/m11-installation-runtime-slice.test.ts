@@ -226,9 +226,10 @@ test('M11 runtime slice keeps installation config, wiring and evidence isolated 
   assert.equal(result.orchestration_outcome?.response.data?.lookup_mode, 'by_customer');
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].parse_mode, undefined);
-  assert.equal(sentMessages[0].text.includes('Granapublic Xx Sl'), true);
+  assert.equal(sentMessages[0].text.includes('Último presupuesto de Granapublic Xx Sl (P26/04368):'), true);
   assert.equal(sentMessages[0].text.includes('P26/04368'), true);
-  assert.equal(sentMessages[0].text.includes('Fuente:'), true);
+  assert.equal(sentMessages[0].text.includes('Fuente:'), false);
+  assert.equal(sentMessages[0].text.includes('\n'), false);
   assert.equal(sentMessages[0].text.includes('{'), false);
   assert.equal(sentMessages[0].text.length <= 3900, true);
   assert.equal(JSON.stringify(result).includes('telegram-secret'), false);

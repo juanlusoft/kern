@@ -346,6 +346,7 @@ export interface SourceEvidence {
 export interface ResourceListAggregate {
   count: number;
   paymentsPendingTotal: number;
+  totalAmount: number;
 }
 
 export interface ResourceListRecord {
@@ -368,6 +369,7 @@ export interface ResourceListResultData {
   resource_type: 'invoice';
   payment_status: ResourcePaymentStatus | null;
   lookup_mode: 'by_status' | 'by_customer' | 'by_year';
+  customer?: string | null;
   year?: string | null;
   records: [ResourceListRecord, ...ResourceListRecord[]] | ResourceListRecord[];
   aggregate: ResourceListAggregate;
@@ -464,6 +466,7 @@ export interface ResourceQuery {
   payment_status?: ResourcePaymentStatus | null;
   year?: string | null;
   resource_id: string | null;
+  customer_id?: string | null;
   filters: Record<string, unknown> | null;
   requested_fields: string[] | null;
   claimed_result?: unknown;
