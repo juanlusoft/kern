@@ -460,12 +460,12 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
     case 'unavailable':
       return 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.';
     case 'error':
-      return 'No he podido completar la consulta por un error del runtime.';
+      return 'Ha habido un problema técnico al procesar la consulta. Inténtalo de nuevo.';
     case 'denied':
     case 'blocked':
-      return 'No puedo procesar esa petición con la configuración actual.';
+      return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
     case 'no_proposal':
-      return 'No he podido determinar una propuesta válida para esa consulta.';
+      return 'No he entendido bien la consulta. Prueba pidiendo la última factura de un cliente, sus impagados, o las facturas de un año.';
     default:
       return `runtime ${outcome.response.status}: ${outcome.response.message}`;
   }

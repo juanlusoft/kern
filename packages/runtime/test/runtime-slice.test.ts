@@ -492,13 +492,14 @@ test('runtime slice can read invoice payment-status lists and formats Telegram o
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
   const responseData = result.orchestration_outcome?.response.data as
-    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number; totalAmount?: number } }
     | null
     | undefined;
   assert.equal(responseData?.kind, 'list');
   assert.equal(responseData?.payment_status, 'overdue');
   assert.equal(responseData?.aggregate?.count, 3);
   assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(responseData?.aggregate?.totalAmount, 3600);
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].parse_mode, undefined);
   assert.equal(sentMessages[0].text.includes('Facturas vencidas de Granapublic:'), true);
@@ -555,13 +556,14 @@ test('runtime slice can read invoice payment-status lists without a customer and
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
   const responseData = result.orchestration_outcome?.response.data as
-    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | { kind?: string; payment_status?: string; aggregate?: { count?: number; paymentsPendingTotal?: number; totalAmount?: number } }
     | null
     | undefined;
   assert.equal(responseData?.kind, 'list');
   assert.equal(responseData?.payment_status, 'pending');
   assert.equal(responseData?.aggregate?.count, 3);
   assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(responseData?.aggregate?.totalAmount, 3600);
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].parse_mode, undefined);
   assert.equal(sentMessages[0].text.includes('Facturas pendientes de Granapublic:'), true);
@@ -641,16 +643,19 @@ test('runtime slice can read year-based invoice lists and converts year filters 
   assert.equal(result.orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(result.orchestration_outcome?.response.status, 'completed');
   const responseData = result.orchestration_outcome?.response.data as
-    | { kind?: string; lookup_mode?: string; year?: string; aggregate?: { count?: number; paymentsPendingTotal?: number } }
+    | { kind?: string; lookup_mode?: string; year?: string; aggregate?: { count?: number; paymentsPendingTotal?: number; totalAmount?: number } }
     | null
     | undefined;
   assert.equal(responseData?.kind, 'list');
   assert.equal(responseData?.lookup_mode, 'by_year');
   assert.equal(responseData?.year, '2024');
+  assert.equal(responseData?.aggregate?.count, 3);
+  assert.equal(responseData?.aggregate?.paymentsPendingTotal, 3600);
+  assert.equal(responseData?.aggregate?.totalAmount, 3600);
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].parse_mode, undefined);
   assert.equal(sentMessages[0].text.includes('Facturas de 2024 de Granapublic:'), true);
-  assert.equal(sentMessages[0].text.includes('3 · 0,00 € facturado'), true);
+  assert.equal(sentMessages[0].text.includes('3 · 3600,00 € facturado'), true);
   assert.equal(sentMessages[0].text.includes('F26/1931'), true);
   assert.equal(sentMessages[0].text.includes('Fuente:'), false);
   assert.equal(sentMessages[0].text.includes('{'), false);
