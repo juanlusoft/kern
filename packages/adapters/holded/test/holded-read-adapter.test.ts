@@ -340,6 +340,86 @@ test('Holded adapter returns year-based invoice lists and converts the year into
   assert.equal(serialized.includes(sentinel), false);
 });
 
+test('Holded adapter returns year-only invoice lists without discarding matching records', () => {
+  const { fetchStub, calls } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F25/0001',
+        docNumber: 'F25/0001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 100,
+        dueDate: '2025-03-03T00:00:00.000Z',
+        total_amount: 100,
+        currency: 'EUR',
+        date: '2025-03-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F25/0002',
+        docNumber: 'F25/0002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 200,
+        dueDate: '2025-07-03T00:00:00.000Z',
+        total_amount: 200,
+        currency: 'EUR',
+        date: '2025-07-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F24/0001',
+        docNumber: 'F24/0001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contact: 'contact-granapublic',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 300,
+        dueDate: '2024-07-03T00:00:00.000Z',
+        total_amount: 300,
+        currency: 'EUR',
+        date: '2024-07-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'secret_test_token_must_not_leak',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2025',
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 1);
+  const requestUrl = new URL(calls[0].url);
+  assert.equal(requestUrl.searchParams.get('starttmp'), '1735689600');
+  assert.equal(requestUrl.searchParams.get('endtmp'), '1767225599');
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.year, '2025');
+  assert.equal(listData.records.map((record) => record.record_id).join(','), 'F25/0002,F25/0001');
+  assert.equal(serializedIncludes(result), false);
+
+  function serializedIncludes(value: unknown) {
+    return JSON.stringify(value).includes('secret_test_token_must_not_leak');
+  }
+});
+
 test('Holded adapter paginates invoice list queries across pages and aggregates deduplicated records', () => {
   const makeRecord = (index: number) => ({
     invoice_id: `F26/${String(index).padStart(4, '0')}`,
@@ -390,6 +470,184 @@ test('Holded adapter paginates invoice list queries across pages and aggregates 
   assert.equal(listData.truncated, undefined);
   assert.equal(listData.records[0]?.record_id, 'F26/1120');
   assert.equal(listData.records[listData.records.length - 1]?.record_id, 'F26/0001');
+});
+
+test('Holded adapter preserves year filters while paginating invoice lists', () => {
+  const makeRecord = (index: number) => ({
+    invoice_id: `F25/${String(index).padStart(4, '0')}`,
+    docNumber: `F25/${String(index).padStart(4, '0')}`,
+    customer_id: 'granapublic',
+    customer_name: 'Granapublic Xx Sl',
+    contactName: 'Granapublic Xx Sl',
+    paymentsPending: 10,
+    dueDate: '2025-03-09T00:00:00.000Z',
+    total_amount: 10,
+    currency: 'EUR',
+    date: '2025-03-09T00:00:00.000Z'
+  });
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: Array.from({ length: 2 }, (_, index) => makeRecord(index + 1)),
+    2: Array.from({ length: 2 }, (_, index) => makeRecord(index + 3))
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2025-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    page_size: 1,
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2025',
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
+  assert.equal(new URL(calls[0].url).searchParams.get('starttmp'), '1735689600');
+  assert.equal(new URL(calls[0].url).searchParams.get('endtmp'), '1767225599');
+  assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
+  assert.equal(new URL(calls[1].url).searchParams.get('starttmp'), '1735689600');
+  assert.equal(new URL(calls[1].url).searchParams.get('endtmp'), '1767225599');
+  assert.equal(new URL(calls[2].url).searchParams.get('page'), '3');
+  assert.equal(new URL(calls[2].url).searchParams.get('starttmp'), '1735689600');
+  assert.equal(new URL(calls[2].url).searchParams.get('endtmp'), '1767225599');
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.records.length, 4);
+});
+
+test('Holded adapter combines year with payment status without regressing the filter fallback', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F25/1001',
+        docNumber: 'F25/1001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 50,
+        dueDate: '2025-01-03T00:00:00.000Z',
+        total_amount: 50,
+        currency: 'EUR',
+        date: '2025-01-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F25/1002',
+        docNumber: 'F25/1002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 0,
+        dueDate: '2025-01-03T00:00:00.000Z',
+        total_amount: 60,
+        currency: 'EUR',
+        date: '2025-01-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F24/1001',
+        docNumber: 'F24/1001',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        paymentsPending: 50,
+        dueDate: '2024-01-03T00:00:00.000Z',
+        total_amount: 70,
+        currency: 'EUR',
+        date: '2024-01-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2025-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2025',
+      payment_status: 'pending',
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.payment_status, 'pending');
+  assert.equal(listData.records.map((record) => record.record_id).join(','), 'F25/1001');
+});
+
+test('Holded adapter combines year with customer lookup without regressing customer filtering', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        invoice_id: 'F25/2001',
+        docNumber: 'F25/2001',
+        customer_id: 'petroprix',
+        customer_name: 'Petroprix',
+        contactName: 'Petroprix',
+        paymentsPending: 80,
+        dueDate: '2025-04-03T00:00:00.000Z',
+        total_amount: 80,
+        currency: 'EUR',
+        date: '2025-04-03T00:00:00.000Z'
+      },
+      {
+        invoice_id: 'F24/2001',
+        docNumber: 'F24/2001',
+        customer_id: 'petroprix',
+        customer_name: 'Petroprix',
+        contactName: 'Petroprix',
+        paymentsPending: 80,
+        dueDate: '2024-04-03T00:00:00.000Z',
+        total_amount: 80,
+        currency: 'EUR',
+        date: '2024-04-03T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2025-07-02T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery('invoice', {
+      resource_id: null,
+      year: '2025',
+      filters: { customer_id: 'Petroprix' },
+      requested_fields: ['invoice_id', 'customer_name', 'paymentsPending', 'dueDate', 'total_amount']
+    })
+  );
+
+  assert.equal(result.status, 'found');
+  const listData = result.data as unknown as ResourceListResultData;
+  assert.equal(listData.lookup_mode, 'by_year');
+  assert.equal(listData.records.map((record) => record.record_id).join(','), 'F25/2001');
 });
 
 test('Holded adapter returns year-based invoice lists for 2023 with epoch second filters', () => {
