@@ -319,15 +319,43 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
     true
   );
   assert.equal(
+    requests[0].messages[0].content?.includes(
+      'The customer name can be informal, lowercase, partial, or without a legal suffix (e.g. "granapublic", "toldos martos", "petroprix"). Treat any name the user gives after "de"/"of" as the customer and put it in customer_id EXACTLY as written.'
+    ),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes(
+      'Do NOT judge whether a customer name is real, valid, or recognized. That is the runtime job. Your job is only to extract the name into customer_id; the runtime will look it up and honestly report if it is not found.'
+    ),
+    true
+  );
+  assert.equal(
     requests[0].messages[0].content?.includes('request_clarification instead of inventing params'),
     true
   );
   assert.equal(
-    requests[0].messages[0].content?.includes('Use request_clarification with missing="customer"'),
+    requests[0].messages[0].content?.includes(
+      'Use request_clarification with missing="customer" only when the user gives NO customer name AT ALL. If any name is present, use mock.resource.read.'
+    ),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes(
+      'If the user asks for "las ultimas de <cliente>" without saying facturas or presupuestos, default resource_type to "invoice".'
+    ),
     true
   );
   assert.equal(
     requests[0].messages[0].content?.includes('User: "ultimo presupuesto de ACME SL"'),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes('User: "dame las 3 ultimas de toldos martos"'),
+    true
+  );
+  assert.equal(
+    requests[0].messages[0].content?.includes('{ "resource_type": "invoice", "customer_id": "toldos martos", "limit": 3 }'),
     true
   );
   assert.equal(requests[0].messages[0].content?.includes('latest N estimates or invoices'), true);
