@@ -36,9 +36,11 @@ import { resolveIdentityContext, resolveOrganizationContext } from '../../identi
 import { evaluatePolicy } from '../../policy/src/index';
 import { InMemoryTurnRuntime } from '../../turns/src/index';
 import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
+import { type PacoPrintCatalogAdapterPort } from '../../contracts/src/index';
 import { buildWorkflowResult, workflowEvidenceTrace } from './workflow-internals';
 import { executeMockEstimateReadWorkflow } from './estimate-workflow';
 import { executeMockEmailSendWorkflow } from './email-workflow';
+import { executePricingQuoteLineWorkflow } from './pricing-workflow';
 import { createMockEstimateReadCapability, createMockEmailPreviewCapability, createMockEmailSendCapability } from './mock-capabilities';
 import { type AppendWorkflowEvidenceInput, type FinishWorkflowInput, type WorkflowRuntimeContext } from './workflow-runtime-context';
 
@@ -48,6 +50,7 @@ export interface GovernedWorkflowRuntimeOptions {
   capabilityRuntime?: InMemoryCapabilityRuntime;
   turnRuntime?: InMemoryTurnRuntime;
   externalReadAdapter?: ExternalReadAdapter;
+  pacoPrintCatalogAdapter?: PacoPrintCatalogAdapterPort | null;
   presenceReadPort?: PresenceReadPort | null;
   resolveOrganizationContext?: typeof resolveOrganizationContext;
   resolveIdentityContext?: typeof resolveIdentityContext;
@@ -61,6 +64,7 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly turnRuntime: InMemoryTurnRuntime;
   private readonly externalReadAdapter: ExternalReadAdapter;
   private readonly resolveOrganizationContext: typeof resolveOrganizationContext;
+  private readonly pacoPrintCatalogAdapter: PacoPrintCatalogAdapterPort | null;
   private readonly resolveIdentityContext: typeof resolveIdentityContext;
   private readonly now: () => Date;
   private readonly workflowRecords = new Map<string, GovernedWorkflowResult>();
@@ -70,6 +74,7 @@ export class InMemoryGovernedWorkflowRuntime {
     this.bindingStore = options.bindingStore ?? new InMemoryDecisionBindingStore();
     this.externalReadAdapter = options.externalReadAdapter ?? createMockExternalReadAdapter({ now: options.now });
     this.resolveOrganizationContext = options.resolveOrganizationContext ?? resolveOrganizationContext;
+    this.pacoPrintCatalogAdapter = options.pacoPrintCatalogAdapter ?? null;
     this.resolveIdentityContext = options.resolveIdentityContext ?? resolveIdentityContext;
     this.capabilityRuntime =
       options.capabilityRuntime ?? new InMemoryCapabilityRuntime({ evidenceLedger: this.evidenceLedger, bindingStore: this.bindingStore, now: options.now });
@@ -118,7 +123,9 @@ export class InMemoryGovernedWorkflowRuntime {
     const runtimeContext: WorkflowRuntimeContext = this.createWorkflowRuntimeContext();
     return input.kind === 'mock.estimate.read'
       ? executeMockEstimateReadWorkflow(runtimeContext, input)
-      : executeMockEmailSendWorkflow(runtimeContext, input);
+      : input.kind === 'mock.email.send'
+        ? executeMockEmailSendWorkflow(runtimeContext, input)
+        : executePricingQuoteLineWorkflow(runtimeContext, input);
   }
 
   private createWorkflowRuntimeContext(): WorkflowRuntimeContext {
@@ -128,6 +135,7 @@ export class InMemoryGovernedWorkflowRuntime {
       capabilityRuntime: this.capabilityRuntime,
       turnRuntime: this.turnRuntime,
       externalReadAdapter: this.externalReadAdapter,
+      pacoPrintCatalogAdapter: this.pacoPrintCatalogAdapter,
       resolveOrganizationContext: this.resolveOrganizationContext,
       resolveIdentityContext: this.resolveIdentityContext,
       now: this.now,

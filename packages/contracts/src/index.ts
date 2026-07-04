@@ -28,7 +28,7 @@ export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
 export type CapabilityKind = 'read_only' | 'effectful';
 export type CapabilityInvocationStatus = 'executed' | 'unavailable' | 'error' | 'not_found' | 'denied';
 export type CapabilityRuntimeDecision = CapabilityInvocationStatus;
-export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send';
+export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send' | 'pricing.quote_line';
 export type WorkflowExecutionStatus =
   | 'completed'
   | 'blocked'
@@ -642,7 +642,125 @@ export interface MockEmailSendWorkflowInput extends GovernedWorkflowRequestBase 
   capability_id?: string | null;
 }
 
-export type GovernedWorkflowRequest = MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput;
+export interface PricingQuoteLineWorkflowInput extends GovernedWorkflowRequestBase {
+  kind: 'pricing.quote_line';
+  article: string;
+  unidades?: number | null;
+  alto?: number | null;
+  ancho?: number | null;
+  options?: Record<string, unknown> | null;
+  capability_id?: string | null;
+}
+
+export interface PricingQuoteLineWorkflowResponseData {
+  kind: 'pricing.quote_line';
+  article: string;
+  article_name: string | null;
+  articulo_id: string | number | null;
+  unidades: number | null;
+  alto: number | null;
+  ancho: number | null;
+  options: Record<string, unknown> | null;
+  attributes: Record<string, unknown> | null;
+  defaults_applied: string[] | null;
+  options_summary: string[] | null;
+  neto_unitario: number | null;
+  neto_base: number | null;
+  neto_total: number | null;
+  iva_percentage: number | null;
+  iva_amount: number | null;
+  total: number | null;
+  stock: boolean | null;
+  source_system: string | null;
+  source_record_id: string | null;
+}
+
+export type RequestClarificationMissing = 'customer' | 'document_id' | 'ambiguous' | 'unsupported' | 'pricing';
+
+export interface RequestClarificationResponseData {
+  kind: 'request_clarification';
+  missing: RequestClarificationMissing;
+  reason: string;
+  candidates?: string[] | null;
+  fields?: string[] | null;
+  defaults_applied?: string[] | null;
+}
+
+export interface PacoPrintCatalogArticleAttributeRule {
+  tipo?: 'select' | 'numero' | 'text' | string;
+  obligatorio?: boolean;
+  valores_validos?: Array<string | number>;
+  valor_defecto?: string | number | boolean | null;
+  minimo?: number;
+  maximo?: number;
+  decimales?: number;
+}
+
+export interface PacoPrintCatalogArticleMeasurementRule {
+  minimo?: number;
+  maximo?: number;
+  decimales?: number;
+}
+
+export interface PacoPrintCatalogPriceSchema {
+  alto?: PacoPrintCatalogArticleMeasurementRule | null;
+  ancho?: PacoPrintCatalogArticleMeasurementRule | null;
+  atributos?: Record<string, PacoPrintCatalogArticleAttributeRule> | null;
+}
+
+export interface PacoPrintCatalogArticleAttributeValue {
+  id: string | number;
+  nombre: string;
+  [key: string]: unknown;
+}
+
+export interface PacoPrintCatalogArticleAttribute {
+  id: string | number;
+  nombre: string;
+  valores_posibles?: PacoPrintCatalogArticleAttributeValue[] | null;
+  [key: string]: unknown;
+}
+
+export interface PacoPrintCatalogArticle {
+  id: string | number;
+  nombre: string;
+  tipo_calculo: 'm2' | 'Unidades';
+  json_calcular_precio: PacoPrintCatalogPriceSchema;
+  atributos?: PacoPrintCatalogArticleAttribute[] | null;
+}
+
+export interface PacoPrintCatalogCandidate {
+  id: string | number;
+  nombre: string;
+  tipo_calculo: 'm2' | 'Unidades';
+  json_calcular_precio: PacoPrintCatalogPriceSchema;
+  atributos?: PacoPrintCatalogArticleAttribute[] | null;
+}
+
+export interface PacoPrintCatalogSearchInput {
+  text: string;
+  organization_id?: string | null;
+  correlation_id?: string | null;
+}
+
+export interface PacoPrintQuoteLineInput {
+  articulo_id: string | number;
+  unidades: number;
+  alto: number;
+  ancho: number;
+  atributos: unknown;
+  organization_id?: string | null;
+  correlation_id?: string | null;
+}
+
+export interface PacoPrintCatalogAdapterPort {
+  adapter_id: string;
+  source_system: string;
+  catalogSearch(input: PacoPrintCatalogSearchInput): ResourceResult;
+  quoteLine(input: PacoPrintQuoteLineInput): ResourceResult;
+}
+
+export type GovernedWorkflowRequest = MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput | PricingQuoteLineWorkflowInput;
 
 export type OrchestrationStatus = 'proposal' | 'no_proposal' | 'denied' | 'blocked' | 'error';
 

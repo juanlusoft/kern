@@ -87,6 +87,40 @@ function buildToolCatalog(): QwenToolDefinition[] {
       }
     }
   };
+  const pricingTool: QwenToolDefinition = {
+    capability_key: 'pricing.quote_line',
+    description: 'Propose a single governed PacoPrint line pricing request without inventing article ids or prices.',
+    parameters_schema: {
+      type: 'object',
+      required: ['article'],
+      additionalProperties: false,
+      properties: {
+        article: {
+          type: 'string',
+          description: 'Article name extracted from the user request.'
+        },
+        unidades: {
+          type: 'number',
+          description: 'Number of units requested by the user.',
+          minimum: 1
+        },
+        alto: {
+          type: 'number',
+          description: 'Height in centimeters requested by the user.',
+          minimum: 0
+        },
+        ancho: {
+          type: 'number',
+          description: 'Width in centimeters requested by the user.',
+          minimum: 0
+        },
+        options: {
+          type: 'object',
+          description: 'Mentioned options from the user request.'
+        }
+      }
+    }
+  };
   const clarificationTool: QwenToolDefinition = {
     capability_key: 'request_clarification',
     description: 'Ask the user to clarify missing or unsupported details without inventing parameters.',
@@ -97,7 +131,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
       properties: {
         missing: {
           type: 'string',
-          enum: ['customer', 'document_id', 'ambiguous', 'unsupported'],
+          enum: ['customer', 'document_id', 'ambiguous', 'unsupported', 'pricing'],
           description: 'What information is missing or unsupported.'
         },
         reason: {
@@ -127,7 +161,7 @@ function buildToolCatalog(): QwenToolDefinition[] {
       }
     }
   };
-  return [readTool, clarificationTool, emailTool];
+  return [readTool, pricingTool, clarificationTool, emailTool];
 }
 
 function buildRequest(overrides: Partial<QwenChatCompletionsRequest> = {}) {
@@ -361,6 +395,9 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
   assert.equal(requests[0].messages[0].content?.includes('latest N estimates or invoices'), true);
   assert.equal(requests[0].messages[0].content?.includes('Use limit only with customer_id.'), true);
   assert.equal(requests[0].messages[0].content?.includes('{ "resource_type": "invoice", "customer_id": "ACME SL", "limit": 3 }'), true);
+  assert.equal(requests[0].messages[0].content?.includes('pricing.quote_line'), true);
+  assert.equal(requests[0].messages[0].content?.includes('Do not choose articulo_id or calculate price.'), true);
+  assert.equal(requests[0].messages[0].content?.includes('If a PacoPrint pricing request is incomplete, keep the proposal minimal and let the runtime clarify missing details.'), true);
   assert.equal(requests[0].messages[0].content?.includes('Cliente Ejemplo SL'), true);
   assert.equal(requests[0].messages[0].content?.includes('Cliente Demo SL'), true);
   assert.equal(requests[0].messages[0].content?.includes('Granapublic'), false);
@@ -404,6 +441,56 @@ test('Qwen orchestrator allows customer extraction as tool params without invent
   assert.equal(outcome.status, 'proposal');
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+});
+
+test('Qwen orchestrator proposes pricing.quote_line without inventing article ids or prices', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall(
+    {
+      article: 'lona',
+      unidades: 2,
+      alto: 100,
+      ancho: 200,
+      options: {
+        ojales: true
+      }
+    },
+    '',
+    'pricing.quote_line'
+  );
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-pricing-1',
+    user_message: 'precio de lona 100x200 2 unidades con ojales',
+    organization_id: 'org-pacoprint',
+    principal_id: 'human-pacoprint',
+    actor: {
+      principal_id: 'human-pacoprint',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-pricing-1',
+    installation_id: 'install-pacoprint',
+    context: {
+      installation_id: 'install-pacoprint',
+      active_capabilities: ['pricing.quote_line'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].tools.some((tool) => tool.function.name === 'pricing.quote_line'), true);
+  assert.equal(requests[0].messages[0].content?.includes('pricing.quote_line'), true);
+  assert.equal(requests[0].messages[0].content?.includes('Do not choose articulo_id or calculate price.'), true);
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'pricing.quote_line');
+  assert.equal(outcome.proposal?.params.article, 'lona');
+  assert.equal(outcome.proposal?.params.unidades, 2);
+  assert.equal(outcome.proposal?.params.alto, 100);
+  assert.equal(outcome.proposal?.params.ancho, 200);
+  assert.deepEqual(outcome.proposal?.params.options, { ojales: true });
+  assert.equal('articulo_id' in (outcome.proposal?.params ?? {}), false);
+  assert.equal('price' in (outcome.proposal?.params ?? {}), false);
 });
 
 test('Qwen orchestrator can request clarification honestly without inventing params', () => {

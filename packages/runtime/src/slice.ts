@@ -12,12 +12,16 @@ import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
 import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { createMockResourceReadCapability } from '../../capabilities/src/index';
+import { createPricingQuoteLineCapability } from '../../workflows/src/index';
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
+import { createPacoPrintCatalogAdapter } from '../../adapters/pacoprint-catalog/src/index';
 import {
   createNodeFetchHoldedTransport,
+  createNodeFetchPacoPrintTransport,
   createNodeFetchTelegramTransport,
   createQwenNodeFetchTransport
 } from './transports';
+import { type PacoPrintFetch } from '../../adapters/pacoprint-catalog/src/index';
 import type { QwenToolDefinition } from '../../orchestrators/qwen/src/index';
 import {
   createSampleInstallationConfig,
@@ -38,7 +42,7 @@ import {
 } from '../../identity/src/index';
 
 const REQUIRED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog'];
 
 export interface RuntimeModuleDefinition {
   module_key: RuntimeModuleKey;
@@ -96,6 +100,7 @@ export interface RuntimeSliceDependencies {
   telegramTransport?: TelegramTransport | null;
   qwenTransport?: QwenChatCompletionsTransport | null;
   holdedFetch?: HoldedFetch | null;
+  pacoPrintFetch?: PacoPrintFetch | null;
 }
 
 export interface RuntimeSliceOptions extends RuntimeSliceDependencies {
@@ -186,7 +191,9 @@ function buildRuntimeModuleRegistry(config: RuntimeInstallationConfig): RuntimeM
           ? 'Telegram channel adapter'
           : moduleKey === 'qwen-orchestrator'
             ? 'Qwen orchestrator'
-            : 'Holded read adapter'
+            : moduleKey === 'holded-read'
+              ? 'Holded read adapter'
+              : 'PacoPrint catalog adapter'
     });
   }
   return registry;
@@ -197,6 +204,39 @@ function hasRequiredModules(registry: RuntimeModuleRegistry): boolean {
 }
 
 function buildQwenToolCatalog() {
+  const pricingTool: QwenToolDefinition = {
+    capability_key: 'pricing.quote_line',
+    description: 'Calculate a single PacoPrint line price from the user request without inventing article ids or prices.',
+    parameters_schema: {
+      type: 'object' as const,
+      required: ['article'],
+      additionalProperties: false as const,
+      properties: {
+        article: {
+          type: 'string' as const,
+          description: 'Textual article name extracted from the user message.'
+        },
+        unidades: {
+          type: 'integer' as const,
+          description: 'Number of units if the user provided it.',
+          minimum: 1,
+          maximum: 100000
+        },
+        alto: {
+          type: 'number' as const,
+          description: 'Height in centimeters if the user provided it.'
+        },
+        ancho: {
+          type: 'number' as const,
+          description: 'Width in centimeters if the user provided it.'
+        },
+        options: {
+          type: 'object' as const,
+          description: 'Optional user options to map onto PacoPrint attributes.'
+        }
+      }
+    }
+  };
   const readTool: QwenToolDefinition = {
     capability_key: 'mock.resource.read',
     description:
@@ -278,7 +318,7 @@ function buildQwenToolCatalog() {
       properties: {
         missing: {
           type: 'string' as const,
-          enum: ['customer', 'document_id', 'ambiguous', 'unsupported'],
+          enum: ['customer', 'document_id', 'ambiguous', 'unsupported', 'pricing'],
           description: 'What information is missing or unsupported.'
         },
         reason: {
@@ -288,7 +328,7 @@ function buildQwenToolCatalog() {
       }
     }
   };
-  return [readTool, clarificationTool];
+  return [pricingTool, readTool, clarificationTool];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {
@@ -429,6 +469,7 @@ function buildOrchestrationBoundary(options: {
   secrets: ResolvedRuntimeSecrets;
   qwenTransport: QwenChatCompletionsTransport;
   holdedFetch: HoldedFetch;
+  pacoPrintFetch: PacoPrintFetch;
   now: () => Date;
 }) {
   const externalReadAdapter = createHoldedReadAdapter({
@@ -438,15 +479,28 @@ function buildOrchestrationBoundary(options: {
     now: options.now,
     installation: buildHoldedInstallation(options.config)
   });
+  const pacoPrintCatalogAdapter = createPacoPrintCatalogAdapter({
+    apiToken: options.secrets.PACOPRINT_API_TOKEN,
+    baseUrl: 'https://pacoprint.com/api/v1',
+    fetch: options.pacoPrintFetch,
+    now: options.now,
+    organization_id: options.config.organization.organization_id
+  });
   const workflowRuntime = new InMemoryGovernedWorkflowRuntime({
     now: options.now,
     resolveOrganizationContext: buildOrganizationResolver(options.config, options.now),
     resolveIdentityContext: buildIdentityResolver(options.config, options.now),
-    externalReadAdapter
+    externalReadAdapter,
+    pacoPrintCatalogAdapter
   });
   workflowRuntime.registerCapability(
     createMockResourceReadCapability(externalReadAdapter, {}, options.config.organization.organization_id)
   );
+  if (options.config.active_modules.includes('pacoprint-catalog') && options.config.active_capabilities.includes('pricing.quote_line')) {
+    workflowRuntime.registerCapability(
+      createPricingQuoteLineCapability(pacoPrintCatalogAdapter, {}, options.config.organization.organization_id)
+    );
+  }
 
   const orchestrator = createQwenOrchestrator({
     baseUrl: options.secrets.KERN_MODEL_BASE_URL,
@@ -478,6 +532,7 @@ export function startInstallationRuntime(input: {
   telegramTransport?: TelegramTransport | null;
   qwenTransport?: QwenChatCompletionsTransport | null;
   holdedFetch?: HoldedFetch | null;
+  pacoPrintFetch?: PacoPrintFetch | null;
 }): RuntimeStartResult {
   const now = input.now ?? (() => new Date());
   const evidenceLedger = new InMemoryEvidenceLedger();
@@ -645,11 +700,19 @@ export function startInstallationRuntime(input: {
       timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
     });
   const nowFn = now;
+  const pacoPrintFetch =
+    input.pacoPrintFetch ??
+    createNodeFetchPacoPrintTransport({
+      baseUrl: 'https://pacoprint.com/api/v1',
+      apiToken: secrets.PACOPRINT_API_TOKEN,
+      timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
+    });
   const { workflowRuntime, orchestrationBoundary } = buildOrchestrationBoundary({
     config: loaded.config,
     secrets,
     qwenTransport,
     holdedFetch,
+    pacoPrintFetch,
     now: nowFn
   });
   const telegramAdapter = createTelegramChannelAdapter({

@@ -41,7 +41,7 @@ export interface QwenToolDefinition {
   parameters_schema: QwenParameterSchema;
 }
 
-type QwenClarificationMissing = 'customer' | 'document_id' | 'ambiguous' | 'unsupported';
+type QwenClarificationMissing = 'customer' | 'document_id' | 'ambiguous' | 'unsupported' | 'pricing';
 
 interface QwenClarificationResponseData {
   kind: 'request_clarification';
@@ -229,7 +229,7 @@ function clarificationDataFromArguments(argumentsObject: Record<string, unknown>
   if (!missing || !reason) {
     return null;
   }
-  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported') {
+  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported' && missing !== 'pricing') {
     return null;
   }
   return {
@@ -304,6 +304,24 @@ function buildSystemPrompt(input: {
     '{ "resource_type": "invoice", "year": "2025", "customer_id": "Cliente Ejemplo SL" }',
     'Do not use payment_status with resource_type="estimate".',
     'Do not invent estimate_id or invoice_id.',
+    'For PacoPrint pricing requests like "precio de <articulo> <medidas> <unidades> <opciones>", use pricing.quote_line.',
+    'pricing.quote_line carries only intent: article, unidades, alto, ancho, and mentioned options. Do not choose articulo_id or calculate price.',
+    'If a PacoPrint pricing request is incomplete, keep the proposal minimal and let the runtime clarify missing details.',
+    'User: "precio de lona 100x200 2 unidades con ojales"',
+    'Correct tool params:',
+    '{',
+    '  "article": "lona",',
+    '  "unidades": 2,',
+    '  "alto": 100,',
+    '  "ancho": 200,',
+    '  "options": { "ojales": true }',
+    '}',
+    'User: "precio de lona con ojales"',
+    'Correct tool params:',
+    '{ "article": "lona", "options": { "ojales": true } }',
+    'User: "dame precio de tarjetas 500 unidades"',
+    'Correct tool params:',
+    '{ "article": "tarjetas", "unidades": 500 }',
     `organization_id=${input.organization_id ?? 'null'}`,
     `principal_id=${input.principal_id ?? 'null'}`,
     `installation_id=${input.installation_id ?? 'null'}`,

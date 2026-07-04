@@ -35,6 +35,7 @@ export interface PacoPrintCatalogArticleAttributeRule {
   tipo?: 'select' | 'numero' | 'text' | string;
   obligatorio?: boolean;
   valores_validos?: Array<string | number>;
+  valor_defecto?: string | number | boolean | null;
   minimo?: number;
   maximo?: number;
   decimales?: number;
@@ -52,11 +53,25 @@ export interface PacoPrintCatalogPriceSchema {
   atributos?: Record<string, PacoPrintCatalogArticleAttributeRule> | null;
 }
 
+export interface PacoPrintCatalogArticleAttributeValue {
+  id: string | number;
+  nombre: string;
+  [key: string]: unknown;
+}
+
+export interface PacoPrintCatalogArticleAttribute {
+  id: string | number;
+  nombre: string;
+  valores_posibles?: PacoPrintCatalogArticleAttributeValue[] | null;
+  [key: string]: unknown;
+}
+
 export interface PacoPrintCatalogArticle {
   id: string | number;
   nombre: string;
   tipo_calculo: 'm2' | 'Unidades';
   json_calcular_precio: PacoPrintCatalogPriceSchema;
+  atributos?: PacoPrintCatalogArticleAttribute[] | null;
 }
 
 export interface PacoPrintCatalogCandidate {
@@ -64,6 +79,7 @@ export interface PacoPrintCatalogCandidate {
   nombre: string;
   tipo_calculo: 'm2' | 'Unidades';
   json_calcular_precio: PacoPrintCatalogPriceSchema;
+  atributos?: PacoPrintCatalogArticleAttribute[] | null;
 }
 
 export interface PacoPrintCatalogSearchInput {
@@ -367,7 +383,8 @@ function formatArticleRecord(article: PacoPrintCatalogArticle): PacoPrintCatalog
     id: article.id,
     nombre: article.nombre,
     tipo_calculo: article.tipo_calculo,
-    json_calcular_precio: structuredClone(article.json_calcular_precio)
+    json_calcular_precio: structuredClone(article.json_calcular_precio),
+    atributos: structuredClone(article.atributos ?? null)
   };
 }
 
