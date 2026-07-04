@@ -1,4 +1,4 @@
-﻿import {
+import {
   createEvidenceRecord,
   type ChannelAdapter,
   type ChannelInstallationConfig,
@@ -463,29 +463,38 @@ function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
     return buildCompletedOutboundText(outcome);
   }
   const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'Línea de PacoPrint';
-  const units = numberFromKeys(responseData, ['unidades']);
-  const alto = numberFromKeys(responseData, ['alto']);
-  const ancho = numberFromKeys(responseData, ['ancho']);
+  const units = numberFromKeys(responseData, ['unidades']) ?? numberFromKeys(resourceResult, ['unidades']);
+  const alto = numberFromKeys(responseData, ['alto']) ?? numberFromKeys(resourceResult, ['alto']);
+  const ancho = numberFromKeys(responseData, ['ancho']) ?? numberFromKeys(resourceResult, ['ancho']);
   const optionsSummary = Array.isArray(responseData.options_summary)
     ? responseData.options_summary.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
   const defaultsApplied = Array.isArray(responseData.defaults_applied)
     ? responseData.defaults_applied.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
-  const amount =
-    formatCurrencyAmount(numberFromKeys(responseData, ['total', 'neto_total', 'neto_base']), firstStringFromKeys(responseData, ['currency', 'currency_code'])) ??
-    formatCurrencyAmount(numberFromKeys(resourceResult, ['total', 'neto_total', 'neto_base']), firstStringFromKeys(resourceResult, ['currency', 'currency_code']));
-  const sourceLine = firstStringFromKeys(responseData, ['source_record_id', 'articulo_id']) ?? firstStringFromKeys(resourceResult, ['source_record_id', 'articulo_id']);
+  const currency =
+    firstStringFromKeys(responseData, ['currency', 'currency_code']) ??
+    firstStringFromKeys(resourceResult, ['currency', 'currency_code']);
+  const total =
+    formatCurrencyAmount(numberFromKeys(responseData, ['total', 'amount']), currency) ??
+    formatCurrencyAmount(numberFromKeys(resourceResult, ['total', 'amount']), currency);
+  const netAmount =
+    formatCurrencyAmount(numberFromKeys(responseData, ['neto_total', 'neto_base']), currency) ??
+    formatCurrencyAmount(numberFromKeys(resourceResult, ['neto_total', 'neto_base']), currency);
+  const ivaPercentage = numberFromKeys(responseData, ['iva_percentage']) ?? numberFromKeys(resourceResult, ['iva_percentage']);
   const fragments = [
-    `Línea de PacoPrint${articleName ? `: ${articleName}` : ''}`,
-    units !== null ? `${units} unidades` : null,
-    alto !== null && ancho !== null ? `${ancho}?${alto} mm` : null,
-    optionsSummary.length > 0 ? optionsSummary.join(', ') : null,
-    defaultsApplied.length > 0 ? `Valores por defecto: ${defaultsApplied.join(', ')}` : null,
-    amount ? `Total ${amount}` : null,
-    sourceLine ? `Fuente: Holded · documento ${sourceLine}` : null
+    articleName,
+    alto !== null && ancho !== null ? `${ancho}×${alto} mm` : null,
+    units !== null ? `${units} uds` : null,
+    optionsSummary.length > 0 ? optionsSummary.join(', ') : null
   ].filter((value): value is string => Boolean(value));
-  return fragments.join(' ? ');
+  const mainLine =
+    total && netAmount !== null && ivaPercentage !== null
+      ? `${fragments.join(' · ')} → ${total} (neto ${netAmount} + IVA ${ivaPercentage}%)`
+      : total
+        ? `${fragments.join(' · ')} → ${total}`
+        : fragments.join(' · ');
+  return defaultsApplied.length > 0 ? `${mainLine}\nDefaults aplicados: ${defaultsApplied.join(', ')}.` : mainLine;
 }
 
 function buildClarificationText(outcome: OrchestrationOutcome): string {

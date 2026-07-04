@@ -54,10 +54,14 @@ function buildPricingOutcome(): OrchestrationOutcome {
 test('Telegram renders pricing results as human-readable text', () => {
   const text = buildTelegramOutboundText(buildPricingOutcome());
 
-  assert.equal(text.includes('Línea de PacoPrint'), true);
-  assert.equal(text.includes('Vinilo Monomérico Plus'), true);
-  assert.equal(text.includes('1210,00 €'), true);
-  assert.equal(text.includes('Fuente: Holded · documento F26/1931'), true);
+  assert.equal(
+    text,
+    'Vinilo Monomérico Plus · 200×100 mm · 2 uds · Color Blanco → 1210,00 € (neto 1000,00 € + IVA 21%)\nDefaults aplicados: Color.'
+  );
+  assert.equal(text.includes('→'), true);
+  assert.equal(text.includes('?'), false);
+  assert.equal(text.includes('Fuente: Holded'), false);
+  assert.equal(text.includes('documento'), false);
   assert.equal(text.includes('{'), false);
   assert.equal(text.includes('runtime completed'), false);
 });
