@@ -38,7 +38,14 @@ function buildCatalogStructure() {
       {
         id: 101,
         nombre: 'Vinilo Monomérico Plus',
-        tipo_calculo: 'm2' as const,
+        caracteristicas: {
+          tipo_calculo: 'm2' as const,
+          cantidad_minima: 1,
+          medidas: {
+            alto_minimo: 100,
+            ancho_minimo: 50
+          }
+        },
         json_calcular_precio: {
           alto: { minimo: 100, decimales: 0 },
           ancho: { minimo: 50, decimales: 0 },
@@ -61,7 +68,14 @@ function buildCatalogStructure() {
       {
         id: 'A-202',
         nombre: 'Cartel rígido',
-        tipo_calculo: 'Unidades' as const,
+        caracteristicas: {
+          tipo_calculo: 'Unidades' as const,
+          cantidad_minima: 1,
+          medidas: {
+            alto_minimo: 1,
+            ancho_minimo: 1
+          }
+        },
         json_calcular_precio: {
           atributos: {}
         }
