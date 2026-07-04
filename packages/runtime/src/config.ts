@@ -1,6 +1,6 @@
 import type { ChannelIdentityMapping, PrincipalType } from '../../contracts/src/index';
 
-export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read';
+export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read' | 'pacoprint-catalog';
 
 export interface RuntimeOrganizationConfig {
   organization_id: string;
@@ -23,6 +23,7 @@ export interface RuntimeSecretRefs {
   KERN_MODEL_BASE_URL: string;
   KERN_MODEL_NAME: string;
   KERN_MODEL_API_KEY?: string | null;
+  PACOPRINT_API_TOKEN?: string | null;
 }
 
 export interface RuntimeOptions {
@@ -52,6 +53,7 @@ export interface ResolvedRuntimeSecrets {
   KERN_MODEL_BASE_URL: string;
   KERN_MODEL_NAME: string;
   KERN_MODEL_API_KEY: string | null;
+  PACOPRINT_API_TOKEN: string | null;
 }
 
 export interface LoadedRuntimeConfig {
@@ -69,7 +71,7 @@ export class RuntimeConfigError extends Error {
   }
 }
 
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog'];
 const PRINCIPAL_TYPES: PrincipalType[] = ['human', 'service', 'agent'];
 const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
@@ -314,7 +316,11 @@ function normalizeSecretRefs(value: unknown): RuntimeSecretRefs {
     KERN_MODEL_API_KEY:
       value.KERN_MODEL_API_KEY === undefined || value.KERN_MODEL_API_KEY === null
         ? null
-        : assertEnvName(value.KERN_MODEL_API_KEY, 'secret_refs.KERN_MODEL_API_KEY')
+        : assertEnvName(value.KERN_MODEL_API_KEY, 'secret_refs.KERN_MODEL_API_KEY'),
+    PACOPRINT_API_TOKEN:
+      value.PACOPRINT_API_TOKEN === undefined || value.PACOPRINT_API_TOKEN === null
+        ? null
+        : assertEnvName(value.PACOPRINT_API_TOKEN, 'secret_refs.PACOPRINT_API_TOKEN')
   };
 }
 
@@ -403,7 +409,8 @@ export function resolveRuntimeSecrets(secretRefs: RuntimeSecretRefs, env: NodeJS
     KERN_TELEGRAM_BOT_TOKEN: resolveRequired(secretRefs.KERN_TELEGRAM_BOT_TOKEN, 'secret_refs.KERN_TELEGRAM_BOT_TOKEN'),
     KERN_MODEL_BASE_URL: resolveRequired(secretRefs.KERN_MODEL_BASE_URL, 'secret_refs.KERN_MODEL_BASE_URL'),
     KERN_MODEL_NAME: resolveRequired(secretRefs.KERN_MODEL_NAME, 'secret_refs.KERN_MODEL_NAME'),
-    KERN_MODEL_API_KEY: secretRefs.KERN_MODEL_API_KEY ? resolveOptional(secretRefs.KERN_MODEL_API_KEY) : null
+    KERN_MODEL_API_KEY: secretRefs.KERN_MODEL_API_KEY ? resolveOptional(secretRefs.KERN_MODEL_API_KEY) : null,
+    PACOPRINT_API_TOKEN: secretRefs.PACOPRINT_API_TOKEN ? resolveOptional(secretRefs.PACOPRINT_API_TOKEN) : null
   };
 }
 

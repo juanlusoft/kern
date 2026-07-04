@@ -1,7 +1,7 @@
 import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
 import { InMemoryCapabilityRuntime } from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
-import { type ExternalReadAdapter, type CapabilityInvocationResult, type GovernedWorkflowKind, type GovernedWorkflowResponse, type GovernedWorkflowResult, type WorkflowExecutionStatus, type WorkflowStep } from '../../contracts/src/index';
+import { type ExternalReadAdapter, type PacoPrintCatalogAdapterPort, type CapabilityInvocationResult, type GovernedWorkflowKind, type GovernedWorkflowResponse, type GovernedWorkflowResult, type WorkflowExecutionStatus, type WorkflowStep } from '../../contracts/src/index';
 import { type InMemoryTurnRuntime } from '../../turns/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
 
@@ -54,6 +54,7 @@ export interface WorkflowRuntimeContext {
   capabilityRuntime: InMemoryCapabilityRuntime;
   turnRuntime: InMemoryTurnRuntime;
   externalReadAdapter: ExternalReadAdapter;
+  pacoPrintCatalogAdapter: PacoPrintCatalogAdapterPort | null;
   resolveOrganizationContext: typeof resolveOrganizationContext;
   resolveIdentityContext: typeof resolveIdentityContext;
   now: () => Date;

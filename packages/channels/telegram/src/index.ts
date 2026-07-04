@@ -230,7 +230,7 @@ function extractResponseData(outcome: OrchestrationOutcome): Record<string, unkn
 }
 
 function clarificationDataFromOutcome(outcome: OrchestrationOutcome): {
-  missing: 'customer' | 'document_id' | 'ambiguous' | 'unsupported';
+  missing: 'customer' | 'document_id' | 'ambiguous' | 'unsupported' | 'pricing';
   reason: string;
 } | null {
   const responseData = extractResponseData(outcome);
@@ -242,7 +242,7 @@ function clarificationDataFromOutcome(outcome: OrchestrationOutcome): {
   if (!missing || !reason) {
     return null;
   }
-  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported') {
+  if (missing !== 'customer' && missing !== 'document_id' && missing !== 'ambiguous' && missing !== 'unsupported' && missing !== 'pricing') {
     return null;
   }
   return { missing, reason };
@@ -302,6 +302,11 @@ function paymentStatusLabel(paymentStatus: string | null): string {
 function isInvoiceListResponseData(outcome: OrchestrationOutcome): boolean {
   const responseData = extractResponseData(outcome);
   return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'list' && Array.isArray(responseData.records));
+}
+
+function isPricingQuoteLineResponseData(outcome: OrchestrationOutcome): boolean {
+  const responseData = extractResponseData(outcome);
+  return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'pricing.quote_line');
 }
 
 function formatListCount(value: number): string {
@@ -450,6 +455,39 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
   return lines.join('\n');
 }
 
+
+function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
+  const responseData = extractResponseData(outcome);
+  const resourceResult = extractResourceResult(outcome);
+  if (!responseData || !isPlainObject(responseData) || responseData.kind !== 'pricing.quote_line') {
+    return buildCompletedOutboundText(outcome);
+  }
+  const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'Línea de PacoPrint';
+  const units = numberFromKeys(responseData, ['unidades']);
+  const alto = numberFromKeys(responseData, ['alto']);
+  const ancho = numberFromKeys(responseData, ['ancho']);
+  const optionsSummary = Array.isArray(responseData.options_summary)
+    ? responseData.options_summary.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const defaultsApplied = Array.isArray(responseData.defaults_applied)
+    ? responseData.defaults_applied.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const amount =
+    formatCurrencyAmount(numberFromKeys(responseData, ['total', 'neto_total', 'neto_base']), firstStringFromKeys(responseData, ['currency', 'currency_code'])) ??
+    formatCurrencyAmount(numberFromKeys(resourceResult, ['total', 'neto_total', 'neto_base']), firstStringFromKeys(resourceResult, ['currency', 'currency_code']));
+  const sourceLine = firstStringFromKeys(responseData, ['source_record_id', 'articulo_id']) ?? firstStringFromKeys(resourceResult, ['source_record_id', 'articulo_id']);
+  const fragments = [
+    `Línea de PacoPrint${articleName ? `: ${articleName}` : ''}`,
+    units !== null ? `${units} unidades` : null,
+    alto !== null && ancho !== null ? `${ancho}?${alto} mm` : null,
+    optionsSummary.length > 0 ? optionsSummary.join(', ') : null,
+    defaultsApplied.length > 0 ? `Valores por defecto: ${defaultsApplied.join(', ')}` : null,
+    amount ? `Total ${amount}` : null,
+    sourceLine ? `Fuente: Holded · documento ${sourceLine}` : null
+  ].filter((value): value is string => Boolean(value));
+  return fragments.join(' ? ');
+}
+
 function buildClarificationText(outcome: OrchestrationOutcome): string {
   const clarification = clarificationDataFromOutcome(outcome);
   if (!clarification) {
@@ -464,6 +502,8 @@ function buildClarificationText(outcome: OrchestrationOutcome): string {
       return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
     case 'unsupported':
       return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
+    case 'pricing':
+      return 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
     default:
       return clarification.reason;
   }
@@ -511,7 +551,11 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
 function buildStatusText(outcome: OrchestrationOutcome): string {
   switch (outcome.response.status) {
     case 'completed':
-      return isInvoiceListResponseData(outcome) ? buildInvoiceListOutboundText(outcome) : buildCompletedOutboundText(outcome);
+      return isPricingQuoteLineResponseData(outcome)
+        ? buildPricingOutboundText(outcome)
+        : isInvoiceListResponseData(outcome)
+          ? buildInvoiceListOutboundText(outcome)
+          : buildCompletedOutboundText(outcome);
     case 'not_found':
       return 'No he encontrado ese documento en Holded.';
     case 'unavailable':
@@ -520,7 +564,9 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
       return 'Ha habido un problema técnico al procesar la consulta. Inténtalo de nuevo.';
     case 'denied':
     case 'blocked':
-      return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
+      return outcome.response.workflow_kind === 'pricing.quote_line'
+        ? 'No puedo calcular ese precio con lo que tengo. Dame el artículo y los datos que falten.'
+        : 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
     case 'no_proposal':
       return buildClarificationText(outcome);
     default:

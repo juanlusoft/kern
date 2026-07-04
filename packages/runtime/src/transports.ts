@@ -8,6 +8,10 @@ import {
   type TelegramOutboundMessage
 } from '../../contracts/src/index';
 import {
+  type PacoPrintFetch,
+  type PacoPrintFetchResponse
+} from '../../adapters/pacoprint-catalog/src/index';
+import {
   type QwenChatCompletionsRequest,
   type QwenChatCompletionsResponse,
   type QwenChatCompletionsTransport,
@@ -168,6 +172,73 @@ try {
     const output = execute({
       url,
       apiKey: options.apiKey,
+      timeoutMs: options.timeoutMs ?? 30_000,
+      method: init?.method ?? 'GET',
+      body: init?.body ? String(init.body) : null
+    }) as {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      text: string;
+    };
+    const parsedJson = parseJsonText(output.text);
+    return {
+      ok: output.ok,
+      status: output.status,
+      statusText: output.statusText,
+      text: () => output.text,
+      json: () => parsedJson,
+      headers: { get: () => null }
+    };
+  };
+}
+
+export function createNodeFetchPacoPrintTransport(options: {
+  baseUrl: string;
+  apiToken?: string | null;
+  timeoutMs?: number;
+}): PacoPrintFetch {
+  const baseUrl = normalizeOptionalString(options.baseUrl) ?? 'https://pacoprint.com/api/v1';
+  const script = `
+import { readFileSync } from 'node:fs';
+
+const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
+const controller = new AbortController();
+const timeout = Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? setTimeout(() => controller.abort(), input.timeoutMs) : null;
+const headers = { accept: 'application/json' };
+if (input.apiToken) {
+  headers.authorization = 'Bearer ' + input.apiToken;
+}
+if (input.body) {
+  headers['content-type'] = 'application/json';
+}
+
+try {
+  const response = await fetch(input.url, {
+    method: input.method ?? 'GET',
+    headers,
+    body: input.body ? JSON.stringify(input.body) : undefined,
+    signal: controller.signal
+  });
+  const text = await response.text();
+  process.stdout.write(JSON.stringify({
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    text
+  }));
+} catch (error) {
+  process.stderr.write(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+} finally {
+  if (timeout) clearTimeout(timeout);
+}
+`;
+  const execute = createSyncJsonTransport(script);
+  return (url: string, init?: RequestInit): PacoPrintFetchResponse => {
+    const output = execute({
+      url: new URL(url, baseUrl).toString(),
+      apiToken: options.apiToken ?? null,
       timeoutMs: options.timeoutMs ?? 30_000,
       method: init?.method ?? 'GET',
       body: init?.body ? String(init.body) : null
