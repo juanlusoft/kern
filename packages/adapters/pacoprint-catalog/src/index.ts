@@ -66,10 +66,20 @@ export interface PacoPrintCatalogArticleAttribute {
   [key: string]: unknown;
 }
 
+export interface PacoPrintCatalogArticleCharacteristics {
+  tipo_calculo: 'm2' | 'Unidades';
+  cantidad_minima?: number | null;
+  medidas?: {
+    alto_minimo?: number | null;
+    ancho_minimo?: number | null;
+  } | null;
+  [key: string]: unknown;
+}
+
 export interface PacoPrintCatalogArticle {
   id: string | number;
   nombre: string;
-  tipo_calculo: 'm2' | 'Unidades';
+  caracteristicas: PacoPrintCatalogArticleCharacteristics;
   json_calcular_precio: PacoPrintCatalogPriceSchema;
   atributos?: PacoPrintCatalogArticleAttribute[] | null;
 }
@@ -202,10 +212,13 @@ function isPacoPrintCatalogArticle(value: unknown): value is PacoPrintCatalogArt
   if (!isRecord(value)) {
     return false;
   }
+  if (!isRecord(value.caracteristicas)) {
+    return false;
+  }
   return (
     (typeof value.id === 'string' || typeof value.id === 'number') &&
     typeof value.nombre === 'string' &&
-    (value.tipo_calculo === 'm2' || value.tipo_calculo === 'Unidades') &&
+    (value.caracteristicas.tipo_calculo === 'm2' || value.caracteristicas.tipo_calculo === 'Unidades') &&
     isRecord(value.json_calcular_precio)
   );
 }
@@ -382,7 +395,7 @@ function formatArticleRecord(article: PacoPrintCatalogArticle): PacoPrintCatalog
   return {
     id: article.id,
     nombre: article.nombre,
-    tipo_calculo: article.tipo_calculo,
+    tipo_calculo: article.caracteristicas.tipo_calculo,
     json_calcular_precio: structuredClone(article.json_calcular_precio),
     atributos: structuredClone(article.atributos ?? null)
   };
