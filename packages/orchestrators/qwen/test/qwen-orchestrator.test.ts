@@ -450,6 +450,144 @@ test('Qwen orchestrator can request clarification honestly without inventing par
   );
 });
 
+
+test('Qwen orchestrator replays informal customer names into mock.resource.read', () => {
+  const cases = [
+    {
+      user_message: 'ultima de granapublic',
+      tool_call_arguments: {
+        resource_type: 'invoice',
+        customer_id: 'granapublic',
+        limit: 1
+      }
+    },
+    {
+      user_message: 'dime las 4 ultimas de granapublic',
+      tool_call_arguments: {
+        resource_type: 'invoice',
+        customer_id: 'granapublic',
+        limit: 4
+      }
+    }
+  ] as const;
+
+  for (const scenario of cases) {
+    const { orchestrator, requests } = buildOrchestratorForToolCall(scenario.tool_call_arguments);
+
+    const outcome = orchestrator.propose({
+      request_id: `request-${scenario.tool_call_arguments.limit}`,
+      user_message: scenario.user_message,
+      organization_id: 'org-acme',
+      principal_id: 'human-001',
+      actor: {
+        principal_id: 'human-001',
+        principal_type: 'human',
+        delegated_identity: null
+      },
+      correlation_id: `corr-${scenario.tool_call_arguments.limit}`,
+      installation_id: 'install-acme',
+      context: {
+        installation_id: 'install-acme',
+        active_capabilities: ['mock.resource.read'],
+        metadata: {},
+        force_capability_key: null,
+        force_params: null
+      }
+    });
+
+    assert.equal(requests[0].tools.some((tool) => tool.function.name === 'request_clarification'), true);
+    assert.equal(outcome.status, 'proposal');
+    assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+    assert.equal(outcome.proposal?.params.resource_type, 'invoice');
+    assert.equal(outcome.proposal?.params.customer_id, 'granapublic');
+    assert.equal(outcome.proposal?.params.limit, scenario.tool_call_arguments.limit);
+    assert.equal('estimate_id' in (outcome.proposal?.params ?? {}), false);
+    assert.equal('invoice_id' in (outcome.proposal?.params ?? {}), false);
+    assert.equal('customer_name' in (outcome.proposal?.params ?? {}), false);
+  }
+});
+
+test('Qwen orchestrator replays missing-customer inputs into request_clarification', () => {
+  const cases = ['ultimas', 'dame las ultimas de'] as const;
+
+  for (const user_message of cases) {
+    const { orchestrator, requests } = buildOrchestratorForToolCall(
+      {
+        missing: 'customer',
+        reason: 'Falta el cliente para buscar el documento correcto.'
+      },
+      '',
+      'request_clarification'
+    );
+
+    const outcome = orchestrator.propose({
+      request_id: `request-${user_message}`,
+      user_message,
+      organization_id: 'org-acme',
+      principal_id: 'human-001',
+      actor: {
+        principal_id: 'human-001',
+        principal_type: 'human',
+        delegated_identity: null
+      },
+      correlation_id: `corr-${user_message}`,
+      installation_id: 'install-acme',
+      context: {
+        installation_id: 'install-acme',
+        active_capabilities: ['mock.resource.read'],
+        metadata: {},
+        force_capability_key: null,
+        force_params: null
+      }
+    });
+
+    assert.equal(requests[0].tools.some((tool) => tool.function.name === 'request_clarification'), true);
+    assert.equal(outcome.status, 'no_proposal');
+    assert.equal(outcome.proposal, null);
+    assert.equal((outcome.response.data as { kind?: string } | null)?.kind, 'request_clarification');
+    assert.equal((outcome.response.data as { missing?: string } | null)?.missing, 'customer');
+    assert.equal(outcome.response.message, 'Falta el cliente para buscar el documento correcto.');
+  }
+});
+
+test('Qwen orchestrator replays ambiguous customer inputs into request_clarification', () => {
+  const { orchestrator, requests } = buildOrchestratorForToolCall(
+    {
+      missing: 'ambiguous',
+      reason: 'Hay varios clientes posibles; dime cuál quieres consultar.'
+    },
+    '',
+    'request_clarification'
+  );
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-ambiguous',
+    user_message: 'dame las ultimas de granapublic y petroprix',
+    organization_id: 'org-acme',
+    principal_id: 'human-001',
+    actor: {
+      principal_id: 'human-001',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-ambiguous',
+    installation_id: 'install-acme',
+    context: {
+      installation_id: 'install-acme',
+      active_capabilities: ['mock.resource.read'],
+      metadata: {},
+      force_capability_key: null,
+      force_params: null
+    }
+  });
+
+  assert.equal(requests[0].tools.some((tool) => tool.function.name === 'request_clarification'), true);
+  assert.equal(outcome.status, 'no_proposal');
+  assert.equal(outcome.proposal, null);
+  assert.equal((outcome.response.data as { kind?: string } | null)?.kind, 'request_clarification');
+  assert.equal((outcome.response.data as { missing?: string } | null)?.missing, 'ambiguous');
+  assert.equal(outcome.response.message, 'Hay varios clientes posibles; dime cuál quieres consultar.');
+});
 test('Qwen orchestrator supports latest N customer document limits without inventing ids', () => {
   const { orchestrator, requests } = buildOrchestratorForToolCall({
     resource_type: 'invoice',
