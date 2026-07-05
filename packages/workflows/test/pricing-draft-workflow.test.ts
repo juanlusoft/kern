@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import { createPricingQuoteLineCapability, InMemoryGovernedWorkflowRuntime } from '../src/index';
 import {
   createSourceEvidence,
+  type ExternalReadAdapter,
   type IdentityContext,
   type OrganizationContext,
   type PacoPrintCatalogAdapterPort,
   type PacoPrintCatalogSearchInput,
   type PacoPrintQuoteLineInput,
+  type ResourceQuery,
   type ResourceResult
 } from '../../contracts/src/index';
 
@@ -125,10 +127,45 @@ function buildDraftAdapter(calls: Array<Record<string, unknown>>): PacoPrintCata
   };
 }
 
-function buildRuntime(adapter: PacoPrintCatalogAdapterPort) {
+function notFoundResult(): ResourceResult {
+  const result = found({}, 'none') as unknown as { status: string; data: unknown; decision: { status: string } };
+  result.status = 'not_found';
+  result.data = null;
+  result.decision.status = 'not_found';
+  return result as unknown as ResourceResult;
+}
+
+// Adapter de lectura Holded de prueba: "existe" el cliente si está en `known`
+// (mapa cliente-buscado → nombre canónico). Cualquier otro → not_found.
+function buildHoldedAdapter(known: Record<string, string>): ExternalReadAdapter {
+  return {
+    adapter_id: 'holded-read',
+    source_system: 'Holded',
+    authorize: () => ({
+      adapter_id: 'holded-read',
+      source_system: 'Holded',
+      organization_id: 'org-pacoprint',
+      correlation_id: 'corr',
+      actor: null,
+      authorized: true,
+      reason: 'allowed'
+    }),
+    read: (query: ResourceQuery) => {
+      const asked = String((query.filters?.customer_id as string | undefined) ?? '').toLowerCase();
+      const key = Object.keys(known).find((k) => k.toLowerCase() === asked);
+      return key ? found({ kind: 'list', records: [{ contactName: known[key] }] }, 'holded') : notFoundResult();
+    }
+  };
+}
+
+function buildRuntime(
+  adapter: PacoPrintCatalogAdapterPort,
+  holded: ExternalReadAdapter = buildHoldedAdapter({ acme: 'ACME SL', granapublic: 'Granapublic Xx SL' })
+) {
   const runtime = new InMemoryGovernedWorkflowRuntime({
     now: () => new Date(now),
     pacoPrintCatalogAdapter: adapter,
+    externalReadAdapter: holded,
     resolveOrganizationContext: () => orgCtx(),
     resolveIdentityContext: () => idCtx()
   });
@@ -146,7 +183,7 @@ test('pricing draft: multi-line complete returns a draft with per-line prices an
     organization_hint: 'org-pacoprint',
     principal_hint: 'principal-gema',
     correlation_id: 'corr',
-    customer: 'ACME SL',
+    customer: 'acme',
     lines: [
       { text: 'lona frontlit 100x100 corte recto', article: 'lona frontlit', alto: 100, ancho: 100, options: {} },
       { text: 'vinilo mate 50x50', article: 'vinilo mate', alto: 50, ancho: 50, options: {} }
@@ -157,7 +194,7 @@ test('pricing draft: multi-line complete returns a draft with per-line prices an
   assert.equal(result.response.workflow_kind, 'pricing.quote_draft');
   const data = result.response.data as Record<string, unknown>;
   assert.equal(data.kind, 'pricing.quote_draft');
-  assert.equal(data.customer, 'ACME SL');
+  assert.equal(data.customer, 'ACME SL'); // nombre canónico de Holded, no el "acme" tecleado
   assert.equal((data.lines as unknown[]).length, 2);
   assert.equal(data.total, 181.5);
   assert.equal(data.neto_total, 150);
@@ -174,6 +211,7 @@ test('pricing draft: any incomplete line blocks and names the missing datum per 
     organization_hint: 'org-pacoprint',
     principal_hint: 'principal-gema',
     correlation_id: 'corr',
+    customer: 'acme',
     lines: [
       { text: 'lona frontlit 100x100', article: 'lona frontlit', alto: 100, ancho: 100, options: {} },
       { text: 'vinilo mate 50x50', article: 'vinilo mate', alto: 50, ancho: 50, options: {} }
@@ -185,6 +223,44 @@ test('pricing draft: any incomplete line blocks and names the missing datum per 
   assert.equal(data.kind, 'request_clarification');
   assert.equal(data.missing, 'pricing');
   assert.match(String(data.reason), /Corte/i);
+});
+
+test('pricing draft: cliente que no existe en Holded -> pregunta si darlo de alta', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const runtime = buildRuntime(buildDraftAdapter(calls));
+
+  const result = runtime.executeWorkflow({
+    kind: 'pricing.quote_draft',
+    workflow_id: 'draft-nuevo',
+    organization_hint: 'org-pacoprint',
+    principal_hint: 'principal-gema',
+    correlation_id: 'corr',
+    customer: 'clientenuevoSL',
+    lines: [{ text: 'lona frontlit 100x100 corte recto', article: 'lona frontlit', alto: 100, ancho: 100, options: {} }]
+  });
+
+  assert.equal(result.status, 'blocked');
+  const data = result.response.data as Record<string, unknown>;
+  assert.equal(data.kind, 'request_clarification');
+  assert.match(String(data.reason), /Holded/i);
+  assert.match(String(data.reason), /alta/i);
+  // No se llega a valorar ninguna línea si el cliente no existe.
+  assert.equal(calls.length, 0);
+});
+
+test('pricing draft: sin cliente pero con líneas -> pide el cliente', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const runtime = buildRuntime(buildDraftAdapter(calls));
+  const result = runtime.executeWorkflow({
+    kind: 'pricing.quote_draft',
+    workflow_id: 'draft-sincliente',
+    organization_hint: 'org-pacoprint',
+    principal_hint: 'principal-gema',
+    correlation_id: 'corr',
+    lines: [{ text: 'lona frontlit 100x100 corte recto', article: 'lona frontlit', alto: 100, ancho: 100, options: {} }]
+  });
+  assert.equal(result.status, 'blocked');
+  assert.match(String((result.response.data as Record<string, unknown>).reason), /cliente/i);
 });
 
 test('pricing draft: empty lines is blocked honestly', () => {

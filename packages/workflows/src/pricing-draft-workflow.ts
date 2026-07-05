@@ -11,13 +11,16 @@
 import {
   createEvidenceRecord,
   normalizeCorrelationId,
+  normalizeResourceQuery,
   type GovernedWorkflowKind,
   type GovernedWorkflowResult,
   type PricingQuoteDraftLine,
   type PricingQuoteDraftWorkflowInput,
+  type PrincipalType,
+  type ResourceResult,
   type WorkflowStep
 } from '../../contracts/src/index';
-import { buildWorkflowStep, createRuntimeResponse } from './workflow-internals';
+import { buildWorkflowStep, createRuntimeResponse, createWorkflowCoreRequest } from './workflow-internals';
 import type { WorkflowRuntimeContext } from './workflow-runtime-context';
 import { buildBlockedPricingWorkflow, executePricingQuoteLineWorkflow } from './pricing-workflow';
 
@@ -29,6 +32,73 @@ function round2(value: number): number {
 
 function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+/** Nombre canónico del contacto en el primer registro de un resultado de lectura. */
+function extractContactName(result: ResourceResult): string | null {
+  const data = result.status === 'found' ? (result.data as Record<string, unknown> | null) : null;
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const records = Array.isArray((data as { records?: unknown }).records) ? ((data as { records: unknown[] }).records) : null;
+  const record = (records && records.length > 0 ? records[0] : (data as { record?: unknown }).record ?? data) as Record<string, unknown> | null;
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+  for (const key of ['contactName', 'customer_name', 'customerName', 'contact_name']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Comprueba si el cliente existe en Holded (reusa la lectura gobernada). Un
+ * cliente "existe" si tiene facturas o presupuestos. Devuelve el nombre canónico
+ * si lo encuentra; not_found si no; unavailable si Holded falla (no bloqueamos el
+ * presupuesto por un fallo de la fuente). El ALTA de un cliente nuevo es ESCRITURA
+ * (F3) y NO se hace aquí.
+ */
+function resolveCustomerInHolded(input: {
+  runtime: WorkflowRuntimeContext;
+  organization_id: string;
+  principal_id: string;
+  principal_type: PrincipalType | null;
+  delegated_identity: string | null;
+  correlation_id: string;
+  workflow_id: string;
+  customer: string;
+}): { status: 'found'; name: string } | { status: 'not_found' } | { status: 'unavailable' } {
+  for (const resource_type of ['invoice', 'estimate'] as const) {
+    const query = normalizeResourceQuery({
+      query_id: `${input.workflow_id}:customer:${resource_type}`,
+      organization_id: input.organization_id,
+      correlation_id: input.correlation_id,
+      actor: {
+        principal_id: input.principal_id,
+        principal_type: input.principal_type,
+        delegated_identity: input.delegated_identity
+      },
+      resource_type,
+      limit: 1,
+      resource_id: null,
+      payment_status: null,
+      year: null,
+      filters: { customer_id: input.customer },
+      requested_fields: ['contactName', 'customer_name', 'docNumber']
+    });
+    const result = input.runtime.externalReadAdapter.read(query);
+    if (result.status === 'found') {
+      return { status: 'found', name: extractContactName(result) ?? input.customer };
+    }
+    if (result.status !== 'not_found') {
+      // denied / blocked / unavailable / error → no podemos confirmar; no bloquear.
+      return { status: 'unavailable' };
+    }
+  }
+  return { status: 'not_found' };
 }
 
 export function executePricingQuoteDraftWorkflow(
@@ -88,6 +158,89 @@ export function executePricingQuoteDraftWorkflow(
         reason: 'Dime qué líneas quieres en el presupuesto (artículo, medidas y opciones de cada una).'
       }
     });
+  }
+
+  // ── Cliente: un presupuesto va a nombre de un cliente. Es obligatorio y se
+  //    comprueba en Holded (lectura). Si no existe, se pregunta si darlo de alta
+  //    (el alta en sí es ESCRITURA = F3, aquí NO se crea nada).
+  if (!customer) {
+    return buildBlockedPricingWorkflow({
+      runtime,
+      workflow_id: input.workflow_id,
+      workflowKind: WORKFLOW_KIND,
+      organization_id,
+      correlation_id,
+      capability_id: capabilityId,
+      created_at,
+      evidenceRecords,
+      steps,
+      reason: 'falta el cliente del presupuesto',
+      clarification: {
+        kind: 'request_clarification',
+        missing: 'pricing',
+        reason: '¿Para qué cliente es el presupuesto?'
+      }
+    });
+  }
+  let draftCustomer = customer;
+  const coreRequest = createWorkflowCoreRequest({
+    workflow_id: input.workflow_id,
+    correlation_id,
+    organization_hint: input.organization_hint,
+    principal_hint: input.principal_hint,
+    action: 'workflow.pricing.quote_draft',
+    purpose: `PacoPrint quote draft for ${customer}`,
+    payload: {
+      resource: `pricing/quote_draft/${customer}`,
+      operation: 'read',
+      requested_scope: 'read:knowledge',
+      classification: 'internal',
+      destination: 'core',
+      amount: lines.length
+    },
+    requires_binding: false
+  });
+  const organizationContext = runtime.resolveOrganizationContext(coreRequest);
+  const identityContext = runtime.resolveIdentityContext(coreRequest, organizationContext);
+  if (
+    organizationContext.resolution_state === 'resolved' &&
+    organizationContext.organization_id &&
+    identityContext.resolution_state === 'resolved' &&
+    identityContext.principal_id
+  ) {
+    const resolved = resolveCustomerInHolded({
+      runtime,
+      organization_id: organizationContext.organization_id,
+      principal_id: identityContext.principal_id,
+      principal_type: identityContext.principal_type,
+      delegated_identity: identityContext.delegated_identity,
+      correlation_id,
+      workflow_id: input.workflow_id,
+      customer
+    });
+    if (resolved.status === 'not_found') {
+      return buildBlockedPricingWorkflow({
+        runtime,
+        workflow_id: input.workflow_id,
+        workflowKind: WORKFLOW_KIND,
+        organization_id: organizationContext.organization_id,
+        correlation_id,
+        capability_id: capabilityId,
+        created_at,
+        evidenceRecords,
+        steps,
+        reason: `cliente no encontrado en Holded: ${customer}`,
+        clarification: {
+          kind: 'request_clarification',
+          missing: 'pricing',
+          reason: `No encuentro "${customer}" en Holded. ¿Lo damos de alta?`
+        }
+      });
+    }
+    if (resolved.status === 'found') {
+      draftCustomer = resolved.name;
+    }
+    // 'unavailable' → seguimos con el nombre tal cual (no bloqueamos por un fallo de Holded).
   }
 
   // Valora cada línea con el workflow de una línea (F1).
@@ -168,7 +321,7 @@ export function executePricingQuoteDraftWorkflow(
 
   const responseData = {
     kind: 'pricing.quote_draft' as const,
-    customer,
+    customer: draftCustomer,
     lines: pricedLines,
     neto_total,
     iva_amount,
