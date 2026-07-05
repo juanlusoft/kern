@@ -98,13 +98,13 @@ function findAttribute(
       continue;
     }
     const attributeId = attribute.id;
+    const hasId = typeof attributeId === 'string' || typeof attributeId === 'number';
     const attributeName = typeof attribute.nombre === 'string' ? attribute.nombre : null;
-    if (
-      (typeof attributeId === 'string' || typeof attributeId === 'number') &&
-      (normalizeSearchText(String(attributeId)) === normalizedKey || (attributeName && normalizeSearchText(attributeName) === normalizedKey))
-    ) {
+    const idMatches = hasId && normalizeSearchText(String(attributeId)) === normalizedKey;
+    const nameMatches = attributeName !== null && normalizeSearchText(attributeName) === normalizedKey;
+    if (idMatches || nameMatches) {
       return {
-        id: attributeId,
+        id: hasId ? attributeId : (attributeName ?? key),
         nombre: attributeName ?? String(attributeId),
         valores_posibles: Array.isArray(attribute.valores_posibles)
           ? attribute.valores_posibles.filter((item): item is { id: string | number; nombre: string } => {
@@ -652,19 +652,27 @@ export function executePricingQuoteLineWorkflow(
   }
 
   const rules = selectedCandidate.json_calcular_precio?.atributos;
-  if (isPlainObject(rules)) {
-    for (const [attributeId, rawRule] of Object.entries(rules)) {
+  if (Array.isArray(rules)) {
+    for (const rawRule of rules) {
       if (!isPlainObject(rawRule)) {
         continue;
       }
       const rule = rawRule as {
+        atributo_id?: string | number;
+        nombre?: string;
         tipo?: string;
         obligatorio?: boolean;
         valores_validos?: Array<string | number>;
         valor_defecto?: string | number | boolean | null;
       };
-      const attribute = findAttribute(selectedCandidate, attributeId);
-      const displayLabel = attribute?.nombre ?? attributeId;
+      if (rule.atributo_id === undefined || rule.atributo_id === null) {
+        continue;
+      }
+      const attributeId = String(rule.atributo_id);
+      const ruleName = typeof rule.nombre === 'string' && rule.nombre.trim().length > 0 ? rule.nombre : attributeId;
+      const attribute = findAttribute(selectedCandidate, ruleName);
+      const displayLabel = attribute?.nombre ?? ruleName;
+      const normalizedName = normalizeSearchText(ruleName);
       const normalizedKey = normalizeSearchText(attributeId);
       const normalizedLabel = normalizeSearchText(displayLabel);
       let value: unknown = undefined;
@@ -680,6 +688,24 @@ export function executePricingQuoteLineWorkflow(
       if ((value === undefined || value === null || value === '') && rule.valor_defecto !== undefined && rule.valor_defecto !== null) {
         value = rule.valor_defecto;
         appliedDefault = true;
+      }
+      let dimensionFill = false;
+      if ((value === undefined || value === null || value === '') && rule.obligatorio) {
+        // Dimensiones duplicadas: unidades/alto/ancho llegan como campos top-level,
+        // pero PacoPrint también las declara como atributos (ids 1/23/24). Cuando el
+        // atributo es obligatorio se rellena desde el valor top-level correspondiente
+        // para no exigirlo dos veces al usuario. Las opcionales se omiten (la API usa
+        // los campos top-level), replicando la llamada verificada {'1':unidades,'8':corte}.
+        if (normalizedName === 'unidades' && resolvedUnits !== null) {
+          value = resolvedUnits;
+          dimensionFill = true;
+        } else if (normalizedName === 'alto' && resolvedAlto !== null) {
+          value = resolvedAlto;
+          dimensionFill = true;
+        } else if (normalizedName === 'ancho' && resolvedAncho !== null) {
+          value = resolvedAncho;
+          dimensionFill = true;
+        }
       }
       if ((value === undefined || value === null || value === '') && rule.obligatorio) {
         missingFields.push(displayLabel);
@@ -705,14 +731,16 @@ export function executePricingQuoteLineWorkflow(
         }
         continue;
       }
-      if (rule.tipo === 'numero') {
+      if (rule.tipo === 'number' || rule.tipo === 'numero') {
         const numeric = normalizeOptionalNumber(value);
         if (numeric === null) {
           invalidFields.push(displayLabel);
           continue;
         }
         resolvedAttributes[attributeId] = numeric;
-        optionsSummary.push(`${displayLabel} ${numeric}`);
+        if (!dimensionFill) {
+          optionsSummary.push(`${displayLabel} ${numeric}`);
+        }
         if (appliedDefault) {
           defaultsApplied.push(displayLabel);
         }

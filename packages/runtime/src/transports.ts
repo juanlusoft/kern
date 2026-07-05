@@ -217,7 +217,7 @@ try {
   const response = await fetch(input.url, {
     method: input.method ?? 'GET',
     headers,
-    body: input.body ? JSON.stringify(input.body) : undefined,
+    body: input.body ?? undefined,
     signal: controller.signal
   });
   const text = await response.text();
