@@ -558,8 +558,14 @@ function buildClarificationText(outcome: OrchestrationOutcome): string {
       return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
     case 'unsupported':
       return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
-    case 'pricing':
-      return 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
+    case 'pricing': {
+      // Si el modelo dio un motivo útil (p. ej. "¿qué quieres presupuestar para
+      // jlu.app?"), lo mostramos; si no, un genérico honesto.
+      const reason = typeof clarification.reason === 'string' ? clarification.reason.trim() : '';
+      return reason.length > 0
+        ? reason
+        : 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
+    }
     default:
       return clarification.reason;
   }
