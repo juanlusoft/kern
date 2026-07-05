@@ -3,6 +3,7 @@ import {
   type ChannelAdapter,
   type ChannelInstallationConfig,
   type ChannelMessageResult,
+  type ConversationTurn,
   type InboundMessage,
   type OrchestrationOutcome,
   type OrchestrationRequest,
@@ -11,6 +12,9 @@ import {
   type TelegramOutboundMessage
 } from '../../../contracts/src/index';
 import { InMemoryOrchestrationBoundary } from '../../../orchestration/src/index';
+import { ConversationMemory } from './conversation-memory';
+
+export { ConversationMemory } from './conversation-memory';
 
 export interface TelegramTransportGetUpdatesOptions {
   offset?: number | null;
@@ -28,6 +32,7 @@ export interface TelegramChannelAdapterOptions {
   transport: TelegramTransport;
   now?: () => Date;
   mode?: 'long_polling' | 'webhook';
+  conversationMemory?: ConversationMemory;
 }
 
 function cloneUpdate(update: TelegramChannelUpdate): TelegramChannelUpdate {
@@ -119,8 +124,10 @@ function buildOrchestrationRequest(input: {
   principal_id: string;
   principal_type: 'human' | 'service' | 'agent' | null;
   installation_id: string;
+  conversation_history?: ConversationTurn[];
 }): OrchestrationRequest {
   return {
+    conversation_history: input.conversation_history && input.conversation_history.length > 0 ? input.conversation_history : null,
     request_id: `telegram:${input.installation_id}:${input.message.chat_id}:${input.message.message_id}`,
     user_message: input.message.text,
     organization_id: input.organization_id,
@@ -551,8 +558,14 @@ function buildClarificationText(outcome: OrchestrationOutcome): string {
       return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
     case 'unsupported':
       return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
-    case 'pricing':
-      return 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
+    case 'pricing': {
+      // Si el modelo dio un motivo útil (p. ej. "¿qué quieres presupuestar para
+      // jlu.app?"), lo mostramos; si no, un genérico honesto.
+      const reason = typeof clarification.reason === 'string' ? clarification.reason.trim() : '';
+      return reason.length > 0
+        ? reason
+        : 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
+    }
     default:
       return clarification.reason;
   }
@@ -768,6 +781,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   private readonly transport: TelegramTransport;
   private readonly now: () => Date;
   private readonly mode: 'long_polling' | 'webhook';
+  private readonly conversationMemory: ConversationMemory;
 
   constructor(options: TelegramChannelAdapterOptions) {
     this.installation = {
@@ -778,6 +792,11 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     this.transport = options.transport;
     this.now = options.now ?? (() => new Date());
     this.mode = options.mode ?? 'long_polling';
+    this.conversationMemory = options.conversationMemory ?? new ConversationMemory();
+  }
+
+  private conversationKey(message: InboundMessage): string {
+    return `${this.installation.installation_id}:${message.chat_id}`;
   }
 
   pollUpdates(offset: number | null = null, limit: number | null = null): ChannelMessageResult[] {
@@ -900,13 +919,16 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       }
     });
 
+    const conversationKey = this.conversationKey(message);
+    const nowMs = this.now().getTime();
     const orchestrationOutcome = this.orchestrationBoundary.execute(
       buildOrchestrationRequest({
         message,
         organization_id: identity.organization_id,
         principal_id: identity.principal_id,
         principal_type: identity.principal_type,
-        installation_id: this.installation.installation_id
+        installation_id: this.installation.installation_id,
+        conversation_history: this.conversationMemory.recent(conversationKey, nowMs)
       })
     );
 
@@ -915,6 +937,10 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       inbound: message,
       channel: 'telegram'
     });
+    // Memoria a corto plazo: registra el turno del usuario y la respuesta para
+    // poder continuar el hilo en el siguiente mensaje. Solo contexto, no persiste.
+    this.conversationMemory.append(conversationKey, 'user', message.text, nowMs);
+    this.conversationMemory.append(conversationKey, 'assistant', outbound.text, nowMs);
     const responsePrepared = appendChannelEvidence(this.orchestrationBoundary, this.now, {
       correlation_id,
       organization_id: identity.organization_id,

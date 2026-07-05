@@ -3,6 +3,7 @@ import {
   createDeterministicId,
   createEvidenceRecord,
   normalizeCorrelationId,
+  type ConversationTurn,
   type EvidenceRecord,
   type OrchestratorPort,
   type OrchestrationOutcome,
@@ -101,7 +102,7 @@ export interface QwenChatCompletionsResponse {
 export interface QwenChatCompletionsRequest {
   model: string;
   temperature: number;
-  messages: [QwenChatMessage, QwenChatMessage];
+  messages: QwenChatMessage[];
   tools: QwenChatTool[];
   tool_choice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
 }
@@ -134,6 +135,26 @@ function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Máximo de turnos de conversación que se pasan al modelo como contexto.
+const MAX_CONVERSATION_HISTORY_MESSAGES = 6;
+
+/** Sanea el historial: solo user/assistant con contenido, y como mucho los últimos N. */
+function sanitizeConversationHistory(history: ConversationTurn[] | null | undefined): QwenChatMessage[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history
+    .filter(
+      (turn): turn is ConversationTurn =>
+        Boolean(turn) &&
+        (turn.role === 'user' || turn.role === 'assistant') &&
+        typeof turn.content === 'string' &&
+        turn.content.trim().length > 0
+    )
+    .slice(-MAX_CONVERSATION_HISTORY_MESSAGES)
+    .map((turn) => ({ role: turn.role, content: turn.content.trim() }));
 }
 
 function cloneResponse(response: OrchestrationResponse): OrchestrationResponse {
@@ -273,17 +294,20 @@ function buildSystemPrompt(input: {
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
+    'You may be given earlier turns of this conversation as context. Use them to resolve references (e.g. "that client", "add another line") and to CONTINUE a task the user already started: if a previous assistant turn asked for something (e.g. what to quote) and the user now provides it, call the right tool combining the new details with the customer/context from the earlier turns. Never invent details from prior turns; if something needed was never given, call request_clarification.',
     'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, year, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
     'The customer name can be informal, lowercase, partial, or without a legal suffix (e.g. "granapublic", "toldos martos", "petroprix"). Treat any name the user gives after "de"/"of" as the customer and put it in customer_id EXACTLY as written.',
     'Do NOT judge whether a customer name is real, valid, or recognized. That is the runtime job. Your job is only to extract the name into customer_id; the runtime will look it up and honestly report if it is not found.',
     'If the request is incomplete, ambiguous, or unsupported, call request_clarification instead of inventing params.',
+    'Always write the request_clarification "reason" in SPANISH (this user speaks Spanish), concise and natural, e.g. "¿Qué quieres presupuestar para jlu.app?".',
     'Use request_clarification with missing="customer" only when the user gives NO customer name AT ALL. If any name is present, use mock.resource.read.',
     'Use request_clarification with missing="document_id" when the user needs an exact document id.',
     'Use request_clarification with missing="ambiguous" when more context is needed.',
     'Use request_clarification with missing="unsupported" when the request is outside the supported governed reads.',
     'If the user asks for "las ultimas de <cliente>" without saying facturas or presupuestos, default resource_type to "invoice".',
+    'For a presupuesto/quote: use pricing.quote_draft (or pricing.quote_line for a single item) ONLY when the user has given at least one PRODUCT line (article + measures). If the user asks for a presupuesto but names ONLY a customer and no product yet (e.g. "haz un presupuesto para jlu.app"), do NOT treat the customer name as an article — call request_clarification with missing="pricing" and reason asking what they want to quote for that customer. The customer name stays in the conversation for the next turn.',
     'User: "ultimo presupuesto de ACME SL"',
     'Correct tool params:',
     '{',
@@ -755,6 +779,7 @@ export class QwenOrchestrator implements OrchestratorPort {
                 active_capabilities
               })
           },
+          ...sanitizeConversationHistory(request.conversation_history),
           {
             role: 'user',
             content: user_message

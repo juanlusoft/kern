@@ -9,7 +9,7 @@ import {
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
 import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
-import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
+import { ConversationMemory, createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { createMockResourceReadCapability } from '../../capabilities/src/index';
 import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } from '../../workflows/src/index';
@@ -769,7 +769,12 @@ export function startInstallationRuntime(input: {
     orchestrationBoundary,
     transport: telegramTransport,
     now: nowFn,
-    mode: loaded.config.runtime_options.telegram_mode
+    mode: loaded.config.runtime_options.telegram_mode,
+    // Memoria de conversación respaldada en disco: el daemon corre un proceso por
+    // sondeo, así que debe persistir entre procesos (no vale solo RAM).
+    conversationMemory: new ConversationMemory({
+      filePath: (input.env ?? process.env).KERN_CONVERSATION_MEMORY_PATH ?? `${process.cwd()}/conversation-memory.json`
+    })
   });
 
   createRuntimeEvidence(evidenceLedger, nowFn, {
