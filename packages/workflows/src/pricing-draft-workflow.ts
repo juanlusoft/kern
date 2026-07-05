@@ -104,7 +104,9 @@ export function executePricingQuoteDraftWorkflow(
       alto: line.alto ?? null,
       ancho: line.ancho ?? null,
       options: line.options ?? null,
-      raw_message: normalizeOptionalString(line.text) ?? input.raw_message ?? null,
+      // Solo el texto de ESTA línea guía el parseo determinista; nunca el mensaje
+      // entero (mezclaría las medidas de unas líneas con otras).
+      raw_message: normalizeOptionalString(line.text),
       capability_id: 'pricing.quote_line'
     })
   );

@@ -12,7 +12,7 @@ import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
 import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { createMockResourceReadCapability } from '../../capabilities/src/index';
-import { createPricingQuoteLineCapability } from '../../workflows/src/index';
+import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } from '../../workflows/src/index';
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
 import { createPacoPrintCatalogAdapter } from '../../adapters/pacoprint-catalog/src/index';
 import {
@@ -206,7 +206,8 @@ function hasRequiredModules(registry: RuntimeModuleRegistry): boolean {
 function buildQwenToolCatalog() {
   const pricingTool: QwenToolDefinition = {
     capability_key: 'pricing.quote_line',
-    description: 'Calculate a single PacoPrint line price from the user request without inventing article ids or prices.',
+    description:
+      'Price ONE PacoPrint line: a SINGLE product with its measures/options/quantity. Use ONLY when the user asks for one item. If the user lists SEVERAL products or asks for a "presupuesto"/quote with multiple lines, do NOT call this once per item — call pricing.quote_draft ONCE with every line instead. Never invent article ids or prices.',
     parameters_schema: {
       type: 'object' as const,
       required: ['article'],
@@ -242,7 +243,7 @@ function buildQwenToolCatalog() {
   const pricingDraftTool: QwenToolDefinition = {
     capability_key: 'pricing.quote_draft',
     description:
-      'Build a MULTI-LINE PacoPrint price draft (presupuesto) when the user asks for a quote with SEVERAL products/lines at once. One entry per distinct product+measures+quantity. Never invent prices or article ids; the runtime prices each line with the PacoPrint API.',
+      'Build a MULTI-LINE PacoPrint price draft (presupuesto). Call this ONCE with ALL the lines whenever the user asks for a quote with more than one product, or uses the word "presupuesto". One entry in `lines` per distinct product+measures+quantity. Do NOT call pricing.quote_line several times for this — use a single pricing.quote_draft. Never invent prices or article ids; the runtime prices each line with the PacoPrint API.',
     parameters_schema: {
       type: 'object' as const,
       required: ['lines'],
@@ -545,6 +546,9 @@ function buildOrchestrationBoundary(options: {
     workflowRuntime.registerCapability(
       createPricingQuoteLineCapability(pacoPrintCatalogAdapter, {}, options.config.organization.organization_id)
     );
+  }
+  if (options.config.active_modules.includes('pacoprint-catalog') && options.config.active_capabilities.includes('pricing.quote_draft')) {
+    workflowRuntime.registerCapability(createPricingQuoteDraftCapability({}, options.config.organization.organization_id));
   }
 
   const orchestrator = createQwenOrchestrator({
