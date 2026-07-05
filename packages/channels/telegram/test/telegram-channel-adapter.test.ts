@@ -1515,3 +1515,37 @@ test('Telegram adapter surfaces transport failures as error without leaking the 
   assert.equal(JSON.stringify(result).includes('telegram-secret-token'), false);
   assert.equal(boundary.getEvidenceLedger().listByCorrelation(result.correlation_id).some((record) => record.record_type === 'channel_message_send_error'), true);
 });
+
+test('Telegram outbound text uses pricing clarifications as a human question', () => {
+  const text = buildTelegramOutboundText({
+    request_id: 'telegram:req-pricing-clarification',
+    organization_id: 'org-granapublic-live-test',
+    principal_id: 'principal-gema-granapublic-live-test',
+    correlation_id: 'corr-pricing-clarification',
+    installation_id: 'telegram-installation',
+    status: 'no_proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: null,
+    workflow_result: null,
+    response: {
+      response_source: 'workflow_blocked',
+      workflow_kind: null,
+      status: 'no_proposal',
+      message: '¿Qué quieres presupuestar?',
+      data: {
+        kind: 'request_clarification',
+        missing: 'pricing',
+        reason: '¿Qué quieres presupuestar?'
+      }
+    },
+    evidence_links: [],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: '¿Qué quieres presupuestar?'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0]);
+
+  assert.equal(text, '¿Qué quieres presupuestar?');
+  assert.equal(text.includes('{'), false);
+  assert.equal(text.includes('parse_mode'), false);
+});

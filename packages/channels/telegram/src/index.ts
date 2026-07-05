@@ -1,20 +1,18 @@
-import {
+﻿import {
   createEvidenceRecord,
   type ChannelAdapter,
   type ChannelInstallationConfig,
   type ChannelMessageResult,
-  type ConversationTurn,
   type InboundMessage,
   type OrchestrationOutcome,
   type OrchestrationRequest,
   type TelegramChannelUpdate,
   type TelegramChannelUpdateMessage,
-  type TelegramOutboundMessage
+  type TelegramOutboundMessage,
+  type ConversationHistoryTurn,
+  type ConversationMemoryStore
 } from '../../../contracts/src/index';
 import { InMemoryOrchestrationBoundary } from '../../../orchestration/src/index';
-import { ConversationMemory } from './conversation-memory';
-
-export { ConversationMemory } from './conversation-memory';
 
 export interface TelegramTransportGetUpdatesOptions {
   offset?: number | null;
@@ -32,7 +30,7 @@ export interface TelegramChannelAdapterOptions {
   transport: TelegramTransport;
   now?: () => Date;
   mode?: 'long_polling' | 'webhook';
-  conversationMemory?: ConversationMemory;
+  conversationMemoryStore?: ConversationMemoryStore | null;
 }
 
 function cloneUpdate(update: TelegramChannelUpdate): TelegramChannelUpdate {
@@ -124,10 +122,9 @@ function buildOrchestrationRequest(input: {
   principal_id: string;
   principal_type: 'human' | 'service' | 'agent' | null;
   installation_id: string;
-  conversation_history?: ConversationTurn[];
+  conversation_history?: ConversationHistoryTurn[] | null;
 }): OrchestrationRequest {
   return {
-    conversation_history: input.conversation_history && input.conversation_history.length > 0 ? input.conversation_history : null,
     request_id: `telegram:${input.installation_id}:${input.message.chat_id}:${input.message.message_id}`,
     user_message: input.message.text,
     organization_id: input.organization_id,
@@ -139,6 +136,9 @@ function buildOrchestrationRequest(input: {
     },
     correlation_id: buildCorrelationId(input.message, input.installation_id),
     installation_id: input.installation_id,
+    conversation_history: input.conversation_history?.length
+      ? input.conversation_history.map((turn) => ({ ...turn }))
+      : null,
     context: {
       installation_id: input.installation_id,
       active_capabilities: [],
@@ -462,7 +462,7 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
     }));
   });
   if (records.length > 3) {
-    lines.push(`… y ${formatListCount(records.length - 3)} más`);
+    lines.push(`… y ${formatListCount(records.length - 3)} mmás`);
   }
   return lines.join('\n');
 }
@@ -474,7 +474,7 @@ function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
   if (!responseData || !isPlainObject(responseData) || responseData.kind !== 'pricing.quote_line') {
     return buildCompletedOutboundText(outcome);
   }
-  const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'Línea de PacoPrint';
+  const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'LLínea de PacoPrint';
   const units = numberFromKeys(responseData, ['unidades']) ?? numberFromKeys(resourceResult, ['unidades']);
   const alto = numberFromKeys(responseData, ['alto']) ?? numberFromKeys(resourceResult, ['alto']);
   const ancho = numberFromKeys(responseData, ['ancho']) ?? numberFromKeys(resourceResult, ['ancho']);
@@ -522,7 +522,7 @@ function buildPricingDraftOutboundText(outcome: OrchestrationOutcome): string {
     if (!isPlainObject(line)) {
       return;
     }
-    const name = firstStringFromKeys(line, ['article_name', 'article']) ?? 'Línea';
+    const name = firstStringFromKeys(line, ['article_name', 'article']) ?? 'LLínea';
     const alto = numberFromKeys(line, ['alto']);
     const ancho = numberFromKeys(line, ['ancho']);
     const units = numberFromKeys(line, ['unidades']);
@@ -558,14 +558,8 @@ function buildClarificationText(outcome: OrchestrationOutcome): string {
       return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
     case 'unsupported':
       return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
-    case 'pricing': {
-      // Si el modelo dio un motivo útil (p. ej. "¿qué quieres presupuestar para
-      // jlu.app?"), lo mostramos; si no, un genérico honesto.
-      const reason = typeof clarification.reason === 'string' ? clarification.reason.trim() : '';
-      return reason.length > 0
-        ? reason
-        : 'Necesito el artículo, las medidas y las opciones necesarias para calcular el precio de PacoPrint.';
-    }
+    case 'pricing':
+      return clarification.reason || '¿Qué quieres presupuestar?';
     default:
       return clarification.reason;
   }
@@ -781,7 +775,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   private readonly transport: TelegramTransport;
   private readonly now: () => Date;
   private readonly mode: 'long_polling' | 'webhook';
-  private readonly conversationMemory: ConversationMemory;
+  private readonly conversationMemoryStore: ConversationMemoryStore | null;
 
   constructor(options: TelegramChannelAdapterOptions) {
     this.installation = {
@@ -792,11 +786,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     this.transport = options.transport;
     this.now = options.now ?? (() => new Date());
     this.mode = options.mode ?? 'long_polling';
-    this.conversationMemory = options.conversationMemory ?? new ConversationMemory();
-  }
-
-  private conversationKey(message: InboundMessage): string {
-    return `${this.installation.installation_id}:${message.chat_id}`;
+    this.conversationMemoryStore = options.conversationMemoryStore ?? null;
   }
 
   pollUpdates(offset: number | null = null, limit: number | null = null): ChannelMessageResult[] {
@@ -919,8 +909,11 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       }
     });
 
-    const conversationKey = this.conversationKey(message);
-    const nowMs = this.now().getTime();
+    const conversation_history = this.conversationMemoryStore?.read({
+      installation_id: this.installation.installation_id,
+      chat_id: message.chat_id
+    }) ?? [];
+
     const orchestrationOutcome = this.orchestrationBoundary.execute(
       buildOrchestrationRequest({
         message,
@@ -928,7 +921,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
         principal_id: identity.principal_id,
         principal_type: identity.principal_type,
         installation_id: this.installation.installation_id,
-        conversation_history: this.conversationMemory.recent(conversationKey, nowMs)
+        conversation_history
       })
     );
 
@@ -937,10 +930,6 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       inbound: message,
       channel: 'telegram'
     });
-    // Memoria a corto plazo: registra el turno del usuario y la respuesta para
-    // poder continuar el hilo en el siguiente mensaje. Solo contexto, no persiste.
-    this.conversationMemory.append(conversationKey, 'user', message.text, nowMs);
-    this.conversationMemory.append(conversationKey, 'assistant', outbound.text, nowMs);
     const responsePrepared = appendChannelEvidence(this.orchestrationBoundary, this.now, {
       correlation_id,
       organization_id: identity.organization_id,
@@ -957,6 +946,16 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     let sentMessage: TelegramOutboundMessage | null = null;
     try {
       sentMessage = this.transport.sendMessage(outbound);
+      this.conversationMemoryStore?.append(
+        {
+          installation_id: this.installation.installation_id,
+          chat_id: message.chat_id
+        },
+        [
+          { role: 'user', content: message.text },
+          { role: 'assistant', content: sentMessage.text }
+        ]
+      );
     } catch (error) {
       const sendError = appendChannelEvidence(this.orchestrationBoundary, this.now, {
         correlation_id,

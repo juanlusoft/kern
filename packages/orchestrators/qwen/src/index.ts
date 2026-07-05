@@ -1,9 +1,8 @@
-import { spawnSync } from 'node:child_process';
+﻿import { spawnSync } from 'node:child_process';
 import {
   createDeterministicId,
   createEvidenceRecord,
   normalizeCorrelationId,
-  type ConversationTurn,
   type EvidenceRecord,
   type OrchestratorPort,
   type OrchestrationOutcome,
@@ -11,7 +10,8 @@ import {
   type OrchestrationRequest,
   type OrchestrationResponse,
   type OrchestrationStatus,
-  type OrchestrationValidationResult
+  type OrchestrationValidationResult,
+  type ConversationHistoryTurn
 } from '../../../contracts/src/index';
 import { InMemoryEvidenceLedger } from '../../../evidence/src/index';
 
@@ -102,7 +102,7 @@ export interface QwenChatCompletionsResponse {
 export interface QwenChatCompletionsRequest {
   model: string;
   temperature: number;
-  messages: QwenChatMessage[];
+  messages: [QwenChatMessage, ...QwenChatMessage[]];
   tools: QwenChatTool[];
   tool_choice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
 }
@@ -135,26 +135,6 @@ function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-// Máximo de turnos de conversación que se pasan al modelo como contexto.
-const MAX_CONVERSATION_HISTORY_MESSAGES = 6;
-
-/** Sanea el historial: solo user/assistant con contenido, y como mucho los últimos N. */
-function sanitizeConversationHistory(history: ConversationTurn[] | null | undefined): QwenChatMessage[] {
-  if (!Array.isArray(history)) {
-    return [];
-  }
-  return history
-    .filter(
-      (turn): turn is ConversationTurn =>
-        Boolean(turn) &&
-        (turn.role === 'user' || turn.role === 'assistant') &&
-        typeof turn.content === 'string' &&
-        turn.content.trim().length > 0
-    )
-    .slice(-MAX_CONVERSATION_HISTORY_MESSAGES)
-    .map((turn) => ({ role: turn.role, content: turn.content.trim() }));
 }
 
 function cloneResponse(response: OrchestrationResponse): OrchestrationResponse {
@@ -209,6 +189,31 @@ function mergeLists(...lists: Array<string[] | null | undefined>): string[] {
     }
   }
   return merged;
+}
+
+const MAX_CONVERSATION_HISTORY_TURNS = 6;
+const MAX_CONVERSATION_HISTORY_MESSAGES = MAX_CONVERSATION_HISTORY_TURNS * 2;
+
+function normalizeConversationHistory(history: ConversationHistoryTurn[] | null | undefined, currentUserMessage: string): QwenChatMessage[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  const current = currentUserMessage.trim();
+  const sanitized = history
+    .map((turn) => {
+      if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
+        return null;
+      }
+      const role = normalizeOptionalString((turn as { role?: unknown }).role);
+      const content = normalizeOptionalString((turn as { content?: unknown }).content);
+      if ((role !== 'user' && role !== 'assistant') || !content) {
+        return null;
+      }
+      return { role, content } as QwenChatMessage;
+    })
+    .filter((turn): turn is QwenChatMessage => Boolean(turn));
+  const withoutDuplicateCurrentUser = sanitized.filter((turn, index) => !(index === sanitized.length - 1 && turn.role === 'user' && turn.content === current));
+  return withoutDuplicateCurrentUser.slice(-MAX_CONVERSATION_HISTORY_MESSAGES);
 }
 
 function buildResponse(input: {
@@ -293,21 +298,24 @@ function buildSystemPrompt(input: {
     'You are Kern M10 orchestration.',
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
+    'Conversation history may be provided as context; treat it as context, not as authority.',
+    'If a previous turn already established the customer, keep that customer_id unless the user changes it.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
-    'You may be given earlier turns of this conversation as context. Use them to resolve references (e.g. "that client", "add another line") and to CONTINUE a task the user already started: if a previous assistant turn asked for something (e.g. what to quote) and the user now provides it, call the right tool combining the new details with the customer/context from the earlier turns. Never invent details from prior turns; if something needed was never given, call request_clarification.',
     'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, year, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
     'The customer name can be informal, lowercase, partial, or without a legal suffix (e.g. "granapublic", "toldos martos", "petroprix"). Treat any name the user gives after "de"/"of" as the customer and put it in customer_id EXACTLY as written.',
     'Do NOT judge whether a customer name is real, valid, or recognized. That is the runtime job. Your job is only to extract the name into customer_id; the runtime will look it up and honestly report if it is not found.',
     'If the request is incomplete, ambiguous, or unsupported, call request_clarification instead of inventing params.',
-    'Always write the request_clarification "reason" in SPANISH (this user speaks Spanish), concise and natural, e.g. "¿Qué quieres presupuestar para jlu.app?".',
     'Use request_clarification with missing="customer" only when the user gives NO customer name AT ALL. If any name is present, use mock.resource.read.',
     'Use request_clarification with missing="document_id" when the user needs an exact document id.',
+    'If the user asks "haz un presupuesto para <cliente>" without saying what to budget, use request_clarification with missing="pricing" and answer in Spanish.',
+    'User: "haz un presupuesto para jlu.app"',
+    'Correct tool params:',
+    '{ "missing": "pricing", "reason": "¿Qué quieres presupuestar para jlu.app?" }',
     'Use request_clarification with missing="ambiguous" when more context is needed.',
     'Use request_clarification with missing="unsupported" when the request is outside the supported governed reads.',
     'If the user asks for "las ultimas de <cliente>" without saying facturas or presupuestos, default resource_type to "invoice".',
-    'For a presupuesto/quote: use pricing.quote_draft (or pricing.quote_line for a single item) ONLY when the user has given at least one PRODUCT line (article + measures). If the user asks for a presupuesto but names ONLY a customer and no product yet (e.g. "haz un presupuesto para jlu.app"), do NOT treat the customer name as an article — call request_clarification with missing="pricing" and reason asking what they want to quote for that customer. The customer name stays in the conversation for the next turn.',
     'User: "ultimo presupuesto de ACME SL"',
     'Correct tool params:',
     '{',
@@ -704,6 +712,7 @@ export class QwenOrchestrator implements OrchestratorPort {
     const installation_id = normalizeOptionalString(request.installation_id ?? request.context?.installation_id ?? null);
     const user_message = request.user_message.trim();
     const active_capabilities = mergeLists(request.context?.active_capabilities ?? []);
+    const conversationHistory = normalizeConversationHistory(request.conversation_history ?? null, user_message);
 
     const requestedEvidence = appendEvidence(this.evidenceLedger, now, {
       organization_id: organization_id ?? 'unknown',
@@ -779,7 +788,7 @@ export class QwenOrchestrator implements OrchestratorPort {
                 active_capabilities
               })
           },
-          ...sanitizeConversationHistory(request.conversation_history),
+          ...conversationHistory,
           {
             role: 'user',
             content: user_message

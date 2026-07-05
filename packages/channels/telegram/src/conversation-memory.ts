@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Memoria de conversación a CORTO PLAZO, por chat.
  *
  * Guarda los últimos turnos (usuario/asistente) de cada conversación para que el
@@ -26,7 +26,7 @@ interface StoredTurn {
 type Store = Record<string, StoredTurn[]>;
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 min sin hablar → se olvida
-const DEFAULT_MAX_TURNS = 6; // ~3 idas y vueltas de contexto
+const DEFAULT_MAX_TURNS = 6; // ~6 turnos conversacionales (~12 mensajes)
 
 function isStoredTurn(value: unknown): value is StoredTurn {
   return (
@@ -105,7 +105,7 @@ export class ConversationMemory {
     const store = this.prune(this.load(), nowMs);
     this.save(store);
     const turns = store[key] ?? [];
-    return turns.slice(-this.maxTurns).map((turn) => ({ role: turn.role, content: turn.content }));
+    return turns.slice(-2 * this.maxTurns).map((turn) => ({ role: turn.role, content: turn.content }));
   }
 
   /** Añade un turno; poda caducados y acota el almacenamiento. */
@@ -129,3 +129,4 @@ export class ConversationMemory {
     this.save(store);
   }
 }
+
