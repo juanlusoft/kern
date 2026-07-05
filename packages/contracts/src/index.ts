@@ -1,4 +1,4 @@
-﻿export type DecisionOutcome = 'allow' | 'deny' | 'defer' | 'failed_closed';
+export type DecisionOutcome = 'allow' | 'deny' | 'defer' | 'failed_closed';
 export type GovernedExecutionStatus = 'allowed' | 'denied' | 'deferred' | 'failed_closed';
 export type PrincipalType = 'human' | 'service' | 'agent';
 export type OrganizationState = 'active' | 'inactive' | 'failed_closed';

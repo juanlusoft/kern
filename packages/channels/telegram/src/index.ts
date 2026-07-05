@@ -1,4 +1,4 @@
-﻿import {
+import {
   createEvidenceRecord,
   type ChannelAdapter,
   type ChannelInstallationConfig,
@@ -462,7 +462,7 @@ function buildInvoiceListOutboundText(outcome: OrchestrationOutcome): string {
     }));
   });
   if (records.length > 3) {
-    lines.push(`… y ${formatListCount(records.length - 3)} mmás`);
+    lines.push(`… y ${formatListCount(records.length - 3)} más`);
   }
   return lines.join('\n');
 }
@@ -474,7 +474,7 @@ function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
   if (!responseData || !isPlainObject(responseData) || responseData.kind !== 'pricing.quote_line') {
     return buildCompletedOutboundText(outcome);
   }
-  const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'LLínea de PacoPrint';
+  const articleName = firstStringFromKeys(responseData, ['article_name', 'article']) ?? firstStringFromKeys(resourceResult, ['article_name', 'article']) ?? 'Línea de PacoPrint';
   const units = numberFromKeys(responseData, ['unidades']) ?? numberFromKeys(resourceResult, ['unidades']);
   const alto = numberFromKeys(responseData, ['alto']) ?? numberFromKeys(resourceResult, ['alto']);
   const ancho = numberFromKeys(responseData, ['ancho']) ?? numberFromKeys(resourceResult, ['ancho']);
@@ -522,7 +522,7 @@ function buildPricingDraftOutboundText(outcome: OrchestrationOutcome): string {
     if (!isPlainObject(line)) {
       return;
     }
-    const name = firstStringFromKeys(line, ['article_name', 'article']) ?? 'LLínea';
+    const name = firstStringFromKeys(line, ['article_name', 'article']) ?? 'Línea';
     const alto = numberFromKeys(line, ['alto']);
     const ancho = numberFromKeys(line, ['ancho']);
     const units = numberFromKeys(line, ['unidades']);
