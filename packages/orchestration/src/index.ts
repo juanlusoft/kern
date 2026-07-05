@@ -373,6 +373,7 @@ function resolveWorkflowRequest(
       alto,
       ancho,
       options,
+      raw_message: request.user_message ?? null,
       capability_id: proposal.capability_key,
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,

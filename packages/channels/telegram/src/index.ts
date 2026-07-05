@@ -557,6 +557,20 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
   return detailParts.length > 0 ? `${header}: ${detailParts.join(' — ')}` : header;
 }
 
+function buildPricingBlockedText(outcome: OrchestrationOutcome): string {
+  const data = extractResponseData(outcome);
+  const reason = data && typeof data.reason === 'string' ? data.reason.trim() : '';
+  if (!reason) {
+    return 'No puedo calcular ese precio con lo que tengo. Dame el artículo y los datos que falten.';
+  }
+  const candidatesRaw = data && Array.isArray(data.candidates) ? data.candidates : [];
+  const candidates = candidatesRaw.filter(
+    (item): item is string => typeof item === 'string' && item.trim().length > 0
+  );
+  const capitalized = reason.charAt(0).toUpperCase() + reason.slice(1);
+  return candidates.length > 0 ? `${capitalized} (${candidates.join(', ')})` : capitalized;
+}
+
 function buildStatusText(outcome: OrchestrationOutcome): string {
   switch (outcome.response.status) {
     case 'completed':
@@ -574,7 +588,7 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
     case 'denied':
     case 'blocked':
       return outcome.response.workflow_kind === 'pricing.quote_line'
-        ? 'No puedo calcular ese precio con lo que tengo. Dame el artículo y los datos que falten.'
+        ? buildPricingBlockedText(outcome)
         : 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
     case 'no_proposal':
       return buildClarificationText(outcome);

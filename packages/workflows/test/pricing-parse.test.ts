@@ -1,0 +1,103 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  matchOptionInText,
+  parseMeasures,
+  parseQuantity,
+  pickArticleCandidate,
+  scoreCandidate
+} from '../src/pricing-parse';
+
+test('parseMeasures: formato libre en metros sin unidad explícita ("2x1")', () => {
+  assert.deepEqual(parseMeasures('lona de 2x1'), { altoCm: 100, anchoCm: 200 });
+});
+
+test('parseMeasures: metros con unidad ("3x2 metros")', () => {
+  assert.deepEqual(parseMeasures('una lona de 3x2 metros'), { altoCm: 200, anchoCm: 300 });
+});
+
+test('parseMeasures: centímetros ("200x100")', () => {
+  assert.deepEqual(parseMeasures('200x100 corte escuadrado'), { altoCm: 100, anchoCm: 200 });
+});
+
+test('parseMeasures: estructurado Alto/Ancho en cualquier orden', () => {
+  assert.deepEqual(parseMeasures('Ancho: 100 cm, Alto: 200 cm'), { altoCm: 200, anchoCm: 100 });
+});
+
+test('parseMeasures: milímetros', () => {
+  assert.deepEqual(parseMeasures('1500x1500 mm'), { altoCm: 150, anchoCm: 150 });
+});
+
+test('parseMeasures: sin medidas devuelve null', () => {
+  assert.equal(parseMeasures('quiero una lona frontlit con ollados'), null);
+});
+
+test('parseQuantity: detecta cantidad con sufijo', () => {
+  assert.equal(parseQuantity('5 uds'), 5);
+  assert.equal(parseQuantity('10 unidades'), 10);
+  assert.equal(parseQuantity('1 ud de lona'), 1);
+  assert.equal(parseQuantity('pon 25 und'), 25);
+});
+
+test('parseQuantity: no confunde una medida con cantidad', () => {
+  assert.equal(parseQuantity('lona de 200x100'), null);
+  assert.equal(parseQuantity('200'), null);
+});
+
+test('scoreCandidate: excluye frontlit <-> mesh', () => {
+  assert.equal(scoreCandidate('lona frontlit 2x1', 'Lona Microperforada (Mesh)'), -1);
+  assert.equal(scoreCandidate('lona mesh', 'Lona Frontlit 510g'), -1);
+});
+
+test('pickArticleCandidate: desambigua "lona frontlit" entre varias lonas', () => {
+  const candidates = [
+    { nombre: 'Lona Frontlit 510g' },
+    { nombre: 'Lona Doble Cara Blockout' },
+    { nombre: 'Lona Microperforada (Mesh)' },
+    { nombre: 'Lona camión' }
+  ];
+  const picked = pickArticleCandidate('precio de una lona frontlit de 2x1', candidates);
+  assert.equal(picked.ambiguous, false);
+  assert.equal(picked.selected?.nombre, 'Lona Frontlit 510g');
+});
+
+test('pickArticleCandidate: un único candidato se selecciona directo', () => {
+  const picked = pickArticleCandidate('lo que sea', [{ nombre: 'Lona Frontlit 510g' }]);
+  assert.equal(picked.selected?.nombre, 'Lona Frontlit 510g');
+  assert.equal(picked.ambiguous, false);
+});
+
+test('pickArticleCandidate: sin señal en el texto queda ambiguo', () => {
+  const picked = pickArticleCandidate('quiero un precio', [{ nombre: 'Roll Up 85x200' }, { nombre: 'Vinilo Monomérico' }]);
+  assert.equal(picked.selected, null);
+  assert.equal(picked.ambiguous, true);
+});
+
+test('matchOptionInText: resuelve la opción por su nombre real del catálogo', () => {
+  const options = [
+    { id: 117, nombre: 'Escuadrado' },
+    { id: 118, nombre: 'Con Forma' }
+  ];
+  assert.deepEqual(matchOptionInText('lona con corte escuadrado', options), { id: 117, nombre: 'Escuadrado' });
+  assert.deepEqual(matchOptionInText('la quiero con forma', options), { id: 118, nombre: 'Con Forma' });
+});
+
+test('matchOptionInText: casa por la raíz aunque el nombre tenga paréntesis', () => {
+  const options = [
+    { id: 17, nombre: 'Termosellado (todo el perímetro)' },
+    { id: 18, nombre: 'sin refuerzo (a sangre)' }
+  ];
+  assert.deepEqual(matchOptionInText('con termosellado', options), {
+    id: 17,
+    nombre: 'Termosellado (todo el perímetro)'
+  });
+});
+
+test('matchOptionInText: null si no aparece ninguna opción', () => {
+  const options = [
+    { id: 117, nombre: 'Escuadrado' },
+    { id: 118, nombre: 'Con Forma' }
+  ];
+  assert.equal(matchOptionInText('una lona sin nada especial', options), null);
+});

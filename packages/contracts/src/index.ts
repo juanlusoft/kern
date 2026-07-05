@@ -649,6 +649,12 @@ export interface PricingQuoteLineWorkflowInput extends GovernedWorkflowRequestBa
   alto?: number | null;
   ancho?: number | null;
   options?: Record<string, unknown> | null;
+  /**
+   * Mensaje original del usuario (texto crudo). El runtime lo parsea de forma
+   * determinista (medidas, cantidad, opciones contra el catálogo) para no
+   * depender de cómo el modelo estructure article/unidades/alto/ancho/options.
+   */
+  raw_message?: string | null;
   capability_id?: string | null;
 }
 
