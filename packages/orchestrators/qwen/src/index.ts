@@ -23,6 +23,10 @@ export interface QwenParameterSchemaProperty {
   pattern?: string;
   minimum?: number;
   maximum?: number;
+  /** Esquema de los elementos cuando `type` es 'array'. */
+  items?: QwenParameterSchema;
+  /** Mínimo de elementos cuando `type` es 'array'. */
+  minItems?: number;
 }
 
 export interface QwenParameterSchema {

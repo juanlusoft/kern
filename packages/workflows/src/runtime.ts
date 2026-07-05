@@ -41,6 +41,7 @@ import { buildWorkflowResult, workflowEvidenceTrace } from './workflow-internals
 import { executeMockEstimateReadWorkflow } from './estimate-workflow';
 import { executeMockEmailSendWorkflow } from './email-workflow';
 import { executePricingQuoteLineWorkflow } from './pricing-workflow';
+import { executePricingQuoteDraftWorkflow } from './pricing-draft-workflow';
 import { createMockEstimateReadCapability, createMockEmailPreviewCapability, createMockEmailSendCapability } from './mock-capabilities';
 import { type AppendWorkflowEvidenceInput, type FinishWorkflowInput, type WorkflowRuntimeContext } from './workflow-runtime-context';
 
@@ -125,7 +126,9 @@ export class InMemoryGovernedWorkflowRuntime {
       ? executeMockEstimateReadWorkflow(runtimeContext, input)
       : input.kind === 'mock.email.send'
         ? executeMockEmailSendWorkflow(runtimeContext, input)
-        : executePricingQuoteLineWorkflow(runtimeContext, input);
+        : input.kind === 'pricing.quote_draft'
+          ? executePricingQuoteDraftWorkflow(runtimeContext, input)
+          : executePricingQuoteLineWorkflow(runtimeContext, input);
   }
 
   private createWorkflowRuntimeContext(): WorkflowRuntimeContext {

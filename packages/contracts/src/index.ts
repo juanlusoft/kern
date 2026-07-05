@@ -28,7 +28,7 @@ export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
 export type CapabilityKind = 'read_only' | 'effectful';
 export type CapabilityInvocationStatus = 'executed' | 'unavailable' | 'error' | 'not_found' | 'denied';
 export type CapabilityRuntimeDecision = CapabilityInvocationStatus;
-export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send' | 'pricing.quote_line';
+export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send' | 'pricing.quote_line' | 'pricing.quote_draft';
 export type WorkflowExecutionStatus =
   | 'completed'
   | 'blocked'
@@ -658,6 +658,47 @@ export interface PricingQuoteLineWorkflowInput extends GovernedWorkflowRequestBa
   capability_id?: string | null;
 }
 
+export interface PricingQuoteDraftLineInput {
+  /** El trozo del mensaje que describe esta línea (para el parseo determinista). */
+  text?: string | null;
+  article: string;
+  unidades?: number | null;
+  alto?: number | null;
+  ancho?: number | null;
+  options?: Record<string, unknown> | null;
+}
+
+export interface PricingQuoteDraftWorkflowInput extends GovernedWorkflowRequestBase {
+  kind: 'pricing.quote_draft';
+  lines: PricingQuoteDraftLineInput[];
+  /** Cliente al que va el presupuesto (solo cabecera del borrador; F2 no lo persiste). */
+  customer?: string | null;
+  raw_message?: string | null;
+  capability_id?: string | null;
+}
+
+export interface PricingQuoteDraftLine {
+  article: string;
+  article_name: string | null;
+  articulo_id: string | number | null;
+  unidades: number | null;
+  alto: number | null;
+  ancho: number | null;
+  options_summary: string[] | null;
+  neto_total: number | null;
+  iva_amount: number | null;
+  total: number | null;
+}
+
+export interface PricingQuoteDraftWorkflowResponseData {
+  kind: 'pricing.quote_draft';
+  customer: string | null;
+  lines: PricingQuoteDraftLine[];
+  neto_total: number | null;
+  iva_amount: number | null;
+  total: number | null;
+}
+
 export interface PricingQuoteLineWorkflowResponseData {
   kind: 'pricing.quote_line';
   article: string;
@@ -766,7 +807,11 @@ export interface PacoPrintCatalogAdapterPort {
   quoteLine(input: PacoPrintQuoteLineInput): ResourceResult;
 }
 
-export type GovernedWorkflowRequest = MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput | PricingQuoteLineWorkflowInput;
+export type GovernedWorkflowRequest =
+  | MockReadEstimateWorkflowInput
+  | MockEmailSendWorkflowInput
+  | PricingQuoteLineWorkflowInput
+  | PricingQuoteDraftWorkflowInput;
 
 export type OrchestrationStatus = 'proposal' | 'no_proposal' | 'denied' | 'blocked' | 'error';
 

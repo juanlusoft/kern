@@ -309,6 +309,11 @@ function isPricingQuoteLineResponseData(outcome: OrchestrationOutcome): boolean 
   return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'pricing.quote_line');
 }
 
+function isPricingQuoteDraftResponseData(outcome: OrchestrationOutcome): boolean {
+  const responseData = extractResponseData(outcome);
+  return Boolean(responseData && isPlainObject(responseData) && responseData.kind === 'pricing.quote_draft');
+}
+
 function formatListCount(value: number): string {
   return value.toLocaleString('es-ES');
 }
@@ -497,6 +502,41 @@ function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
   return defaultsApplied.length > 0 ? `${mainLine}\nDefaults aplicados: ${defaultsApplied.join(', ')}.` : mainLine;
 }
 
+function buildPricingDraftOutboundText(outcome: OrchestrationOutcome): string {
+  const data = extractResponseData(outcome);
+  if (!data || !isPlainObject(data) || data.kind !== 'pricing.quote_draft') {
+    return buildCompletedOutboundText(outcome);
+  }
+  const currency = firstStringFromKeys(data, ['currency', 'currency_code']);
+  const customer = firstStringFromKeys(data, ['customer']);
+  const linesRaw = Array.isArray(data.lines) ? data.lines : [];
+  const lineTexts: string[] = [];
+  linesRaw.forEach((line, index) => {
+    if (!isPlainObject(line)) {
+      return;
+    }
+    const name = firstStringFromKeys(line, ['article_name', 'article']) ?? 'Línea';
+    const alto = numberFromKeys(line, ['alto']);
+    const ancho = numberFromKeys(line, ['ancho']);
+    const units = numberFromKeys(line, ['unidades']);
+    const optionsSummary = Array.isArray(line.options_summary)
+      ? line.options_summary.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : [];
+    const lineTotal = formatCurrencyAmount(numberFromKeys(line, ['total']), currency);
+    const parts = [
+      name,
+      alto !== null && ancho !== null ? `${ancho}×${alto} mm` : null,
+      units !== null ? `${units} uds` : null,
+      optionsSummary.length > 0 ? optionsSummary.join(', ') : null
+    ].filter((value): value is string => Boolean(value));
+    lineTexts.push(`${index + 1}. ${parts.join(' · ')}${lineTotal ? ` → ${lineTotal}` : ''}`);
+  });
+  const total = formatCurrencyAmount(numberFromKeys(data, ['total']), currency);
+  const header = customer ? `Presupuesto para ${customer} (borrador):` : 'Presupuesto (borrador):';
+  const totalLine = total ? `Total: ${total} (IVA incl.)` : null;
+  return [header, ...lineTexts, totalLine].filter((value): value is string => Boolean(value)).join('\n');
+}
+
 function buildClarificationText(outcome: OrchestrationOutcome): string {
   const clarification = clarificationDataFromOutcome(outcome);
   if (!clarification) {
@@ -574,11 +614,13 @@ function buildPricingBlockedText(outcome: OrchestrationOutcome): string {
 function buildStatusText(outcome: OrchestrationOutcome): string {
   switch (outcome.response.status) {
     case 'completed':
-      return isPricingQuoteLineResponseData(outcome)
-        ? buildPricingOutboundText(outcome)
-        : isInvoiceListResponseData(outcome)
-          ? buildInvoiceListOutboundText(outcome)
-          : buildCompletedOutboundText(outcome);
+      return isPricingQuoteDraftResponseData(outcome)
+        ? buildPricingDraftOutboundText(outcome)
+        : isPricingQuoteLineResponseData(outcome)
+          ? buildPricingOutboundText(outcome)
+          : isInvoiceListResponseData(outcome)
+            ? buildInvoiceListOutboundText(outcome)
+            : buildCompletedOutboundText(outcome);
     case 'not_found':
       return 'No he encontrado ese documento en Holded.';
     case 'unavailable':
@@ -587,7 +629,7 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
       return 'Ha habido un problema técnico al procesar la consulta. Inténtalo de nuevo.';
     case 'denied':
     case 'blocked':
-      return outcome.response.workflow_kind === 'pricing.quote_line'
+      return outcome.response.workflow_kind === 'pricing.quote_line' || outcome.response.workflow_kind === 'pricing.quote_draft'
         ? buildPricingBlockedText(outcome)
         : 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
     case 'no_proposal':

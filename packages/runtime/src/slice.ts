@@ -239,6 +239,49 @@ function buildQwenToolCatalog() {
       }
     }
   };
+  const pricingDraftTool: QwenToolDefinition = {
+    capability_key: 'pricing.quote_draft',
+    description:
+      'Build a MULTI-LINE PacoPrint price draft (presupuesto) when the user asks for a quote with SEVERAL products/lines at once. One entry per distinct product+measures+quantity. Never invent prices or article ids; the runtime prices each line with the PacoPrint API.',
+    parameters_schema: {
+      type: 'object' as const,
+      required: ['lines'],
+      additionalProperties: false as const,
+      properties: {
+        lines: {
+          type: 'array' as const,
+          minItems: 1,
+          description: 'One entry per product line requested by the user.',
+          items: {
+            type: 'object' as const,
+            required: ['text', 'article'],
+            additionalProperties: false as const,
+            properties: {
+              text: {
+                type: 'string' as const,
+                description:
+                  'The exact words of the user describing THIS line (product, measures, options, quantity) so the runtime can parse it deterministically.'
+              },
+              article: {
+                type: 'string' as const,
+                description:
+                  'Full product name for this line with every qualifier (e.g. "lona frontlit"); never a bare category like "lona".'
+              },
+              unidades: { type: 'integer' as const, description: 'Units for this line if provided.', minimum: 1, maximum: 100000 },
+              alto: { type: 'number' as const, description: 'Height in centimeters (convert metres to cm).' },
+              ancho: { type: 'number' as const, description: 'Width in centimeters (convert metres to cm).' },
+              options: {
+                type: 'object' as const,
+                description:
+                  'Attribute choices for this line as {attribute_name: value} (e.g. {"corte": "escuadrado"}); choice in the value, never booleans.'
+              }
+            }
+          }
+        },
+        customer: { type: 'string' as const, description: 'Customer/client the quote is for, if the user named one.' }
+      }
+    }
+  };
   const readTool: QwenToolDefinition = {
     capability_key: 'mock.resource.read',
     description:
@@ -330,7 +373,7 @@ function buildQwenToolCatalog() {
       }
     }
   };
-  return [pricingTool, readTool, clarificationTool];
+  return [pricingTool, pricingDraftTool, readTool, clarificationTool];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {
