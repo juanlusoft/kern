@@ -3,6 +3,7 @@ import {
   createDeterministicId,
   createEvidenceRecord,
   normalizeCorrelationId,
+  type ConversationTurn,
   type EvidenceRecord,
   type OrchestratorPort,
   type OrchestrationOutcome,
@@ -101,7 +102,7 @@ export interface QwenChatCompletionsResponse {
 export interface QwenChatCompletionsRequest {
   model: string;
   temperature: number;
-  messages: [QwenChatMessage, QwenChatMessage];
+  messages: QwenChatMessage[];
   tools: QwenChatTool[];
   tool_choice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
 }
@@ -134,6 +135,26 @@ function normalizePaymentStatus(value: unknown): 'pending' | 'paid' | 'overdue' 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Máximo de turnos de conversación que se pasan al modelo como contexto.
+const MAX_CONVERSATION_HISTORY_MESSAGES = 6;
+
+/** Sanea el historial: solo user/assistant con contenido, y como mucho los últimos N. */
+function sanitizeConversationHistory(history: ConversationTurn[] | null | undefined): QwenChatMessage[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history
+    .filter(
+      (turn): turn is ConversationTurn =>
+        Boolean(turn) &&
+        (turn.role === 'user' || turn.role === 'assistant') &&
+        typeof turn.content === 'string' &&
+        turn.content.trim().length > 0
+    )
+    .slice(-MAX_CONVERSATION_HISTORY_MESSAGES)
+    .map((turn) => ({ role: turn.role, content: turn.content.trim() }));
 }
 
 function cloneResponse(response: OrchestrationResponse): OrchestrationResponse {
@@ -273,6 +294,7 @@ function buildSystemPrompt(input: {
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
+    'You may be given earlier turns of this conversation as context. Use them to resolve references (e.g. "that client", "add another line") and to CONTINUE a task the user already started: if a previous assistant turn asked for something (e.g. what to quote) and the user now provides it, call the right tool combining the new details with the customer/context from the earlier turns. Never invent details from prior turns; if something needed was never given, call request_clarification.',
     'Do extract request parameters from the user message, including customer_id, customer_name, contact_name, contact, estimate_id, invoice_id, resource_id, resource_type, payment_status, year, and search terms.',
     'When the user names a customer, fill customer_id with the customer name from the user request.',
     "Extracting the customer name from the user's request as a tool parameter is not outputting business data.",
@@ -755,6 +777,7 @@ export class QwenOrchestrator implements OrchestratorPort {
                 active_capabilities
               })
           },
+          ...sanitizeConversationHistory(request.conversation_history),
           {
             role: 'user',
             content: user_message

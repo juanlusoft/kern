@@ -823,6 +823,11 @@ export interface OrchestrationContext {
   force_params?: Record<string, unknown> | null;
 }
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface OrchestrationRequest {
   request_id: string;
   user_message: string;
@@ -832,6 +837,13 @@ export interface OrchestrationRequest {
   correlation_id: string;
   installation_id?: string | null;
   context?: OrchestrationContext | null;
+  /**
+   * Turnos recientes de ESTA conversación (memoria a corto plazo). Se pasan al
+   * modelo como contexto para poder continuar un hilo (p. ej. "¿qué presupuestas?"
+   * → "3 lonas…"). Es contexto, no órdenes: el runtime sigue validando cada
+   * propuesta y el modelo sigue sin inventar.
+   */
+  conversation_history?: ConversationTurn[] | null;
   claimed_result?: unknown;
   model_claimed_result?: unknown;
   caller_result?: unknown;
