@@ -22,6 +22,7 @@ import {
   createWorkflowCoreRequest
 } from './workflow-internals';
 import type { WorkflowRuntimeContext } from './workflow-runtime-context';
+import { matchOptionInText, parseMeasures, parseQuantity, pickArticleCandidate } from './pricing-parse';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -608,9 +609,20 @@ export function executePricingQuoteLineWorkflow(
     });
   }
 
+  const rawMessage = normalizeOptionalString(input.raw_message);
   const candidates = extractCandidates(searchResult);
-  const selectedCandidate =
-    candidates.length === 1 ? candidates[0] : candidates.find((candidate) => candidateMatches(candidate, article)) ?? null;
+  let selectedCandidate: PacoPrintCatalogCandidate | null;
+  if (candidates.length === 1) {
+    selectedCandidate = candidates[0] ?? null;
+  } else if (rawMessage) {
+    // Desambiguación determinista contra el texto crudo del usuario (evita que
+    // un artículo truncado por el modelo -"lona" en vez de "lona frontlit"- se
+    // quede en ambiguo). Si no resuelve, cae al match por el hint del modelo.
+    const picked = pickArticleCandidate(rawMessage, candidates);
+    selectedCandidate = picked.selected ?? candidates.find((candidate) => candidateMatches(candidate, article)) ?? null;
+  } else {
+    selectedCandidate = candidates.find((candidate) => candidateMatches(candidate, article)) ?? null;
+  }
   if (!selectedCandidate) {
     const reason = candidates.length === 0 ? 'artículo no encontrado' : 'artículo ambiguo';
     return buildBlockedPricingWorkflow({
@@ -631,19 +643,22 @@ export function executePricingQuoteLineWorkflow(
     });
   }
 
-  const resolvedUnits = normalizePositiveInteger(input.unidades);
-  const resolvedAlto = normalizeOptionalNumber(input.alto);
-  const resolvedAncho = normalizeOptionalNumber(input.ancho);
+  // Extracción DETERMINISTA desde el texto crudo (primaria); los campos que dé
+  // el modelo quedan de respaldo. El precio lo sigue calculando la API.
+  const parsedMeasures = rawMessage ? parseMeasures(rawMessage) : null;
+  const parsedQuantity = rawMessage ? parseQuantity(rawMessage) : null;
+  const resolvedUnits = parsedQuantity ?? normalizePositiveInteger(input.unidades) ?? 1;
+  const resolvedAlto = parsedMeasures?.altoCm ?? normalizeOptionalNumber(input.alto);
+  const resolvedAncho = parsedMeasures?.anchoCm ?? normalizeOptionalNumber(input.ancho);
   const resolvedOptions = normalizeOptions(input.options);
   const resolvedAttributes: Record<string, unknown> = {};
   const defaultsApplied: string[] = [];
   const optionsSummary: string[] = [];
   const missingFields: string[] = [];
   const invalidFields: string[] = [];
+  // Para nombrar en la aclaración qué opción falta y sus alternativas.
+  const missingChoices = new Map<string, string[]>();
 
-  if (resolvedUnits === null) {
-    missingFields.push('unidades');
-  }
   if (resolvedAlto === null) {
     missingFields.push('alto');
   }
@@ -676,7 +691,16 @@ export function executePricingQuoteLineWorkflow(
       const normalizedKey = normalizeSearchText(attributeId);
       const normalizedLabel = normalizeSearchText(displayLabel);
       let value: unknown = undefined;
-      if (resolvedOptions) {
+      // 1) Match DETERMINISTA: buscar en el texto crudo alguna opción real del
+      //    catálogo para este atributo (p.ej. "escuadrado" -> Corte=117).
+      if (rawMessage && rule.tipo === 'select' && attribute?.valores_posibles && attribute.valores_posibles.length > 0) {
+        const matched = matchOptionInText(rawMessage, attribute.valores_posibles);
+        if (matched) {
+          value = matched.id;
+        }
+      }
+      // 2) Respaldo: opciones estructuradas que haya dado el modelo.
+      if ((value === undefined || value === null || value === '') && resolvedOptions) {
         for (const [key, optionValue] of Object.entries(resolvedOptions)) {
           if (normalizeSearchText(key) === normalizedKey || normalizeSearchText(key) === normalizedLabel) {
             value = optionValue;
@@ -709,6 +733,12 @@ export function executePricingQuoteLineWorkflow(
       }
       if ((value === undefined || value === null || value === '') && rule.obligatorio) {
         missingFields.push(displayLabel);
+        if (rule.tipo === 'select' && attribute?.valores_posibles && attribute.valores_posibles.length > 0) {
+          missingChoices.set(
+            displayLabel,
+            attribute.valores_posibles.map((option) => option.nombre)
+          );
+        }
         continue;
       }
       if (value === undefined || value === null || value === '') {
@@ -757,15 +787,30 @@ export function executePricingQuoteLineWorkflow(
   if (missingFields.length > 0 || invalidFields.length > 0) {
     const uniqueMissing = [...new Set(missingFields)];
     const uniqueInvalid = [...new Set(invalidFields)];
+    // Nombra la opción que falta y sus alternativas reales del catálogo, p.ej.
+    // "me falta el corte: ¿Escuadrado o Con Forma?".
+    const formatMissingOption = (label: string): string => {
+      const choices = missingChoices.get(label);
+      const base = `me falta ${label.toLowerCase()}`;
+      if (choices && choices.length > 0) {
+        const list =
+          choices.length === 1
+            ? choices[0]
+            : `${choices.slice(0, -1).join(', ')} o ${choices[choices.length - 1]}`;
+        return `${base}: ¿${list}?`;
+      }
+      return base;
+    };
+    const missingOptionField = uniqueMissing.find(
+      (field) => field !== 'alto' && field !== 'ancho' && field !== 'unidades'
+    );
     const reason =
       uniqueMissing.length > 0
-        ? uniqueMissing.includes('unidades') && (uniqueMissing.includes('alto') || uniqueMissing.includes('ancho'))
-          ? 'faltan las medidas y las unidades'
-          : uniqueMissing.includes('unidades')
-            ? '¿cuántas unidades?'
-            : uniqueMissing.includes('alto') || uniqueMissing.includes('ancho')
-              ? 'faltan las medidas'
-              : `falta la opción ${uniqueMissing[0]}`
+        ? uniqueMissing.includes('alto') || uniqueMissing.includes('ancho')
+          ? 'faltan las medidas'
+          : missingOptionField
+            ? formatMissingOption(missingOptionField)
+            : `falta la opción ${uniqueMissing[0]}`
         : `opción inválida: ${uniqueInvalid[0]}`;
     return buildBlockedPricingWorkflow({
       runtime,
