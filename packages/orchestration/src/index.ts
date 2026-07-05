@@ -9,6 +9,8 @@ import {
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
   type PricingQuoteLineWorkflowInput,
+  type PricingQuoteDraftWorkflowInput,
+  type PricingQuoteDraftLineInput,
   type OrchestratorPort,
   type OrchestrationOutcome,
   type OrchestrationProposal,
@@ -262,6 +264,39 @@ function isValidPricingQuoteLineProposal(params: Record<string, unknown>): boole
   return true;
 }
 
+function normalizeDraftLine(value: unknown): PricingQuoteDraftLineInput | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    text: normalizeOptionalString(record.text),
+    article: normalizeOptionalString(record.article) ?? '',
+    unidades: record.unidades === undefined || record.unidades === null ? null : normalizeLimit(record.unidades),
+    alto: record.alto === undefined || record.alto === null ? null : normalizeOptionalNumber(record.alto),
+    ancho: record.ancho === undefined || record.ancho === null ? null : normalizeOptionalNumber(record.ancho),
+    options: record.options === undefined || record.options === null ? null : normalizeOptions(record.options)
+  };
+}
+
+function normalizeDraftLines(value: unknown): PricingQuoteDraftLineInput[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const lines: PricingQuoteDraftLineInput[] = [];
+  for (const item of value) {
+    const line = normalizeDraftLine(item);
+    if (line) {
+      lines.push(line);
+    }
+  }
+  return lines.length > 0 ? lines : null;
+}
+
+function isValidPricingQuoteDraftProposal(params: Record<string, unknown>): boolean {
+  return normalizeDraftLines(params.lines) !== null;
+}
+
 function isValidMockResourceReadProposal(params: Record<string, unknown>): boolean {
   const estimate_id = normalizeOptionalString(params.estimate_id);
   const year = normalizeYear(params.year);
@@ -298,7 +333,12 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
 function resolveWorkflowRequest(
   proposal: OrchestrationProposal,
   request: OrchestrationRequest
-): MockReadEstimateWorkflowInput | MockEmailSendWorkflowInput | PricingQuoteLineWorkflowInput | null {
+):
+  | MockReadEstimateWorkflowInput
+  | MockEmailSendWorkflowInput
+  | PricingQuoteLineWorkflowInput
+  | PricingQuoteDraftWorkflowInput
+  | null {
   if (proposal.capability_key === 'mock.resource.read') {
     const estimate_id = normalizeOptionalString(proposal.params.estimate_id);
     const resource_type = proposal.params.resource_type === 'invoice' ? 'invoice' : 'estimate';
@@ -373,6 +413,29 @@ function resolveWorkflowRequest(
       alto,
       ancho,
       options,
+      raw_message: request.user_message ?? null,
+      capability_id: proposal.capability_key,
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'pricing.quote_draft') {
+    const lines = normalizeDraftLines(proposal.params.lines);
+    if (!lines) {
+      return null;
+    }
+    return {
+      kind: 'pricing.quote_draft',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      lines,
+      customer: normalizeOptionalString(proposal.params.customer),
       raw_message: request.user_message ?? null,
       capability_id: proposal.capability_key,
       claimed_result: request.claimed_result ?? null,
@@ -904,6 +967,34 @@ export class InMemoryOrchestrationBoundary {
       };
     }
 
+    if (proposal.capability_key === 'pricing.quote_draft') {
+      const lines = normalizeDraftLines(proposal.params.lines);
+      if (!lines) {
+        return {
+          valid: false,
+          status: 'blocked',
+          reason: 'proposal params invalid',
+          capability_key: proposal.capability_key,
+          params: proposal.params,
+          capability_active: true,
+          capability_known: true
+        };
+      }
+      return {
+        valid: true,
+        status: 'proposal',
+        reason: 'proposal validated',
+        capability_key: proposal.capability_key,
+        params: normalizeCapabilityParams({
+          ...proposal.params,
+          lines: lines as unknown as unknown[],
+          customer: normalizeOptionalString(proposal.params.customer) ?? proposal.params.customer ?? null
+        }),
+        capability_active: true,
+        capability_known: true
+      };
+    }
+
     if (proposal.capability_key === 'mock.email.send') {
       const to = normalizeOptionalString(proposal.params.to);
       const subject = normalizeOptionalString(proposal.params.subject);
@@ -950,6 +1041,9 @@ export class InMemoryOrchestrationBoundary {
     }
     if (capability_key === 'pricing.quote_line') {
       return 'pricing.quote_line';
+    }
+    if (capability_key === 'pricing.quote_draft') {
+      return 'pricing.quote_draft';
     }
     return null;
   }

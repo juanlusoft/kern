@@ -12,7 +12,7 @@ import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
 import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { createMockResourceReadCapability } from '../../capabilities/src/index';
-import { createPricingQuoteLineCapability } from '../../workflows/src/index';
+import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } from '../../workflows/src/index';
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
 import { createPacoPrintCatalogAdapter } from '../../adapters/pacoprint-catalog/src/index';
 import {
@@ -206,7 +206,8 @@ function hasRequiredModules(registry: RuntimeModuleRegistry): boolean {
 function buildQwenToolCatalog() {
   const pricingTool: QwenToolDefinition = {
     capability_key: 'pricing.quote_line',
-    description: 'Calculate a single PacoPrint line price from the user request without inventing article ids or prices.',
+    description:
+      'Price ONE PacoPrint line: a SINGLE product with its measures/options/quantity. Use ONLY when the user asks for one item. If the user lists SEVERAL products or asks for a "presupuesto"/quote with multiple lines, do NOT call this once per item — call pricing.quote_draft ONCE with every line instead. Never invent article ids or prices.',
     parameters_schema: {
       type: 'object' as const,
       required: ['article'],
@@ -236,6 +237,49 @@ function buildQwenToolCatalog() {
           description:
             'Attribute choices the user explicitly named, as a FLAT object mapping the attribute name (lowercase, e.g. "corte", "acabado", "ollado", "refuerzo") to the chosen value as the label the user said (e.g. {"corte": "escuadrado"}). Put the choice in the VALUE, never in the key, and never use boolean true/false. Omit any attribute the user did not mention; do not invent options.'
         }
+      }
+    }
+  };
+  const pricingDraftTool: QwenToolDefinition = {
+    capability_key: 'pricing.quote_draft',
+    description:
+      'Build a MULTI-LINE PacoPrint price draft (presupuesto). Call this ONCE with ALL the lines whenever the user asks for a quote with more than one product, or uses the word "presupuesto". One entry in `lines` per distinct product+measures+quantity. Do NOT call pricing.quote_line several times for this — use a single pricing.quote_draft. Never invent prices or article ids; the runtime prices each line with the PacoPrint API.',
+    parameters_schema: {
+      type: 'object' as const,
+      required: ['lines'],
+      additionalProperties: false as const,
+      properties: {
+        lines: {
+          type: 'array' as const,
+          minItems: 1,
+          description: 'One entry per product line requested by the user.',
+          items: {
+            type: 'object' as const,
+            required: ['text', 'article'],
+            additionalProperties: false as const,
+            properties: {
+              text: {
+                type: 'string' as const,
+                description:
+                  'The exact words of the user describing THIS line (product, measures, options, quantity) so the runtime can parse it deterministically.'
+              },
+              article: {
+                type: 'string' as const,
+                description:
+                  'Full product name for this line with every qualifier (e.g. "lona frontlit"); never a bare category like "lona".'
+              },
+              unidades: { type: 'integer' as const, description: 'Units for this line if provided.', minimum: 1, maximum: 100000 },
+              alto: { type: 'number' as const, description: 'Height in centimeters (convert metres to cm).' },
+              ancho: { type: 'number' as const, description: 'Width in centimeters (convert metres to cm).' },
+              options: {
+                type: 'object' as const,
+                description:
+                  'Attribute choices for this line as {attribute_name: value} (e.g. {"corte": "escuadrado"}); choice in the value, never booleans.'
+              }
+            }
+          }
+        },
+        customer: { type: 'string' as const, description: 'Customer/client the quote is for, if the user named one.' }
       }
     }
   };
@@ -330,7 +374,7 @@ function buildQwenToolCatalog() {
       }
     }
   };
-  return [pricingTool, readTool, clarificationTool];
+  return [pricingTool, pricingDraftTool, readTool, clarificationTool];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {
@@ -502,6 +546,9 @@ function buildOrchestrationBoundary(options: {
     workflowRuntime.registerCapability(
       createPricingQuoteLineCapability(pacoPrintCatalogAdapter, {}, options.config.organization.organization_id)
     );
+  }
+  if (options.config.active_modules.includes('pacoprint-catalog') && options.config.active_capabilities.includes('pricing.quote_draft')) {
+    workflowRuntime.registerCapability(createPricingQuoteDraftCapability({}, options.config.organization.organization_id));
   }
 
   const orchestrator = createQwenOrchestrator({

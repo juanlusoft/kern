@@ -410,3 +410,37 @@ export function createPricingQuoteLineCapability(
     ...overrides
   };
 }
+
+/**
+ * Capability marcador para el borrador multi-línea. Existe sólo para que la
+ * orquestación reconozca `pricing.quote_draft` como capability activa/conocida;
+ * el trabajo real lo hace el workflow `executePricingQuoteDraftWorkflow`, que
+ * invoca `pricing.quote_line` por cada línea. Su `invoke` no se llama en el flujo
+ * (la orquestación enruta al workflow, no a esta capability); si se llamara,
+ * deniega de forma segura.
+ */
+export function createPricingQuoteDraftCapability(
+  overrides: Partial<CapabilityDefinition> = {},
+  organization_id = 'org-pacoprint'
+): CapabilityDefinition {
+  return {
+    capability_id: 'pricing.quote_draft',
+    organization_id,
+    title: 'PacoPrint pricing quote draft',
+    description: 'Assemble a governed multi-line PacoPrint price draft.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: {
+      required: false,
+      reason: 'read only',
+      binding_required: false
+    },
+    mock: {
+      invoke() {
+        return { status: 'denied' as const, output: null, error: 'pricing.quote_draft is handled by the workflow, not invoked directly' };
+      }
+    },
+    ...overrides
+  };
+}
