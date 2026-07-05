@@ -182,6 +182,9 @@ function buildPricingResponseData(input: {
   quoteInput: PricingQuoteLineWorkflowInput;
   resolvedOptions: Record<string, unknown> | null;
   resolvedAttributes: Record<string, unknown>;
+  resolvedUnits: number;
+  resolvedAlto: number;
+  resolvedAncho: number;
   defaultsApplied: string[];
   optionsSummary: string[];
 }): PricingQuoteLineWorkflowResponseData {
@@ -192,9 +195,11 @@ function buildPricingResponseData(input: {
     article: input.quoteInput.article,
     article_name: input.candidate.nombre,
     articulo_id: input.candidate.id,
-    unidades: input.quoteInput.unidades ?? null,
-    alto: input.quoteInput.alto ?? null,
-    ancho: input.quoteInput.ancho ?? null,
+    // Valores RESUELTOS (deterministas) — lo que se cobró vía la API; no los que
+    // propuso el modelo, para que lo mostrado coincida con la base del precio.
+    unidades: input.resolvedUnits,
+    alto: input.resolvedAlto,
+    ancho: input.resolvedAncho,
     options: input.resolvedOptions,
     attributes: input.resolvedAttributes,
     defaults_applied: input.defaultsApplied.length > 0 ? input.defaultsApplied : null,
@@ -867,6 +872,9 @@ export function executePricingQuoteLineWorkflow(
           quoteInput: input,
           resolvedOptions,
           resolvedAttributes,
+          resolvedUnits,
+          resolvedAlto: resolvedAlto!,
+          resolvedAncho: resolvedAncho!,
           defaultsApplied,
           optionsSummary
         }) as unknown as Record<string, unknown>
