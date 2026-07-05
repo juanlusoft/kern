@@ -47,22 +47,24 @@ function buildCatalogStructure() {
           }
         },
         json_calcular_precio: {
-          alto: { minimo: 100, decimales: 0 },
-          ancho: { minimo: 50, decimales: 0 },
-          atributos: {
-            acabado: {
+          alto: { obligatorio: true, restricciones: { minimo: 100, maximo: null, decimal: false } },
+          ancho: { obligatorio: true, restricciones: { minimo: 50, maximo: null, decimal: false } },
+          atributos: [
+            {
+              atributo_id: 7,
+              nombre: 'Acabado',
               tipo: 'select' as const,
               obligatorio: true,
               valores_validos: ['mate', 'brillo']
             },
-            grosor_mm: {
-              tipo: 'numero' as const,
+            {
+              atributo_id: 12,
+              nombre: 'Grosor',
+              tipo: 'number' as const,
               obligatorio: false,
-              minimo: 80,
-              maximo: 200,
-              decimales: 1
+              restricciones: { minimo: 80, maximo: 200, decimal: true }
             }
-          }
+          ]
         }
       },
       {
@@ -77,7 +79,7 @@ function buildCatalogStructure() {
           }
         },
         json_calcular_precio: {
-          atributos: {}
+          atributos: []
         }
       }
     ]
@@ -143,8 +145,8 @@ test('PacoPrint quote_line sends atributos as an object and returns SourceEviden
     alto: 120,
     ancho: 60,
     atributos: {
-      acabado: 'mate',
-      grosor_mm: 120.5
+      '7': 'mate',
+      '12': 120.5
     },
     correlation_id: 'corr-quote'
   });
@@ -158,8 +160,8 @@ test('PacoPrint quote_line sends atributos as an object and returns SourceEviden
   assert.equal((calls[1].init?.headers as Record<string, string> | undefined)?.['Content-Type'], 'application/json');
   assert.equal(Array.isArray(postedBody.atributos), false);
   assert.deepEqual(postedBody.atributos, {
-    acabado: 'mate',
-    grosor_mm: 120.5
+    '7': 'mate',
+    '12': 120.5
   });
   assert.equal(result.status, 'found');
   assert.equal(result.resource_type, PACOPRINT_PRICING_QUOTE_LINE_CAPABILITY);
@@ -185,7 +187,7 @@ test('PacoPrint quote_line blocks when a required attribute is missing', () => {
     alto: 120,
     ancho: 60,
     atributos: {
-      grosor_mm: 120.5
+      '12': 120.5
     },
     correlation_id: 'corr-missing-attribute'
   });
@@ -206,7 +208,7 @@ test('PacoPrint quote_line blocks when a measure is below minimum', () => {
     alto: 90,
     ancho: 60,
     atributos: {
-      acabado: 'mate'
+      '7': 'mate'
     },
     correlation_id: 'corr-measure-min'
   });
@@ -226,7 +228,7 @@ test('PacoPrint quote_line blocks when a select attribute falls outside valid va
     alto: 120,
     ancho: 60,
     atributos: {
-      acabado: 'satinado'
+      '7': 'satinado'
     },
     correlation_id: 'corr-select-invalid'
   });
@@ -246,7 +248,7 @@ test('PacoPrint quote_line returns not_found for an unknown article without post
     alto: 120,
     ancho: 60,
     atributos: {
-      acabado: 'mate'
+      '7': 'mate'
     },
     correlation_id: 'corr-unknown-article'
   });

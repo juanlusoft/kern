@@ -53,14 +53,16 @@ function buildPricingAdapter(): PacoPrintCatalogAdapterPort {
     nombre: 'Vinilo Monomérico Plus',
     tipo_calculo: 'm2',
     json_calcular_precio: {
-      atributos: {
-        color: {
+      atributos: [
+        {
+          atributo_id: 'color',
+          nombre: 'Color',
           tipo: 'select',
           obligatorio: true,
           valor_defecto: 'blanco',
-          valores_validos: ['blanco', 'negro']
+          valores_validos: ['white', 'black']
         }
-      }
+      ]
     },
     atributos: [
       {

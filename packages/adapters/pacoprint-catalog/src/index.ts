@@ -31,26 +31,32 @@ export interface PacoPrintFetchResponse {
 
 export type PacoPrintFetch = (url: string, init?: RequestInit) => PacoPrintFetchResponse;
 
+export interface PacoPrintCatalogRestrictions {
+  minimo?: number | null;
+  maximo?: number | null;
+  decimal?: boolean | null;
+}
+
 export interface PacoPrintCatalogArticleAttributeRule {
-  tipo?: 'select' | 'numero' | 'text' | string;
+  atributo_id?: string | number;
+  nombre?: string;
+  tipo?: 'select' | 'number' | 'numero' | 'text' | 'checkbox' | string;
+  tipo_dato?: string;
   obligatorio?: boolean;
   valores_validos?: Array<string | number>;
   valor_defecto?: string | number | boolean | null;
-  minimo?: number;
-  maximo?: number;
-  decimales?: number;
+  restricciones?: PacoPrintCatalogRestrictions | null;
 }
 
 export interface PacoPrintCatalogArticleMeasurementRule {
-  minimo?: number;
-  maximo?: number;
-  decimales?: number;
+  obligatorio?: boolean;
+  restricciones?: PacoPrintCatalogRestrictions | null;
 }
 
 export interface PacoPrintCatalogPriceSchema {
   alto?: PacoPrintCatalogArticleMeasurementRule | null;
   ancho?: PacoPrintCatalogArticleMeasurementRule | null;
-  atributos?: Record<string, PacoPrintCatalogArticleAttributeRule> | null;
+  atributos?: PacoPrintCatalogArticleAttributeRule[] | null;
 }
 
 export interface PacoPrintCatalogArticleAttributeValue {
@@ -250,7 +256,8 @@ function cloneCandidate(candidate: PacoPrintCatalogCandidate): PacoPrintCatalogC
     id: candidate.id,
     nombre: candidate.nombre,
     tipo_calculo: candidate.tipo_calculo,
-    json_calcular_precio: structuredClone(candidate.json_calcular_precio)
+    json_calcular_precio: structuredClone(candidate.json_calcular_precio),
+    atributos: structuredClone(candidate.atributos ?? null)
   };
 }
 
@@ -415,24 +422,23 @@ function validateAttributeValue(rule: PacoPrintCatalogArticleAttributeRule, valu
     return allowed ? null : 'attribute select outside valid values';
   }
 
-  if (rule.tipo === 'numero') {
+  if (rule.tipo === 'number' || rule.tipo === 'numero') {
     const numeric = normalizeFiniteNumber(value);
     if (!numeric) {
       return 'attribute numeric invalid';
     }
-    if (typeof rule.minimo === 'number' && numeric.value < rule.minimo) {
-      return 'attribute numeric below minimum';
+    const restricciones = rule.restricciones ?? null;
+    if (restricciones) {
+      if (typeof restricciones.minimo === 'number' && numeric.value < restricciones.minimo) {
+        return 'attribute numeric below minimum';
+      }
+      if (typeof restricciones.maximo === 'number' && numeric.value > restricciones.maximo) {
+        return 'attribute numeric above maximum';
+      }
+      if (restricciones.decimal === false && numeric.decimals > 0) {
+        return 'attribute numeric must be integer';
+      }
     }
-    if (typeof rule.maximo === 'number' && numeric.value > rule.maximo) {
-      return 'attribute numeric above maximum';
-    }
-    if (typeof rule.decimales === 'number' && numeric.decimals > rule.decimales) {
-      return 'attribute numeric too many decimals';
-    }
-    return null;
-  }
-
-  if (rule.tipo === 'text' || typeof rule.tipo === 'undefined' || rule.tipo === null) {
     return null;
   }
 
@@ -443,18 +449,29 @@ function validateAttributesAgainstSchema(
   attributes: Record<string, unknown>,
   schema: PacoPrintCatalogPriceSchema | null | undefined
 ): string | null {
-  const rules = schema?.atributos ?? null;
+  const rules = Array.isArray(schema?.atributos) ? schema.atributos : null;
   if (!rules) {
     return null;
   }
 
+  const allowedKeys = new Set<string>();
+  for (const rule of rules) {
+    if (rule.atributo_id !== undefined && rule.atributo_id !== null) {
+      allowedKeys.add(String(rule.atributo_id));
+    }
+  }
+
   for (const key of Object.keys(attributes)) {
-    if (!(key in rules)) {
+    if (!allowedKeys.has(key)) {
       return `attribute ${key} not allowed`;
     }
   }
 
-  for (const [key, rule] of Object.entries(rules)) {
+  for (const rule of rules) {
+    if (rule.atributo_id === undefined || rule.atributo_id === null) {
+      continue;
+    }
+    const key = String(rule.atributo_id);
     const validationReason = validateAttributeValue(rule, attributes[key]);
     if (validationReason) {
       return `${key}: ${validationReason}`;
@@ -849,7 +866,7 @@ export class PacoPrintCatalogAdapter implements PacoPrintCatalogAdapterPort {
           produced_by_adapter: true
         });
       }
-      if (rule && typeof rule.minimo === 'number' && numeric.value < rule.minimo) {
+      if (rule?.restricciones && typeof rule.restricciones.minimo === 'number' && numeric.value < rule.restricciones.minimo) {
         return createTerminalResult({
           query_id,
           adapter_id: this.adapter_id,
@@ -863,7 +880,7 @@ export class PacoPrintCatalogAdapter implements PacoPrintCatalogAdapterPort {
           produced_by_adapter: true
         });
       }
-      if (rule && typeof rule.maximo === 'number' && numeric.value > rule.maximo) {
+      if (rule?.restricciones && typeof rule.restricciones.maximo === 'number' && numeric.value > rule.restricciones.maximo) {
         return createTerminalResult({
           query_id,
           adapter_id: this.adapter_id,
@@ -877,7 +894,7 @@ export class PacoPrintCatalogAdapter implements PacoPrintCatalogAdapterPort {
           produced_by_adapter: true
         });
       }
-      if (rule && typeof rule.decimales === 'number' && numeric.decimals > rule.decimales) {
+      if (rule?.restricciones && rule.restricciones.decimal === false && numeric.decimals > 0) {
         return createTerminalResult({
           query_id,
           adapter_id: this.adapter_id,
