@@ -79,7 +79,7 @@ test('Conversation memory store persists to JSON when a file path is configured'
 
     firstStore.append(key, [
       { role: 'user', content: 'hola' },
-      { role: 'assistant', content: 'Â¿QuÃ© quieres presupuestar?' }
+      { role: 'assistant', content: '¿Qué quieres presupuestar?' }
     ]);
 
     assert.equal(readFileSync(filePath, 'utf8').includes('install-file'), true);
@@ -89,7 +89,7 @@ test('Conversation memory store persists to JSON when a file path is configured'
       now: () => new Date('2026-06-30T00:00:00.000Z')
     });
 
-    assert.deepEqual(secondStore.read(key).map((turn) => turn.content), ['hola', 'Â¿QuÃ© quieres presupuestar?']);
+    assert.deepEqual(secondStore.read(key).map((turn) => turn.content), ['hola', '¿Qué quieres presupuestar?']);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

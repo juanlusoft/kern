@@ -53,3 +53,4 @@ temp/
 site/
 .docusaurus/
 .next/
+conversation-memory.json
