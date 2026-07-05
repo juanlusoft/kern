@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { InMemoryTelegramTransport } from '../../channels/telegram/src/index';
 import type { HoldedFetch } from '../../adapters/holded/src/index';
@@ -23,7 +26,7 @@ function buildEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function buildInstallationConfig(): RuntimeInstallationConfig {
+function buildInstallationConfig(conversationMemoryFilePath: string | null = null): RuntimeInstallationConfig {
   return {
     installation_id: 'install-granapublic-live-test',
     organization: {
@@ -77,6 +80,7 @@ function buildInstallationConfig(): RuntimeInstallationConfig {
       qwen_temperature: 0.1,
       qwen_request_timeout_ms: 30_000,
       holded_base_url: null,
+      conversation_memory_file_path: conversationMemoryFilePath,
       polling_iterations: 1
     }
   } satisfies RuntimeInstallationConfig;
@@ -1033,5 +1037,129 @@ test('runInstallation reads config from the environment and blocks safely when m
         process.env[key] = value;
       }
     }
+  }
+});
+
+test('runtime slice keeps conversation memory isolated per chat and persists it when configured', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-conversation-memory-'));
+  const memoryFilePath = join(tempDir, 'conversation-memory.json');
+  try {
+    const config = buildInstallationConfig(memoryFilePath);
+    config.identity_mappings.push({
+      channel: 'telegram',
+      telegram_user_id: '146574794',
+      telegram_chat_id: '146574794',
+      organization_id: 'org-granapublic-live-test',
+      principal_id: 'principal-juan-granapublic-live-test',
+      installation_id: 'install-granapublic-live-test',
+      principal_type: 'human',
+      active: true,
+      display_name: 'Juan Granapublic Live Test'
+    });
+
+    const telegramTransport = new InMemoryTelegramTransport();
+    telegramTransport.seedUpdates([
+      {
+        update_id: 50,
+        message: {
+          message_id: 500,
+          chat: {
+            id: 146574793,
+            type: 'private'
+          },
+          from: {
+            id: 146574793,
+            username: 'gema-granapublic',
+            first_name: 'Gema',
+            last_name: 'Granapublic'
+          },
+          text: 'Necesito el presupuesto de Granapublic',
+          date: 1_751_472_500,
+          raw: null
+        },
+        raw: null
+      },
+      {
+        update_id: 51,
+        message: {
+          message_id: 501,
+          chat: {
+            id: 146574793,
+            type: 'private'
+          },
+          from: {
+            id: 146574793,
+            username: 'gema-granapublic',
+            first_name: 'Gema',
+            last_name: 'Granapublic'
+          },
+          text: '¿y el siguiente?',
+          date: 1_751_472_560,
+          raw: null
+        },
+        raw: null
+      },
+      {
+        update_id: 52,
+        message: {
+          message_id: 502,
+          chat: {
+            id: 146574794,
+            type: 'private'
+          },
+          from: {
+            id: 146574794,
+            username: 'juan-granapublic',
+            first_name: 'Juan',
+            last_name: 'Granapublic'
+          },
+          text: 'Necesito el presupuesto de Granapublic',
+          date: 1_751_472_620,
+          raw: null
+        },
+        raw: null
+      }
+    ]);
+
+    const qwenCalls: Array<{ messages?: Array<{ role?: string; content?: string | null }> }> = [];
+    const qwenTransport: QwenChatCompletionsTransport = {
+      chatCompletions(request) {
+        qwenCalls.push(structuredClone(request));
+        return buildQwenTransport({ resource_type: 'estimate', customer_id: 'Granapublic' }).chatCompletions(request);
+      }
+    };
+
+    const runtimeResult = startInstallationRuntime({
+      rawConfig: config,
+      env: buildEnv(),
+      telegramTransport,
+      qwenTransport,
+      holdedFetch: buildHoldedFetch([], 'estimate')
+    });
+
+    assert.equal(runtimeResult.status, 'started');
+    assert.ok(runtimeResult.runtime);
+    const runtime = runtimeResult.runtime;
+    const firstBatch = runtime.pollOnce();
+    const secondBatch = runtime.pollOnce();
+    const thirdBatch = runtime.pollOnce();
+
+    assert.equal(firstBatch.length, 3);
+    assert.equal(secondBatch.length, 0);
+    assert.equal(thirdBatch.length, 0);
+    assert.equal(qwenCalls.length, 3);
+    assert.equal(qwenCalls[0].messages?.length, 2);
+    assert.equal(qwenCalls[1].messages?.length, 4);
+    assert.deepEqual(qwenCalls[1].messages?.map((message) => message.role), ['system', 'user', 'assistant', 'user']);
+    assert.equal(qwenCalls[1].messages?.[1].content, 'Necesito el presupuesto de Granapublic');
+    assert.equal(qwenCalls[1].messages?.[2].role, 'assistant');
+    assert.equal((qwenCalls[1].messages?.[2].content?.length ?? 0) > 0, true);
+    assert.equal(qwenCalls[2].messages?.length, 2);
+    assert.deepEqual(qwenCalls[2].messages?.map((message) => message.role), ['system', 'user']);
+    assert.equal(qwenCalls[2].messages?.[1].content, 'Necesito el presupuesto de Granapublic');
+    assert.equal(existsSync(memoryFilePath), true);
+    assert.equal(readFileSync(memoryFilePath, 'utf8').includes('install-granapublic-live-test'), true);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
 });

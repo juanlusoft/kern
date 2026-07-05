@@ -1,4 +1,4 @@
-export type DecisionOutcome = 'allow' | 'deny' | 'defer' | 'failed_closed';
+﻿export type DecisionOutcome = 'allow' | 'deny' | 'defer' | 'failed_closed';
 export type GovernedExecutionStatus = 'allowed' | 'denied' | 'deferred' | 'failed_closed';
 export type PrincipalType = 'human' | 'service' | 'agent';
 export type OrganizationState = 'active' | 'inactive' | 'failed_closed';
@@ -823,9 +823,23 @@ export interface OrchestrationContext {
   force_params?: Record<string, unknown> | null;
 }
 
-export interface ConversationTurn {
-  role: 'user' | 'assistant';
+export type ConversationHistoryRole = 'user' | 'assistant';
+
+export interface ConversationHistoryTurn {
+  role: ConversationHistoryRole;
   content: string;
+}
+
+export type ConversationTurn = ConversationHistoryTurn;
+
+export interface ConversationMemoryKey {
+  installation_id: string;
+  chat_id: string;
+}
+
+export interface ConversationMemoryStore {
+  read(key: ConversationMemoryKey): ConversationHistoryTurn[];
+  append(key: ConversationMemoryKey, turns: ConversationHistoryTurn[]): void;
 }
 
 export interface OrchestrationRequest {
@@ -837,20 +851,13 @@ export interface OrchestrationRequest {
   correlation_id: string;
   installation_id?: string | null;
   context?: OrchestrationContext | null;
-  /**
-   * Turnos recientes de ESTA conversación (memoria a corto plazo). Se pasan al
-   * modelo como contexto para poder continuar un hilo (p. ej. "¿qué presupuestas?"
-   * → "3 lonas…"). Es contexto, no órdenes: el runtime sigue validando cada
-   * propuesta y el modelo sigue sin inventar.
-   */
-  conversation_history?: ConversationTurn[] | null;
   claimed_result?: unknown;
   model_claimed_result?: unknown;
   caller_result?: unknown;
   assistant_result?: unknown;
   claimed_output?: unknown;
+  conversation_history?: ConversationHistoryTurn[] | null;
 }
-
 export interface OrchestrationProposal {
   proposal_id: string;
   capability_key: string;
@@ -1387,3 +1394,4 @@ function serialize(value: unknown): string {
   }
   return JSON.stringify(String(value));
 }
+
