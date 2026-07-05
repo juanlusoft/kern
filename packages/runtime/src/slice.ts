@@ -214,7 +214,8 @@ function buildQwenToolCatalog() {
       properties: {
         article: {
           type: 'string' as const,
-          description: 'Textual article name extracted from the user message.'
+          description:
+            'The full product name or descriptive phrase exactly as the user wrote it, keeping every qualifier (e.g. "lona frontlit", "vinilo monomérico", "lona mesh", "roll up"). Never shorten it to a bare category like "lona" or "vinilo" — the extra words disambiguate the catalogue article.'
         },
         unidades: {
           type: 'integer' as const,
@@ -224,15 +225,16 @@ function buildQwenToolCatalog() {
         },
         alto: {
           type: 'number' as const,
-          description: 'Height in centimeters if the user provided it.'
+          description: 'Height (alto) in centimeters if the user provided it. Convert metres to centimetres (2 m => 200).'
         },
         ancho: {
           type: 'number' as const,
-          description: 'Width in centimeters if the user provided it.'
+          description: 'Width (ancho) in centimeters if the user provided it. Convert metres to centimetres (1 m => 100).'
         },
         options: {
           type: 'object' as const,
-          description: 'Optional user options to map onto PacoPrint attributes.'
+          description:
+            'Attribute choices the user explicitly named, as a FLAT object mapping the attribute name (lowercase, e.g. "corte", "acabado", "ollado", "refuerzo") to the chosen value as the label the user said (e.g. {"corte": "escuadrado"}). Put the choice in the VALUE, never in the key, and never use boolean true/false. Omit any attribute the user did not mention; do not invent options.'
         }
       }
     }
