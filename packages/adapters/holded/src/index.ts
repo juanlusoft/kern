@@ -143,6 +143,16 @@ function normalizeSearchText(value: unknown): string | null {
     .toLowerCase();
 }
 
+function normalizeSearchTokens(value: unknown): string[] {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) {
+    return [];
+  }
+  return normalized
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
 function normalizeApiKey(apiKey: string | null | undefined): string | null {
   return normalizeOptionalString(apiKey);
 }
@@ -365,7 +375,7 @@ function collectQueryLookupTerms(query: ResourceQuery): string[] {
   return [...new Set(terms)];
 }
 
-function collectRecordLookupCandidates(record: Record<string, unknown>): string[] {
+function collectRecordLookupExactCandidates(record: Record<string, unknown>): string[] {
   const candidateValues = [
     record.customer_id,
     record.contact_id,
@@ -387,6 +397,44 @@ function collectRecordLookupCandidates(record: Record<string, unknown>): string[
     .filter((candidate): candidate is string => Boolean(candidate));
 }
 
+function collectRecordLookupNameCandidates(record: Record<string, unknown>): string[] {
+  const candidateValues = [
+    record.contact_name,
+    record.customer_name,
+    record.contactName,
+    record.customerName,
+    record.contact,
+    record.customer,
+    isRecord(record.contact) ? record.contact.name : null,
+    isRecord(record.contact) ? record.contact.contact_name : null,
+    isRecord(record.contact) ? record.contact.contactName : null,
+    isRecord(record.customer) ? record.customer.name : null,
+    isRecord(record.customer) ? record.customer.customer_name : null,
+    isRecord(record.customer) ? record.customer.customerName : null
+  ];
+  return candidateValues
+    .map((candidate) => normalizeSearchText(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
+}
+
+function matchesExactNormalizedText(candidateValues: unknown[], search: unknown): boolean {
+  const normalizedSearch = normalizeSearchText(search);
+  if (!normalizedSearch) {
+    return false;
+  }
+  return candidateValues.some((candidate) => normalizeSearchText(candidate) === normalizedSearch);
+}
+
+function matchesTokenizedSearch(candidateValues: unknown[], search: unknown): boolean {
+  const searchTokens = normalizeSearchTokens(search);
+  if (searchTokens.length === 0) {
+    return false;
+  }
+  return candidateValues.some((candidate) => {
+    const candidateTokens = new Set(normalizeSearchTokens(candidate));
+    return searchTokens.every((token) => candidateTokens.has(token));
+  });
+}
 function normalizePayload(payload: unknown): { records: Record<string, unknown>[]; empty: boolean } {
   if (payload === null || payload === undefined) {
     return { records: [], empty: true };
@@ -548,21 +596,59 @@ function recordMatchesQuery(record: Record<string, unknown>, query: ResourceQuer
     return false;
   }
 
-  const lookupTerms = collectQueryLookupTerms(query);
-  if (lookupTerms.length > 0) {
-    const candidateTerms = collectRecordLookupCandidates(record);
-    const matchesLookup = candidateTerms.some((candidate) => lookupTerms.some((lookup) => candidate.includes(lookup)));
-    return matchesLookup;
+  const resource_id = normalizeOptionalString(query.resource_id);
+  const customerId = normalizeOptionalString(query.filters?.customer_id);
+  const customerName = normalizeOptionalString(query.filters?.customer_name ?? query.filters?.customerName);
+  const contactName = normalizeOptionalString(
+    query.filters?.contact_name ?? query.filters?.contactName ?? query.filters?.contact
+  );
+  const contactId = normalizeOptionalString(query.filters?.contact_id);
+  const exactCandidates = collectRecordLookupExactCandidates(record);
+  const nameCandidates = collectRecordLookupNameCandidates(record);
+
+  let hasLookup = false;
+
+  if (customerId !== null) {
+    hasLookup = true;
+    if (
+      !matchesExactNormalizedText(exactCandidates, customerId) &&
+      !matchesTokenizedSearch(nameCandidates, customerId)
+    ) {
+      return false;
+    }
   }
 
-  const resource_id = normalizeOptionalString(query.resource_id);
+  if (customerName !== null) {
+    hasLookup = true;
+    if (!matchesTokenizedSearch(nameCandidates, customerName)) {
+      return false;
+    }
+  }
+
+  if (contactName !== null) {
+    hasLookup = true;
+    if (!matchesTokenizedSearch(nameCandidates, contactName)) {
+      return false;
+    }
+  }
+
+  if (contactId !== null) {
+    hasLookup = true;
+    if (!matchesExactNormalizedText(exactCandidates, contactId)) {
+      return false;
+    }
+  }
+
+  if (hasLookup) {
+    return true;
+  }
+
   if (!resource_id) {
-    return payment_status !== null || lookupTerms.length > 0 || year !== null;
+    return payment_status !== null || year !== null;
   }
   const candidate = extractRecordId(record);
   return candidate !== null && normalizeSearchText(candidate) === normalizeSearchText(resource_id);
 }
-
 function selectMatchingRecords(
   records: Record<string, unknown>[],
   query: ResourceQuery,
@@ -1209,6 +1295,12 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       !payment_status &&
       !normalizeYear(normalized.year) &&
       normalizeOptionalString(normalized.resource_id) === null;
+    const shouldUsePaginatedSearch =
+      payment_status !== null ||
+      normalizeYear(normalized.year) !== null ||
+      wantsLatestCustomerList ||
+      resource_id !== null ||
+      customerLookupTerms.length > 0;
 
     if (!authorization.authorized) {
       const reason = authorization.reason;
@@ -1226,7 +1318,7 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
       );
     }
 
-    if (payment_status || normalizeYear(normalized.year) || wantsLatestCustomerList) {
+    if (shouldUsePaginatedSearch) {
       const documentType = normalizeDocumentType(normalized.resource_type) ?? 'estimate';
       const listLabel = payment_status ?? (normalizeYear(normalized.year) ? normalized.year : wantsLatestCustomerList ? resource_id ?? 'latest customer documents' : 'list');
       const paginated = fetchHoldedDocumentPages({
@@ -1256,31 +1348,73 @@ export class HoldedReadAdapter implements ExternalReadAdapter {
           })
         );
       }
-      const records = selectMatchingRecords(paginated.records, normalized, this.now);
-      if (records.length === 0) {
+      if (payment_status || normalizeYear(normalized.year) || wantsLatestCustomerList) {
+        const records = selectMatchingRecords(paginated.records, normalized, this.now);
+        if (records.length === 0) {
+          return cloneResourceResult(
+            createTerminalResult({
+              query: normalized,
+              adapter_id: this.adapter_id,
+              status: 'not_found',
+              reason: 'Holded ' + documentType + ' list empty for ' + listLabel,
+              authorization,
+              resource_id,
+              produced_by_adapter: true
+            })
+          );
+        }
+        const limitedRecords = wantsLatestCustomerList && limit !== null ? records.slice(0, limit) : records;
+        return cloneResourceResult(
+          buildListFoundResult({
+            query: normalized,
+            adapter_id: this.adapter_id,
+            authorization,
+            resource_id,
+            records: limitedRecords,
+            observed_at: this.now().toISOString(),
+            now: this.now,
+            truncated: paginated.truncated
+          })
+        );
+      }
+      const record = selectMatchingRecord(paginated.records, normalized, this.now);
+      if (!record) {
         return cloneResourceResult(
           createTerminalResult({
             query: normalized,
             adapter_id: this.adapter_id,
             status: 'not_found',
-            reason: `Holded ${documentType} list empty for ${listLabel}`,
+            reason: 'Holded ' + documentType + ' not found',
             authorization,
             resource_id,
             produced_by_adapter: true
           })
         );
       }
-      const limitedRecords = wantsLatestCustomerList && limit !== null ? records.slice(0, limit) : records;
+      const record_id = extractRecordId(record);
+      if (!record_id) {
+        return cloneResourceResult(
+          createTerminalResult({
+            query: normalized,
+            adapter_id: this.adapter_id,
+            status: 'error',
+            reason: 'Holded ' + documentType + ' missing id',
+            authorization,
+            resource_id,
+            produced_by_adapter: true
+          })
+        );
+      }
+
       return cloneResourceResult(
-        buildListFoundResult({
+        buildFoundResult({
           query: normalized,
           adapter_id: this.adapter_id,
           authorization,
           resource_id,
-          records: limitedRecords,
-          observed_at: this.now().toISOString(),
-          now: this.now,
-          truncated: paginated.truncated
+          record,
+          record_id,
+          observed_at: this.now().toISOString()
         })
       );
     }

@@ -209,7 +209,7 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
         customer_name: 'Granapublic Xx Sl',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo Monomérico Plus' }],
+        products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
         paymentsPending: 1300,
         dueDate: '2024-07-02T00:00:00.000Z',
         total_amount: 1300,
@@ -943,7 +943,7 @@ test('Holded adapter keeps direct lookup by id on a single fetch path', () => {
   const result = adapter.read(buildQuery('invoice', { resource_id: 'F26/7001' }));
 
   assert.equal(calls.length, 1);
-  assert.equal(new URL(calls[0].url).searchParams.get('page'), null);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
   assert.equal(result.status, 'found');
   assert.equal(result.data?.invoice_id, 'F26/7001');
 });
@@ -1152,7 +1152,7 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
         docNumber: 'P26/04368',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo Monomérico Plus' }],
+        products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
         total_amount: 2300,
         currency: 'EUR',
         date: '2024-07-03T00:00:00.000Z'
@@ -1210,12 +1210,269 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
     assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04368');
     assert.equal(result.data?.contactName, 'Granapublic Xx Sl');
     assert.equal(result.data?.lookup_mode, 'by_customer');
-    assert.equal(resultData?.products?.[0]?.name, 'Vinilo Monomérico Plus');
+    assert.equal(resultData?.products?.[0]?.name, 'Vinilo MonomÃ©rico Plus');
     assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04368');
   }
 });
 
-test('Holded adapter chooses the latest estimate by date before comparing document numbers', () => {
+
+test('Holded adapter paginates by id until it finds a later page record', () => {
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: [
+      {
+        estimate_id: 'estimate-page-1',
+        docNumber: 'P26/0001',
+        customerName: 'Other Customer',
+        total_amount: 100,
+        currency: 'EUR',
+        date: '2024-07-01T00:00:00.000Z'
+      }
+    ],
+    2: [
+      {
+        estimate_id: 'estimate-page-2',
+        docNumber: 'P26/0002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 200,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    page_size: 1,
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(buildQuery({ resource_id: 'estimate-page-2' }));
+
+  assert.equal(calls.length, 3);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
+  assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-page-2');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-page-2');
+});
+
+test('Holded adapter paginates customer lookups until it finds a later page record', () => {
+  const { fetchStub, calls } = createPagedFetchStub({
+    1: [
+      {
+        estimate_id: 'estimate-page-1',
+        docNumber: 'P26/1001',
+        customer_name: 'Other Customer',
+        contactName: 'Other Customer',
+        total_amount: 100,
+        currency: 'EUR',
+        date: '2024-07-01T00:00:00.000Z'
+      }
+    ],
+    2: [
+      {
+        estimate_id: 'estimate-page-2',
+        docNumber: 'P26/1002',
+        customer_id: 'granapublic',
+        customer_name: 'Granapublic Xx Sl',
+        contactName: 'Granapublic Xx Sl',
+        total_amount: 200,
+        currency: 'EUR',
+        date: '2024-07-02T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    page_size: 1,
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const result = adapter.read(
+    buildQuery({
+      resource_id: null,
+      filters: { customer_id: 'granapublic' }
+    })
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(new URL(calls[0].url).searchParams.get('page'), '1');
+  assert.equal(new URL(calls[1].url).searchParams.get('page'), '2');
+  assert.equal(result.status, 'found');
+  assert.equal(result.data?.estimate_id, 'estimate-page-2');
+  assert.equal(result.data?.lookup_mode, 'by_customer');
+  assert.equal(result.source_evidence?.[0]?.record_id, 'estimate-page-2');
+});
+
+test('Holded adapter matches customer names by words and avoids substring false positives', () => {
+  const bananaAdapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: createFetchStub({
+      status: 200,
+      body: [
+        {
+          estimate_id: 'estimate-banana',
+          docNumber: 'P26/2001',
+          customer_name: 'Banana SL',
+          contactName: 'Banana SL',
+          total_amount: 100,
+          currency: 'EUR',
+          date: '2024-07-01T00:00:00.000Z'
+        }
+      ]
+    }).fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+  const bananaResult = bananaAdapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'Ana' }
+    })
+  );
+  assert.equal(bananaResult.status, 'not_found');
+
+  const granAdapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: createFetchStub({
+      status: 200,
+      body: [
+        {
+          estimate_id: 'estimate-gran',
+          docNumber: 'P26/2002',
+          customer_name: 'Granada-sur',
+          contactName: 'Granada-sur',
+          total_amount: 100,
+          currency: 'EUR',
+          date: '2024-07-02T00:00:00.000Z'
+        }
+      ]
+    }).fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+  const granResult = granAdapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'gran' }
+    })
+  );
+  assert.equal(granResult.status, 'not_found');
+
+  const garciaAdapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: createFetchStub({
+      status: 200,
+      body: [
+        {
+          estimate_id: 'estimate-garcia',
+          docNumber: 'P26/2003',
+          customer_name: 'Ana García',
+          contactName: 'Ana García',
+          total_amount: 100,
+          currency: 'EUR',
+          date: '2024-07-03T00:00:00.000Z'
+        }
+      ]
+    }).fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+  const garciaResult = garciaAdapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'García Ana' }
+    })
+  );
+  assert.equal(garciaResult.status, 'found');
+  assert.equal(garciaResult.data?.estimate_id, 'estimate-garcia');
+});
+
+test('Holded adapter matches customer and contact ids exactly and rejects partial ids', () => {
+  const { fetchStub } = createFetchStub({
+    status: 200,
+    body: [
+      {
+        estimate_id: 'estimate-ids',
+        docNumber: 'P26/2004',
+        customer_id: 'abc123',
+        contact_id: 'contact-999',
+        customer_name: 'Cliente Exacto',
+        contactName: 'Cliente Exacto',
+        total_amount: 100,
+        currency: 'EUR',
+        date: '2024-07-04T00:00:00.000Z'
+      }
+    ]
+  });
+  const adapter = createHoldedReadAdapter({
+    apiKey: 'token',
+    fetch: fetchStub,
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    baseUrl: 'https://holded.example.test',
+    installation: {
+      installation_id: 'install-acme',
+      active_modules: [HOLDed_READ_MODULE_KEY]
+    }
+  }) as ReturnType<typeof createHoldedReadAdapter>;
+
+  const exactCustomer = adapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'abc123' }
+    })
+  );
+  const partialCustomer = adapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { customer_id: 'abc' }
+    })
+  );
+  const exactContact = adapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { contact_id: 'contact-999' }
+    })
+  );
+  const partialContact = adapter.read(
+    buildQuery({
+      resource_id: 'estimate-12345',
+      filters: { contact_id: 'contact' }
+    })
+  );
+
+  assert.equal(exactCustomer.status, 'found');
+  assert.equal(exactCustomer.data?.estimate_id, 'estimate-ids');
+  assert.equal(partialCustomer.status, 'not_found');
+  assert.equal(exactContact.status, 'found');
+  assert.equal(exactContact.data?.estimate_id, 'estimate-ids');
+  assert.equal(partialContact.status, 'not_found');
+});test('Holded adapter chooses the latest estimate by date before comparing document numbers', () => {
   const { fetchStub } = createFetchStub({
     status: 200,
     body: [
