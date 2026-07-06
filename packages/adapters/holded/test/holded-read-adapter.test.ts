@@ -1388,8 +1388,8 @@ test('Holded adapter matches customer names by words and avoids substring false 
         {
           estimate_id: 'estimate-garcia',
           docNumber: 'P26/2003',
-          customer_name: 'Ana GarcÃ­a',
-          contactName: 'Ana GarcÃ­a',
+          customer_name: 'Ana García',
+          contactName: 'Ana García',
           total_amount: 100,
           currency: 'EUR',
           date: '2024-07-03T00:00:00.000Z'
@@ -1406,7 +1406,7 @@ test('Holded adapter matches customer names by words and avoids substring false 
   const garciaResult = garciaAdapter.read(
     buildQuery({
       resource_id: 'estimate-12345',
-      filters: { customer_id: 'GarcÃ­a Ana' }
+      filters: { customer_id: 'García Ana' }
     })
   );
   assert.equal(garciaResult.status, 'found');
