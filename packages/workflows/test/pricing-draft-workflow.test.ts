@@ -268,7 +268,9 @@ test('pricing draft: priced line with null totals blocks and names the article',
   const data = result.response.data as Record<string, unknown>;
   assert.equal(data.kind, 'request_clarification');
   assert.equal(data.missing, 'pricing');
+  assert.match(String(data.reason), /línea/i);
   assert.match(String(data.reason), /lona frontlit/i);
+  assert.equal(String(data.reason).includes('\uFFFD'), false);
   assert.equal('total' in data, false);
   assert.equal('neto_total' in data, false);
   assert.equal('iva_amount' in data, false);

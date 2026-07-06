@@ -39,7 +39,7 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function describePricedLine(line: PricingQuoteDraftLine, index: number): string {
-  return normalizeOptionalString(line.article_name) ?? normalizeOptionalString(line.article) ?? `l�nea ${index + 1}`;
+  return normalizeOptionalString(line.article_name) ?? normalizeOptionalString(line.article) ?? `línea ${index + 1}`;
 }
 
 /** Nombre canónico del contacto en el primer registro de un resultado de lectura. */
@@ -329,7 +329,7 @@ export function executePricingQuoteDraftWorkflow(
   if (incompletePricedLineIndex !== -1) {
     const incompletePricedLine = pricedLines[incompletePricedLineIndex]!;
     const lineLabel = describePricedLine(incompletePricedLine, incompletePricedLineIndex);
-    const reason = `No se pudo calcular el precio de la l�nea "${lineLabel}". Revisa los datos de precio antes de cerrar el borrador.`;
+    const reason = `No se pudo calcular el precio de la línea "${lineLabel}". Revisa los datos de precio antes de cerrar el borrador.`;
     return buildBlockedPricingWorkflow({
       runtime,
       workflow_id: input.workflow_id,
