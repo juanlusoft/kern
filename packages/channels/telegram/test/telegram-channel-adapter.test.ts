@@ -161,7 +161,7 @@ test('Telegram adapter resolves Telegram identity and sends runtime-only respons
   assert.equal(results[1].principal_id, 'human-001');
   assert.equal(results[0].orchestration_outcome?.response.response_source, 'runtime_result');
   assert.equal(results[0].orchestration_outcome?.response.status, 'completed');
-  assert.equal(results[1].orchestration_outcome?.response.status, 'completed');
+  assert.equal(results[1].orchestration_outcome?.response.status, 'blocked');
   assert.equal(results[0].orchestration_outcome?.response.data?.estimate_id, 'estimate-123');
   assert.equal(JSON.stringify(results).includes('invented'), false);
   assert.equal(JSON.stringify(sentMessages).includes('telegram-secret-token'), false);

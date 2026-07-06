@@ -225,7 +225,7 @@ test('binding store rejects expired bindings', () => {
     identityContext,
     policyDecision,
     evidence_reference: 'evidence-1',
-    now: () => new Date('2026-06-28T00:00:00.000Z')
+    now: () => new Date('2026-05-01T00:00:00.000Z')
   });
   const validation = store.validateBinding({
     binding: { ...binding, expires_at: '2020-01-01T00:00:00.000Z' },
@@ -238,6 +238,34 @@ test('binding store rejects expired bindings', () => {
   assert.equal(validation.valid, false);
   assert.equal(validation.reason, 'expired');
   assert.equal(validation.binding?.binding_state, 'expired');
+});
+
+test('binding store ignores a forged expires_at on input and uses the stored expiration', () => {
+  const store = new InMemoryDecisionBindingStore();
+  const policyDecision = createPolicyDecision({
+    outcome: 'allow',
+    decision_reason: 'allow',
+    seed: 'binding-stored-expiration'
+  });
+  const binding = store.createBinding({
+    request: createRequest(),
+    organizationContext,
+    identityContext,
+    policyDecision,
+    evidence_reference: 'evidence-1',
+    now: () => new Date('2026-06-28T00:00:00.000Z')
+  });
+  const validation = store.validateBinding({
+    binding: { ...binding, expires_at: '2020-01-01T00:00:00.000Z' },
+    request: createRequest(),
+    organizationContext,
+    identityContext,
+    now: () => new Date('2026-06-28T00:00:01.000Z')
+  });
+
+  assert.equal(validation.valid, true);
+  assert.equal(validation.reason, undefined);
+  assert.equal(validation.binding?.binding_state, 'validated');
 });
 
 test('binding store rejects revoked bindings', () => {
@@ -315,5 +343,33 @@ test('binding store rejects bindings without evidence references', () => {
 
   assert.equal(validation.valid, false);
   assert.equal(validation.reason, 'missing_evidence_reference');
+  assert.equal(validation.record_type, 'binding_rejected');
+});
+
+test('binding store rejects bindings that are not stored yet', () => {
+  const store = new InMemoryDecisionBindingStore();
+  const policyDecision = createPolicyDecision({
+    outcome: 'allow',
+    decision_reason: 'allow',
+    seed: 'binding-unknown'
+  });
+  const binding = store.createBinding({
+    request: createRequest(),
+    organizationContext,
+    identityContext,
+    policyDecision,
+    evidence_reference: 'evidence-1'
+  });
+  const validation = store.validateBinding({
+    binding: { ...binding, binding_id: 'binding-missing-from-store' },
+    request: createRequest(),
+    organizationContext,
+    identityContext
+  });
+
+  assert.equal(validation.valid, false);
+  assert.equal(validation.invalid, true);
+  assert.equal(validation.reason, 'missing_binding');
+  assert.equal(validation.binding?.binding_state, 'rejected');
   assert.equal(validation.record_type, 'binding_rejected');
 });

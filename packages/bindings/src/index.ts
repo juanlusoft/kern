@@ -129,19 +129,29 @@ export class InMemoryDecisionBindingStore {
       };
     }
 
-    if (new Date(input.binding.expires_at).getTime() < now().getTime()) {
+    const stored = this.bindings.get(input.binding.binding_id);
+    if (!stored) {
       return {
         valid: false,
         invalid: true,
-        reason: 'expired',
-        binding: this.expiredBinding(input.binding),
+        reason: 'missing_binding',
+        binding: this.rejectedBinding(input.binding),
         evidence_reference: input.binding.evidence_reference,
         record_type: 'binding_rejected'
       };
     }
 
-    const stored = this.bindings.get(input.binding.binding_id);
-    const activeBinding = stored ?? input.binding;
+    const activeBinding = stored;
+    if (new Date(activeBinding.expires_at).getTime() < now().getTime()) {
+      return {
+        valid: false,
+        invalid: true,
+        reason: 'expired',
+        binding: this.expiredBinding(activeBinding),
+        evidence_reference: activeBinding.evidence_reference,
+        record_type: 'binding_rejected'
+      };
+    }
 
     if (activeBinding.organization_id !== (input.organizationContext.organization_id ?? 'unknown')) {
       return this.rejectBinding(activeBinding, 'wrong_organization');

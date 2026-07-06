@@ -293,7 +293,7 @@ test('M1 binding store rejects expired bindings', () => {
     identityContext,
     policyDecision,
     evidence_reference: 'evidence-1',
-    now: () => new Date('2026-06-28T00:00:00.000Z')
+    now: () => new Date('2026-05-01T00:00:00.000Z')
   });
 
   assert.equal(

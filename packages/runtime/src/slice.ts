@@ -134,6 +134,14 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function resolveEvidenceLedgerFilePath(rawConfig: unknown): string | null {
+  if (!rawConfig || typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+    return null;
+  }
+  const candidate = (rawConfig as { runtime_options?: { evidence_ledger_file_path?: unknown } }).runtime_options?.evidence_ledger_file_path;
+  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : null;
+}
+
 function cloneTelegramUpdate(update: TelegramChannelUpdate): TelegramChannelUpdate {
   return {
     ...update,
@@ -585,7 +593,9 @@ export function startInstallationRuntime(input: {
   pacoPrintFetch?: PacoPrintFetch | null;
 }): RuntimeStartResult {
   const now = input.now ?? (() => new Date());
-  const evidenceLedger = new InMemoryEvidenceLedger();
+  const evidenceLedger = new InMemoryEvidenceLedger({
+    filePath: resolveEvidenceLedgerFilePath(input.rawConfig)
+  });
   const bootstrapCorrelationId = 'runtime-bootstrap';
 
   createRuntimeEvidence(evidenceLedger, now, {
