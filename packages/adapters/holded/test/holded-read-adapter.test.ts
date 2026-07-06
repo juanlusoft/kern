@@ -209,7 +209,7 @@ test('Holded adapter returns invoice payment-status lists with aggregate and Sou
         customer_name: 'Granapublic Xx Sl',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
+        products: [{ name: 'Vinilo Monomérico Plus' }],
         paymentsPending: 1300,
         dueDate: '2024-07-02T00:00:00.000Z',
         total_amount: 1300,
@@ -1152,7 +1152,7 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
         docNumber: 'P26/04368',
         contact: 'contact-granapublic',
         contactName: 'Granapublic Xx Sl',
-        products: [{ name: 'Vinilo MonomÃ©rico Plus' }],
+        products: [{ name: 'Vinilo Monomérico Plus' }],
         total_amount: 2300,
         currency: 'EUR',
         date: '2024-07-03T00:00:00.000Z'
@@ -1210,7 +1210,7 @@ test('Holded adapter prefers customer lookup over invented ids and matches norma
     assert.equal((result.data as { docNumber?: string } | null)?.docNumber, 'P26/04368');
     assert.equal(result.data?.contactName, 'Granapublic Xx Sl');
     assert.equal(result.data?.lookup_mode, 'by_customer');
-    assert.equal(resultData?.products?.[0]?.name, 'Vinilo MonomÃ©rico Plus');
+    assert.equal(resultData?.products?.[0]?.name, 'Vinilo Monomérico Plus');
     assert.equal(result.source_evidence?.[0]?.record_id, 'P26/04368');
   }
 });
