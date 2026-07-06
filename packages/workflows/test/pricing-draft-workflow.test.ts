@@ -225,6 +225,57 @@ test('pricing draft: any incomplete line blocks and names the missing datum per 
   assert.match(String(data.reason), /Corte/i);
 });
 
+test('pricing draft: priced line with null totals blocks and names the article', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const baseAdapter = buildDraftAdapter(calls);
+  const runtime = buildRuntime({
+    ...baseAdapter,
+    quoteLine(input) {
+      calls.push({ type: 'quote', articulo_id: input.articulo_id, atributos: input.atributos });
+      if (String(input.articulo_id) === 'vinilo-1') {
+        return found(
+          { neto_total: 50, iva: { porcentaje: 21, importe: 10.5 }, total: 60.5, articulo_id: input.articulo_id },
+          String(input.articulo_id)
+        );
+      }
+      return found(
+        {
+          article_name: 'Lona impresa',
+          articulo_id: input.articulo_id,
+          neto_total: null,
+          iva: { porcentaje: null, importe: null },
+          total: null
+        },
+        String(input.articulo_id)
+      );
+    }
+  });
+
+  const result = runtime.executeWorkflow({
+    kind: 'pricing.quote_draft',
+    workflow_id: 'draft-null-totals',
+    organization_hint: 'org-pacoprint',
+    principal_hint: 'principal-gema',
+    correlation_id: 'corr',
+    customer: 'acme',
+    lines: [
+      { text: 'vinilo mate 50x50', article: 'vinilo mate', alto: 50, ancho: 50, options: {} },
+      { text: 'lona frontlit 100x100 corte recto', article: 'lona frontlit', alto: 100, ancho: 100, options: {} }
+    ]
+  });
+
+  assert.equal(result.status, 'blocked');
+  const data = result.response.data as Record<string, unknown>;
+  assert.equal(data.kind, 'request_clarification');
+  assert.equal(data.missing, 'pricing');
+  assert.match(String(data.reason), /línea/i);
+  assert.match(String(data.reason), /lona frontlit/i);
+  assert.equal(String(data.reason).includes('\uFFFD'), false);
+  assert.equal('total' in data, false);
+  assert.equal('neto_total' in data, false);
+  assert.equal('iva_amount' in data, false);
+});
+
 test('pricing draft: cliente que no existe en Holded -> pregunta si darlo de alta', () => {
   const calls: Array<Record<string, unknown>> = [];
   const runtime = buildRuntime(buildDraftAdapter(calls));

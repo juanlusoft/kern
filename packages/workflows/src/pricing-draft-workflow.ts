@@ -34,6 +34,14 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function describePricedLine(line: PricingQuoteDraftLine, index: number): string {
+  return normalizeOptionalString(line.article_name) ?? normalizeOptionalString(line.article) ?? `línea ${index + 1}`;
+}
+
 /** Nombre canónico del contacto en el primer registro de un resultado de lectura. */
 function extractContactName(result: ResourceResult): string | null {
   const data = result.status === 'found' ? (result.data as Record<string, unknown> | null) : null;
@@ -315,9 +323,36 @@ export function executePricingQuoteDraftWorkflow(
     });
   }
 
-  const neto_total = round2(pricedLines.reduce((acc, line) => acc + (line.neto_total ?? 0), 0));
-  const iva_amount = round2(pricedLines.reduce((acc, line) => acc + (line.iva_amount ?? 0), 0));
-  const total = round2(pricedLines.reduce((acc, line) => acc + (line.total ?? 0), 0));
+  const incompletePricedLineIndex = pricedLines.findIndex(
+    (line) => !isFiniteNumber(line.neto_total) || !isFiniteNumber(line.iva_amount) || !isFiniteNumber(line.total)
+  );
+  if (incompletePricedLineIndex !== -1) {
+    const incompletePricedLine = pricedLines[incompletePricedLineIndex]!;
+    const lineLabel = describePricedLine(incompletePricedLine, incompletePricedLineIndex);
+    const reason = `No se pudo calcular el precio de la línea "${lineLabel}". Revisa los datos de precio antes de cerrar el borrador.`;
+    return buildBlockedPricingWorkflow({
+      runtime,
+      workflow_id: input.workflow_id,
+      workflowKind: WORKFLOW_KIND,
+      organization_id,
+      correlation_id,
+      capability_id: capabilityId,
+      created_at,
+      evidenceRecords,
+      steps,
+      reason,
+      clarification: {
+        kind: 'request_clarification',
+        missing: 'pricing',
+        reason,
+        fields: [lineLabel]
+      }
+    });
+  }
+
+  const neto_total = round2(pricedLines.reduce((acc, line) => acc + (line.neto_total as number), 0));
+  const iva_amount = round2(pricedLines.reduce((acc, line) => acc + (line.iva_amount as number), 0));
+  const total = round2(pricedLines.reduce((acc, line) => acc + (line.total as number), 0));
 
   const responseData = {
     kind: 'pricing.quote_draft' as const,
