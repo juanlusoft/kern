@@ -1,15 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createEvidenceRecord, type EvidenceRecord } from '../../contracts/src/index';
 
 export interface EvidenceLedgerOptions {
   filePath?: string | null;
-}
-
-interface EvidenceLedgerSnapshot {
-  version: 1;
-  nextSequence: number;
-  records: EvidenceRecord[];
 }
 
 function normalizeString(value: unknown): string | null {
@@ -56,28 +50,54 @@ function normalizeRecord(value: unknown): EvidenceRecord | null {
   });
 }
 
-function snapshotFromJSON(value: unknown): EvidenceLedgerSnapshot {
-  const rawRecords = Array.isArray(value)
-    ? value
-    : value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as { records?: unknown }).records)
-      ? ((value as { records: unknown[] }).records ?? [])
-      : [];
-  const records = rawRecords.map((record) => normalizeRecord(record)).filter((record): record is EvidenceRecord => Boolean(record));
-  const nextSequence = records.length > 0 ? Math.max(...records.map((record) => record.sequence)) + 1 : 1;
-  return { version: 1, nextSequence, records };
-}
-
-function loadSnapshot(filePath: string): EvidenceLedgerSnapshot {
+function loadRecordsFromFile(filePath: string): EvidenceRecord[] {
   try {
-    return snapshotFromJSON(JSON.parse(readFileSync(filePath, 'utf8')));
-  } catch {
-    return { version: 1, nextSequence: 1, records: [] };
-  }
-}
+    const content = readFileSync(filePath, 'utf8');
+    const trimmed = content.trim();
+    if (trimmed.length === 0) {
+      return [];
+    }
 
-function saveSnapshot(filePath: string, snapshot: EvidenceLedgerSnapshot): void {
-  mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(snapshot, null, 2), 'utf8');
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((record) => normalizeRecord(record)).filter((record): record is EvidenceRecord => Boolean(record));
+      }
+      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { records?: unknown }).records)) {
+        return ((parsed as { records: unknown[] }).records ?? [])
+          .map((record) => normalizeRecord(record))
+          .filter((record): record is EvidenceRecord => Boolean(record));
+      }
+      const singleRecord = normalizeRecord(parsed);
+      if (singleRecord) {
+        return [singleRecord];
+      }
+    } catch {
+      // Fall through to JSONL parsing below.
+    }
+
+    const records: EvidenceRecord[] = [];
+    for (const line of content.split(/\r?\n/)) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.length === 0) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(trimmedLine);
+        const record = normalizeRecord(parsed);
+        if (record) {
+          records.push(record);
+        } else {
+          console.warn('skipped corrupt evidence line at ' + filePath);
+        }
+      } catch {
+        console.warn('skipped corrupt evidence line at ' + filePath);
+      }
+    }
+    return records;
+  } catch {
+    return [];
+  }
 }
 
 export class InMemoryEvidenceLedger {
@@ -87,9 +107,8 @@ export class InMemoryEvidenceLedger {
 
   constructor(options: EvidenceLedgerOptions = {}) {
     this.filePath = normalizeString(options.filePath ?? null);
-    const snapshot = this.filePath ? loadSnapshot(this.filePath) : { version: 1 as const, nextSequence: 1, records: [] as EvidenceRecord[] };
-    this.records = snapshot.records.map((record) => cloneRecord(record));
-    this.nextSequence = snapshot.nextSequence;
+    this.records = this.filePath ? loadRecordsFromFile(this.filePath).map((record) => cloneRecord(record)) : [];
+    this.nextSequence = this.records.length > 0 ? Math.max(...this.records.map((record) => record.sequence)) + 1 : 1;
   }
 
   append(record: EvidenceRecord): EvidenceRecord {
@@ -106,11 +125,8 @@ export class InMemoryEvidenceLedger {
     const cloned = this.cloneRecord(stored);
     this.records.push(cloned);
     if (this.filePath) {
-      saveSnapshot(this.filePath, {
-        version: 1,
-        nextSequence: this.nextSequence,
-        records: this.records.map((item) => this.cloneRecord(item))
-      });
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      appendFileSync(this.filePath, JSON.stringify(cloned) + '\n', 'utf8');
     }
     return this.cloneRecord(cloned);
   }

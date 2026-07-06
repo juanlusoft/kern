@@ -54,3 +54,4 @@ site/
 .docusaurus/
 .next/
 conversation-memory.json
+evidence.jsonl
