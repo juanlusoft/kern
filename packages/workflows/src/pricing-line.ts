@@ -32,6 +32,17 @@ function normalizeOptionalNumber(value: unknown): number | null {
   return null;
 }
 
+function normalizedTokens(value: string): string[] {
+  return normalizeSearchText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
+function hasWholeWord(text: string, word: string): boolean {
+  return normalizedTokens(text).includes(normalizeSearchText(word));
+}
+
 interface ResolvedAttribute {
   id: string | number;
   nombre: string;
@@ -81,7 +92,7 @@ export function selectChoice(attribute: ResolvedAttribute, rawValue: unknown): {
     const keywords = rawValue ? ['con', 'sí', 'si', 'true', 'yes'] : ['sin', 'no', 'false'];
     for (const option of values) {
       const normalized = normalizeSearchText(option.nombre);
-      if (keywords.some((keyword) => normalized.includes(keyword))) {
+      if (keywords.some((keyword) => hasWholeWord(normalized, keyword))) {
         return { id: option.id, nombre: option.nombre };
       }
     }

@@ -56,7 +56,7 @@ test('Telegram renders pricing results as human-readable text', () => {
 
   assert.equal(
     text,
-    'Vinilo Monomérico Plus · 200×100 mm · 2 uds · Color Blanco → 1210,00 € (neto 1000,00 € + IVA 21%)\nDefaults aplicados: Color.'
+    'Vinilo Monomérico Plus · 200×100 cm · 2 uds · Color Blanco → 1210,00 € (neto 1000,00 € + IVA 21%)\nDefaults aplicados: Color.'
   );
   assert.equal(text.includes('→'), true);
   assert.equal(text.includes('?'), false);

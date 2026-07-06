@@ -496,7 +496,7 @@ function buildPricingOutboundText(outcome: OrchestrationOutcome): string {
   const ivaPercentage = numberFromKeys(responseData, ['iva_percentage']) ?? numberFromKeys(resourceResult, ['iva_percentage']);
   const fragments = [
     articleName,
-    alto !== null && ancho !== null ? `${ancho}×${alto} mm` : null,
+    alto !== null && ancho !== null ? `${ancho}×${alto} cm` : null,
     units !== null ? `${units} uds` : null,
     optionsSummary.length > 0 ? optionsSummary.join(', ') : null
   ].filter((value): value is string => Boolean(value));
@@ -532,7 +532,7 @@ function buildPricingDraftOutboundText(outcome: OrchestrationOutcome): string {
     const lineTotal = formatCurrencyAmount(numberFromKeys(line, ['total']), currency);
     const parts = [
       name,
-      alto !== null && ancho !== null ? `${ancho}×${alto} mm` : null,
+      alto !== null && ancho !== null ? `${ancho}×${alto} cm` : null,
       units !== null ? `${units} uds` : null,
       optionsSummary.length > 0 ? optionsSummary.join(', ') : null
     ].filter((value): value is string => Boolean(value));
