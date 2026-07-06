@@ -134,15 +134,19 @@ function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function resolveEvidenceLedgerFilePath(rawConfig: unknown): string | null {
+function resolveEvidenceLedgerFilePath(rawConfig: unknown, env: NodeJS.ProcessEnv = process.env): string | null {
   if (!rawConfig || typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
-    return null;
+    return normalizeOptionalString(env.KERN_EVIDENCE_FILE_PATH ?? null);
   }
   const candidate = (rawConfig as { runtime_options?: { evidence_ledger_file_path?: unknown } }).runtime_options?.evidence_ledger_file_path;
-  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : null;
+  if (typeof candidate === 'string' && candidate.trim().length > 0) {
+    return candidate.trim();
+  }
+  return normalizeOptionalString(env.KERN_EVIDENCE_FILE_PATH ?? null);
 }
 
 function cloneTelegramUpdate(update: TelegramChannelUpdate): TelegramChannelUpdate {
+
   return {
     ...update,
     message: update.message
@@ -594,7 +598,7 @@ export function startInstallationRuntime(input: {
 }): RuntimeStartResult {
   const now = input.now ?? (() => new Date());
   const evidenceLedger = new InMemoryEvidenceLedger({
-    filePath: resolveEvidenceLedgerFilePath(input.rawConfig)
+    filePath: resolveEvidenceLedgerFilePath(input.rawConfig, input.env ?? process.env)
   });
   const bootstrapCorrelationId = 'runtime-bootstrap';
 

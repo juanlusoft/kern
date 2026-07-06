@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InMemoryEvidenceLedger } from '../src/index';
 import { createEvidenceRecord } from '../../contracts/src/index';
+
+function readJsonlRecords(filePath: string): Array<Record<string, unknown>> {
+  return readFileSync(filePath, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
 
 test('evidence ledger assigns monotonic sequence numbers', () => {
   const ledger = new InMemoryEvidenceLedger();
@@ -126,42 +134,186 @@ test('evidence ledger reconstructs intent to policy decision to binding or block
   );
 });
 
-test('evidence ledger persists records to a configured file', () => {
+test('evidence ledger appends one JSONL record per line and creates missing files', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'kern-evidence-ledger-'));
-  const filePath = join(tempDir, 'evidence-ledger.json');
+  const filePath = join(tempDir, 'evidence-ledger.jsonl');
 
   try {
+    assert.equal(existsSync(filePath), false);
     const ledger = new InMemoryEvidenceLedger({ filePath });
-    const first = ledger.append(
+    const stored = ledger.append(
       createEvidenceRecord({
         organization_id: 'org-acme',
-        correlation_id: 'corr-evidence-file',
+        correlation_id: 'corr-jsonl-1',
         record_type: 'intent',
         subject: 'governed.read',
-        data: { request_id: 'req-file-1' }
+        data: { request_id: 'req-jsonl-1' }
       })
     );
-    const second = ledger.append(
-      createEvidenceRecord({
-        organization_id: 'org-acme',
-        correlation_id: 'corr-evidence-file',
-        record_type: 'policy_decision',
-        subject: 'allow',
-        data: { decision_id: 'decision-file-1' }
-      })
-    );
-    const reloaded = new InMemoryEvidenceLedger({ filePath });
-    const persisted = JSON.parse(readFileSync(filePath, 'utf8')) as { nextSequence?: number; records?: Array<{ record_type?: string; sequence?: number }> };
 
     assert.equal(existsSync(filePath), true);
-    assert.equal(first.sequence, 1);
-    assert.equal(second.sequence, 2);
-    assert.equal(persisted.nextSequence, 3);
-    assert.equal(reloaded.list().length, 2);
-    assert.equal(reloaded.list()[0].record_type, 'intent');
-    assert.equal(reloaded.list()[1].record_type, 'policy_decision');
-    assert.equal(reloaded.list()[0].sequence, 1);
-    assert.equal(reloaded.list()[1].sequence, 2);
+    const contents = readFileSync(filePath, 'utf8');
+    const lines = contents.split(/\r?\n/).filter((line) => line.trim().length > 0);
+
+    assert.equal(lines.length, 1);
+    assert.equal(contents.includes('"records"'), false);
+    assert.equal(contents.trim().startsWith('['), false);
+    assert.equal(contents.trim().startsWith('{"version"'), false);
+    assert.equal(JSON.parse(lines[0]).sequence, 1);
+    assert.equal(ledger.list().length, 1);
+    assert.equal(ledger.list()[0].sequence, 1);
+    assert.equal(stored.sequence, 1);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('evidence ledger appends to an existing JSONL file without losing prior records', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-evidence-ledger-'));
+  const filePath = join(tempDir, 'evidence-ledger.jsonl');
+
+  try {
+    const firstLedger = new InMemoryEvidenceLedger({ filePath });
+    firstLedger.append(
+      createEvidenceRecord({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-jsonl-2',
+        record_type: 'intent',
+        subject: 'governed.read',
+        data: { request_id: 'req-jsonl-2a' }
+      })
+    );
+    const secondLedger = new InMemoryEvidenceLedger({ filePath });
+    secondLedger.append(
+      createEvidenceRecord({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-jsonl-2',
+        record_type: 'policy_decision',
+        subject: 'allow',
+        data: { decision_id: 'decision-jsonl-2' }
+      })
+    );
+
+    const contents = readFileSync(filePath, 'utf8');
+    const lines = contents.split(/\r?\n/).filter((line) => line.trim().length > 0);
+
+    assert.equal(lines.length, 2);
+    assert.equal(contents.includes('"records"'), false);
+    assert.equal(contents.trim().startsWith('['), false);
+    assert.deepEqual(lines.map((line) => JSON.parse(line).sequence), [1, 2]);
+    assert.deepEqual(secondLedger.listByCorrelation('corr-jsonl-2').map((record) => record.record_type), ['intent', 'policy_decision']);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('evidence ledger survives two instances writing to the same JSONL file', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-evidence-ledger-'));
+  const filePath = join(tempDir, 'evidence-ledger.jsonl');
+
+  try {
+    const firstLedger = new InMemoryEvidenceLedger({ filePath });
+    firstLedger.append(
+      createEvidenceRecord({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-jsonl-3',
+        record_type: 'intent',
+        subject: 'governed.read',
+        data: { request_id: 'req-jsonl-3a' }
+      })
+    );
+    const secondLedger = new InMemoryEvidenceLedger({ filePath });
+    secondLedger.append(
+      createEvidenceRecord({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-jsonl-3',
+        record_type: 'policy_decision',
+        subject: 'allow',
+        data: { decision_id: 'decision-jsonl-3' }
+      })
+    );
+    const thirdLedger = new InMemoryEvidenceLedger({ filePath });
+
+    assert.deepEqual(thirdLedger.listByCorrelation('corr-jsonl-3').map((record) => record.record_type), ['intent', 'policy_decision']);
+    assert.equal(thirdLedger.list().length, 2);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('evidence ledger skips a corrupt line and keeps valid JSONL records', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-evidence-ledger-'));
+  const filePath = join(tempDir, 'evidence-ledger.jsonl');
+
+  try {
+    const first = createEvidenceRecord({
+      organization_id: 'org-acme',
+      correlation_id: 'corr-jsonl-4',
+      record_type: 'intent',
+      subject: 'governed.read',
+      data: { request_id: 'req-jsonl-4a' },
+      sequence: 1,
+      created_at: '2026-06-28T00:00:00.000Z'
+    });
+    const second = createEvidenceRecord({
+      organization_id: 'org-acme',
+      correlation_id: 'corr-jsonl-4',
+      record_type: 'policy_decision',
+      subject: 'allow',
+      data: { decision_id: 'decision-jsonl-4' },
+      sequence: 2,
+      created_at: '2026-06-28T00:00:01.000Z'
+    });
+    writeFileSync(filePath, JSON.stringify(first) + '\nthis is not json\n' + JSON.stringify(second) + '\n', 'utf8');
+
+    const ledger = new InMemoryEvidenceLedger({ filePath });
+
+    assert.deepEqual(ledger.listByCorrelation('corr-jsonl-4').map((record) => record.record_type), ['intent', 'policy_decision']);
+    assert.equal(ledger.list().length, 2);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('evidence ledger nextSequence comes from the highest loaded sequence', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-evidence-ledger-'));
+  const filePath = join(tempDir, 'evidence-ledger.jsonl');
+
+  try {
+    const first = createEvidenceRecord({
+      organization_id: 'org-acme',
+      correlation_id: 'corr-jsonl-5',
+      record_type: 'intent',
+      subject: 'governed.read',
+      data: { request_id: 'req-jsonl-5a' },
+      sequence: 1,
+      created_at: '2026-06-28T00:00:00.000Z'
+    });
+    const second = createEvidenceRecord({
+      organization_id: 'org-acme',
+      correlation_id: 'corr-jsonl-5',
+      record_type: 'policy_decision',
+      subject: 'allow',
+      data: { decision_id: 'decision-jsonl-5' },
+      sequence: 2,
+      created_at: '2026-06-28T00:00:01.000Z'
+    });
+    writeFileSync(filePath, JSON.stringify(first) + '\n' + JSON.stringify(second) + '\n', 'utf8');
+
+    const ledger = new InMemoryEvidenceLedger({ filePath });
+    const stored = ledger.append(
+      createEvidenceRecord({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-jsonl-5',
+        record_type: 'binding_created',
+        subject: 'binding_created',
+        data: { binding_id: 'binding-jsonl-5' }
+      })
+    );
+
+    assert.equal(stored.sequence, 3);
+    assert.deepEqual(readJsonlRecords(filePath).map((record) => record.sequence), [1, 2, 3]);
+    assert.equal(readJsonlRecords(filePath).some((record) => Object.prototype.hasOwnProperty.call(record, 'nextSequence')), false);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
