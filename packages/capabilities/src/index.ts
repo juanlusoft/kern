@@ -399,9 +399,14 @@ export class InMemoryCapabilityRuntime {
     }
 
     const bindingId = normalizedRequest.decision_binding_id ?? normalizedRequest.binding_id;
+    const approvalRequirement = capability.approval_requirement ?? normalizedRequest.approval_requirement ?? null;
+    const requiresBinding = capability.kind === 'effectful' || capability.approval_requirement?.required === true;
     let validatedBinding: DecisionBinding | null = null;
 
-    if (capability.kind === 'effectful') {
+    if (requiresBinding) {
+      const bindingErrorReason = capability.kind === 'effectful'
+        ? 'binding required before capability execution'
+        : 'approval required before capability execution';
       if (!bindingId || !this.bindingStore) {
         const deniedEvidence = createInvocationEvidence(
           {
@@ -411,7 +416,7 @@ export class InMemoryCapabilityRuntime {
             subject: normalizedRequest.capability_id,
             data: {
               capability_id: normalizedRequest.capability_id,
-              reason: 'binding required before capability execution'
+              reason: bindingErrorReason
             }
           },
           this.now,
@@ -431,8 +436,8 @@ export class InMemoryCapabilityRuntime {
             evidence_reference: deniedEvidence.evidence_id,
             evidence_links: [requestedEvidence.evidence_id, deniedEvidence.evidence_id],
             created_at: this.now().toISOString(),
-            reason: 'binding required before capability execution',
-            error: 'binding required before capability execution',
+            reason: bindingErrorReason,
+            error: bindingErrorReason,
             output: null
           }),
           normalizedRequest,

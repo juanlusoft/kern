@@ -26,7 +26,7 @@ function buildEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function buildInstallationConfig(conversationMemoryFilePath: string | null = null): RuntimeInstallationConfig {
+function buildInstallationConfig(conversationMemoryFilePath: string | null = null, evidenceLedgerFilePath: string | null = null): RuntimeInstallationConfig {
   return {
     installation_id: 'install-granapublic-live-test',
     organization: {
@@ -81,6 +81,7 @@ function buildInstallationConfig(conversationMemoryFilePath: string | null = nul
       qwen_request_timeout_ms: 30_000,
       holded_base_url: null,
       conversation_memory_file_path: conversationMemoryFilePath,
+      evidence_ledger_file_path: evidenceLedgerFilePath,
       polling_iterations: 1
     }
   } satisfies RuntimeInstallationConfig;
@@ -1159,6 +1160,36 @@ test('runtime slice keeps conversation memory isolated per chat and persists it 
     assert.equal(qwenCalls[2].messages?.[1].content, 'Necesito el presupuesto de Granapublic');
     assert.equal(existsSync(memoryFilePath), true);
     assert.equal(readFileSync(memoryFilePath, 'utf8').includes('install-granapublic-live-test'), true);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('runtime slice persists evidence records to a configured file ledger', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'kern-runtime-evidence-'));
+  const evidenceLedgerFilePath = join(tempDir, 'evidence-ledger.json');
+
+  try {
+    const telegramTransport = new InMemoryTelegramTransport();
+    telegramTransport.seedUpdates([buildTelegramUpdate()]);
+
+    const runtimeResult = startInstallationRuntime({
+      rawConfig: buildInstallationConfig(null, evidenceLedgerFilePath),
+      env: buildEnv(),
+      telegramTransport,
+      qwenTransport: buildQwenTransport(),
+      holdedFetch: buildHoldedFetch([])
+    });
+
+    assert.equal(runtimeResult.status, 'started');
+    assert.ok(runtimeResult.runtime);
+    runtimeResult.runtime?.pollOnce();
+
+    const persisted = readFileSync(evidenceLedgerFilePath, 'utf8');
+    assert.equal(existsSync(evidenceLedgerFilePath), true);
+    assert.equal(persisted.includes('runtime_started'), true);
+    assert.equal(persisted.includes('runtime_message_processed'), true);
+    assert.equal(persisted.includes('runtime:install-granapublic-live-test:2'), true);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

@@ -870,3 +870,46 @@ test('binding metadata captures approved capability and input fingerprint', () =
   assert.equal(binding.approved_capability_id, 'cap-governed-write');
   assert.ok(binding.approved_input_fingerprint);
 });
+
+
+test('approval-required capability is denied without a binding', () => {
+  const { runtime } = buildRuntime();
+  let called = false;
+  runtime.registerCapability(
+    createCapabilityDefinition({
+      capability_id: 'cap-governed-review',
+      approval_requirement: {
+        required: true,
+        reason: 'approval required',
+        binding_required: true
+      },
+      mock: {
+        invoke() {
+          called = true;
+          return {
+            status: 'executed',
+            output: null,
+            error: null
+          };
+        }
+      }
+    })
+  );
+
+  const result = runtime.invokeCapability(
+    createInvocation({
+      capability_id: 'cap-governed-review',
+      binding_id: null,
+      decision_binding_id: null,
+      approval_requirement: {
+        required: true,
+        reason: 'approval required',
+        binding_required: true
+      }
+    })
+  );
+
+  assert.equal(result.status, 'denied');
+  assert.equal(result.error, 'approval required before capability execution');
+  assert.equal(called, false);
+});

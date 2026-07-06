@@ -462,7 +462,7 @@ function resolveWorkflowRequest(
       to,
       subject,
       body,
-      approval_decision: 'approved',
+      approval_decision: null,
       capability_id: proposal.capability_key,
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,

@@ -34,6 +34,7 @@ export interface RuntimeOptions {
   qwen_request_timeout_ms: number;
   holded_base_url: string | null;
   conversation_memory_file_path?: string | null;
+  evidence_ledger_file_path?: string | null;
   polling_iterations: number;
 }
 
@@ -199,6 +200,7 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
       qwen_request_timeout_ms: 30_000,
       holded_base_url: null,
       conversation_memory_file_path: null,
+      evidence_ledger_file_path: null,
       polling_iterations: 1
     }
   };
@@ -340,6 +342,7 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
   const qwen_request_timeout_ms = normalizePositiveInteger(value.qwen_request_timeout_ms) ?? 30_000;
   const holded_base_url = normalizeString(value.holded_base_url ?? null);
   const conversation_memory_file_path = normalizeString(value.conversation_memory_file_path ?? null);
+  const evidence_ledger_file_path = normalizeString(value.evidence_ledger_file_path ?? null);
   const polling_iterations = normalizePositiveInteger(value.polling_iterations) ?? 1;
   return {
     telegram_mode,
@@ -349,6 +352,7 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
     qwen_request_timeout_ms,
     holded_base_url,
     conversation_memory_file_path,
+    evidence_ledger_file_path,
     polling_iterations
   };
 }

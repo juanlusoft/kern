@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHoldedReadAdapter, type HoldedFetchResponse } from '../../adapters/holded/src/index';
 import { MockOrchestrator, createMockOrchestrator } from '../../orchestrators/mock/src/index';
@@ -831,4 +831,28 @@ test('M8 surfaces runtime error unavailable and error without inventing data', (
   assert.equal(error.response.status, 'error');
   assert.equal(error.response.data, null);
   assert.equal(error.workflow_result?.capability_result?.status, 'error');
+});
+
+test('M8 blocks mock email proposals until approval is explicitly provided', () => {
+  const boundary = buildBoundary({
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z')
+    })
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      installation_id: 'install-email',
+      user_message: 'Enviar correo a ventas@example.com',
+      correlation_id: 'corr-email-no-approval'
+    })
+  );
+
+  const records = boundary.getEvidenceLedger().listByCorrelation('corr-email-no-approval');
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.response.response_source, 'workflow_blocked');
+  assert.equal(outcome.response.message, 'approval missing');
+  assert.equal(records.some((record) => record.record_type === 'orchestration_proposal_created'), true);
+  assert.equal(records.some((record) => record.record_type === 'workflow_invocation_requested'), true);
 });
