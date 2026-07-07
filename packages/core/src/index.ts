@@ -610,3 +610,4 @@ export function executeGovernedRequest(
 }
 
 export * from './presence';
+export * from './hr';
