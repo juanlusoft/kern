@@ -12,6 +12,7 @@ import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
 import { InMemoryOrchestrationBoundary } from '../../orchestration/src/index';
 import { createTelegramChannelAdapter, type TelegramTransport } from '../../channels/telegram/src/index';
+import { createOpenWebUIChannelServer, type OpenWebUIChannelServerHandle } from '../../channels/openwebui/src/index';
 import { createQwenOrchestrator, type QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { createMockResourceReadCapability } from '../../capabilities/src/index';
 import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } from '../../workflows/src/index';
@@ -47,7 +48,14 @@ import {
 } from '../../identity/src/index';
 
 const REQUIRED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog', 'numa-postgres-read'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = [
+  'telegram-channel',
+  'qwen-orchestrator',
+  'holded-read',
+  'pacoprint-catalog',
+  'numa-postgres-read',
+  'openwebui-channel'
+];
 
 export interface RuntimeModuleDefinition {
   module_key: RuntimeModuleKey;
@@ -125,6 +133,7 @@ export interface InstallationRuntimeSlice {
   readonly workflowRuntime: InMemoryGovernedWorkflowRuntime;
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
   readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+  readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
   pollOnce(limit?: number): ChannelMessageResult[];
   runLoop(options?: { maxIterations?: number; limit?: number }): ChannelMessageResult[][];
 }
@@ -204,16 +213,21 @@ function createRuntimeEvidence(
 function buildRuntimeModuleRegistry(config: RuntimeInstallationConfig): RuntimeModuleRegistry {
   const registry = new InMemoryRuntimeModuleRegistry(config.active_modules);
   for (const moduleKey of SUPPORTED_MODULES) {
+    let display_name = 'Open WebUI channel server';
+    if (moduleKey === 'telegram-channel') {
+      display_name = 'Telegram channel adapter';
+    } else if (moduleKey === 'qwen-orchestrator') {
+      display_name = 'Qwen orchestrator';
+    } else if (moduleKey === 'holded-read') {
+      display_name = 'Holded read adapter';
+    } else if (moduleKey === 'pacoprint-catalog') {
+      display_name = 'PacoPrint catalog adapter';
+    } else if (moduleKey === 'numa-postgres-read') {
+      display_name = 'Numa PostgreSQL read runner';
+    }
     registry.register({
       module_key: moduleKey,
-      display_name:
-        moduleKey === 'telegram-channel'
-          ? 'Telegram channel adapter'
-          : moduleKey === 'qwen-orchestrator'
-            ? 'Qwen orchestrator'
-            : moduleKey === 'holded-read'
-              ? 'Holded read adapter'
-              : moduleKey === 'pacoprint-catalog' ? 'PacoPrint catalog adapter' : 'Numa PostgreSQL read runner'
+      display_name
     });
   }
   return registry;
@@ -674,6 +688,29 @@ function buildNumaPostgresReadAdapter(options: {
     statement_timeout_ms: connection.statement_timeout_ms
   });
 }
+
+function buildOpenWebUIInstallationConfig(config: RuntimeInstallationConfig) {
+  const openwebui = config.runtime_options.openwebui_channel;
+  if (!openwebui) {
+    throw new Error('openwebui_channel config missing');
+  }
+  return {
+    channel: 'openwebui' as const,
+    installation_id: config.installation_id,
+    active: true,
+    host: openwebui.host,
+    port: openwebui.port,
+    request_body_limit_bytes: openwebui.request_body_limit_bytes,
+    identity_mappings: Object.entries(openwebui.users).map(([openwebui_user_id, mapping]) => ({
+      openwebui_user_id,
+      organization_id: mapping.organization_id,
+      principal_id: mapping.principal_id,
+      active: mapping.active,
+      display_name: mapping.display_name ?? null
+    }))
+  };
+}
+
 function buildOrchestrationBoundary(options: {
   config: RuntimeInstallationConfig;
   secrets: ResolvedRuntimeSecrets;
@@ -996,6 +1033,36 @@ export function startInstallationRuntime(input: {
     mode: loaded.config.runtime_options.telegram_mode,
     conversationMemoryStore
   });
+  let openwebuiServer: OpenWebUIChannelServerHandle | null = null;
+  if (loaded.config.active_modules.includes('openwebui-channel')) {
+    try {
+      const openwebuiInstallation = buildOpenWebUIInstallationConfig(loaded.config);
+      openwebuiServer = createOpenWebUIChannelServer({
+        installation: openwebuiInstallation,
+        orchestrationBoundary,
+        now: nowFn
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'openwebui channel failed';
+      createRuntimeEvidence(evidenceLedger, nowFn, {
+        organization_id: loaded.config.organization.organization_id,
+        correlation_id: bootstrapCorrelationId,
+        record_type: 'installation_start_blocked',
+        subject: loaded.config.installation_id,
+        data: {
+          reason,
+          module_key: 'openwebui-channel'
+        }
+      });
+      return {
+        status: 'blocked',
+        reason,
+        evidenceLedger,
+        moduleRegistry,
+        runtime: null
+      };
+    }
+  }
 
   createRuntimeEvidence(evidenceLedger, nowFn, {
     organization_id: loaded.config.organization.organization_id,
@@ -1018,6 +1085,7 @@ export function startInstallationRuntime(input: {
     workflowRuntime,
     orchestrationBoundary,
     telegramAdapter,
+    openwebuiServer,
     telegramTransport,
     now: nowFn
   });
@@ -1039,6 +1107,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
   readonly workflowRuntime: InMemoryGovernedWorkflowRuntime;
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
   readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+  readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
   private readonly telegramTransport: TelegramTransport;
   private readonly now: () => Date;
   private lastOffset: number | null = null;
@@ -1051,6 +1120,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
     workflowRuntime: InMemoryGovernedWorkflowRuntime;
     orchestrationBoundary: InMemoryOrchestrationBoundary;
     telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+    openwebuiServer: OpenWebUIChannelServerHandle | null;
     telegramTransport: TelegramTransport;
     now: () => Date;
   }) {
@@ -1061,6 +1131,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
     this.workflowRuntime = input.workflowRuntime;
     this.orchestrationBoundary = input.orchestrationBoundary;
     this.telegramAdapter = input.telegramAdapter;
+    this.openwebuiServer = input.openwebuiServer;
     this.telegramTransport = input.telegramTransport;
     this.now = input.now;
   }
