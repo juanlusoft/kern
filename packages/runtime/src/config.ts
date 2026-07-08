@@ -1,6 +1,6 @@
 import type { ChannelIdentityMapping, PrincipalType } from '../../contracts/src/index';
 
-export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read' | 'pacoprint-catalog';
+export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read' | 'pacoprint-catalog' | 'numa-postgres-read';
 
 export interface RuntimeOrganizationConfig {
   organization_id: string;
@@ -73,7 +73,7 @@ export class RuntimeConfigError extends Error {
   }
 }
 
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog', 'numa-postgres-read'];
 const PRINCIPAL_TYPES: PrincipalType[] = ['human', 'service', 'agent'];
 const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 

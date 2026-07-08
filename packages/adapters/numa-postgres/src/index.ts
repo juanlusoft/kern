@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   PresenceCurrentParams,
   PresenceCurrentResult,
   PresenceDirection,
@@ -63,6 +63,7 @@ export interface PgConnectionConfig {
   sslmode: 'disable' | 'allow' | 'prefer' | 'require' | 'verify-ca' | 'verify-full';
   application_name: string;
   role: string;
+  statement_timeout_ms?: number;
 }
 
 export interface PgReadOnlyTransactionPlan {
@@ -144,6 +145,10 @@ function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizePositiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
 function formatMadridTimestamp(value: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Madrid',
@@ -163,6 +168,41 @@ function createCitation(queryId: PgQueryId, tables: string[], rowCount: number, 
   return { tables, queryId, rowCount, truncated };
 }
 
+function normalizePgConnectionString(value: unknown, field: string): string {
+  const candidate = normalizeString(value);
+  if (!candidate) {
+    throw new Error('Missing required Numa PostgreSQL env: ' + field);
+  }
+  return candidate;
+}
+
+function normalizePgPort(value: unknown, field: string): number {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim().length > 0 ? Number(value) : NaN;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error('Missing or invalid Numa PostgreSQL env: ' + field);
+  }
+  return parsed;
+}
+
+function normalizePgSslMode(value: unknown, field: string): PgConnectionConfig['sslmode'] {
+  const candidate = normalizeString(value);
+  const allowed: PgConnectionConfig['sslmode'][] = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'];
+  if (!candidate || !allowed.includes(candidate as PgConnectionConfig['sslmode'])) {
+    throw new Error('Missing or invalid Numa PostgreSQL env: ' + field);
+  }
+  return candidate as PgConnectionConfig['sslmode'];
+}
+
+function normalizePgTimeoutMs(value: unknown, fallback: number): number {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('Missing or invalid Numa PostgreSQL env: NUMA_PGSTATEMENT_TIMEOUT_MS');
+  }
+  return Math.trunc(parsed);
+}
 function buildEmployeeFindStatement(input: PresenceEmployeeFindParams): PgSqlStatement {
   return {
     text: `
@@ -837,14 +877,15 @@ export function getPgPresenceQueryCatalog(): PgPresenceQueryCatalogEntry[] {
 
 export function createPgConnectionConfigFromEnv(env: Record<string, string | undefined> = process.env): PgConnectionConfig {
   return {
-    host: env.KERN_PGHOST ?? '127.0.0.1',
-    port: Number(env.KERN_PGPORT ?? '5432'),
-    database: env.KERN_PGDATABASE ?? 'kern',
-    user: env.KERN_PGUSER ?? NUMA_POSTGRES_ROLE,
-    password: env.KERN_PGPASSWORD ?? null,
-    sslmode: (env.KERN_PGSSLMODE as PgConnectionConfig['sslmode']) ?? 'disable',
-    application_name: env.KERN_PGAPPNAME ?? NUMA_POSTGRES_READ_ADAPTER_ID,
-    role: NUMA_POSTGRES_ROLE
+    host: normalizePgConnectionString(env.NUMA_PGHOST, 'NUMA_PGHOST'),
+    port: normalizePgPort(env.NUMA_PGPORT, 'NUMA_PGPORT'),
+    database: normalizePgConnectionString(env.NUMA_PGDATABASE, 'NUMA_PGDATABASE'),
+    user: normalizePgConnectionString(env.NUMA_PGUSER, 'NUMA_PGUSER'),
+    password: normalizeString(env.NUMA_PGPASSWORD ?? null),
+    sslmode: normalizePgSslMode(env.NUMA_PGSSLMODE, 'NUMA_PGSSLMODE'),
+    application_name: normalizeString(env.NUMA_PGAPPNAME ?? null) ?? NUMA_POSTGRES_READ_ADAPTER_ID,
+    role: NUMA_POSTGRES_ROLE,
+    statement_timeout_ms: normalizePgTimeoutMs(env.NUMA_PGSTATEMENT_TIMEOUT_MS, 15000)
   };
 }
 
@@ -863,8 +904,10 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
 
   constructor(options: PgReadAdapterOptions) {
     this.queryRunner = options.queryRunner;
-    this.connection = { ...createPgConnectionConfigFromEnv(), ...options.connection, role: NUMA_POSTGRES_ROLE };
-    this.statementTimeoutMs = options.statement_timeout_ms ?? 15_000;
+    this.connection = options.connection
+      ? ({ ...options.connection, role: NUMA_POSTGRES_ROLE } as PgConnectionConfig)
+      : createPgConnectionConfigFromEnv();
+    this.statementTimeoutMs = options.statement_timeout_ms ?? options.connection?.statement_timeout_ms ?? this.connection.statement_timeout_ms ?? 15_000;
     this.activeWindowDays = options.active_window_days ?? 90;
     this.currentWindowHours = clampInteger(options.current_window_hours ?? 24, 1, 24);
     this.employeeFindLimit = options.employee_find_limit ?? 25;
@@ -1073,3 +1116,5 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
 export function createPgReadAdapter(options: PgReadAdapterOptions): PgReadAdapter {
   return new PgReadAdapter(options);
 }
+
+export { PG_SYNC_QUERY_RUNNER_SCRIPT, PgSyncQueryRunner, createPgSyncQueryRunner, type PgSyncQueryRunnerOptions } from './runner';
