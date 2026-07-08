@@ -34,6 +34,7 @@ import {
   type ResolvedRuntimeSecrets,
   type RuntimeInstallationConfig,
   type RuntimeModuleKey,
+  type RuntimeNumaHrConfig,
   type RuntimeOptions,
   type RuntimeSecretRefs,
   type RuntimeOrganizationConfig,
@@ -373,6 +374,136 @@ function buildQwenToolCatalog() {
       }
     }
   };
+  const numaHrTools: QwenToolDefinition[] = [
+    {
+      capability_key: 'punch.day',
+      description:
+        'Read one employee punch timeline for a specific day. Use employee_name and date only. Never emit employee_id or any internal ids.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'date'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          date: {
+            type: 'string' as const,
+            description: 'Target day in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'leave.days',
+      description:
+        'Read approved and pending leave days for a specific employee and year. Use employee_name, year and time_type_labels only. Never emit time type ids.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'year', 'time_type_labels'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          year: {
+            type: 'string' as const,
+            description: 'Four-digit year from the user request.',
+            pattern: '^\\d{4}$'
+          },
+          time_type_labels: {
+            type: 'array' as const,
+            minItems: 1,
+            items: { type: 'string' as const },
+            description: 'Business labels like vacaciones or asuntos propios. Never use internal ids.'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'leave.balance',
+      description:
+        'Read annual leave balance for a specific employee and year. Use employee_name, year and time_type_labels only. The runtime injects quotas from config.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'year', 'time_type_labels'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          year: {
+            type: 'string' as const,
+            description: 'Four-digit year from the user request.',
+            pattern: '^\\d{4}$'
+          },
+          time_type_labels: {
+            type: 'array' as const,
+            minItems: 1,
+            items: { type: 'string' as const },
+            description: 'Business labels like vacaciones or asuntos propios. Never use internal ids.'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'worktime.summary',
+      description:
+        'Summarize worked time for one employee in a date range. Use employee_name, date_from and date_to only. The runtime computes the rest.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'date_from', 'date_to'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          date_from: {
+            type: 'string' as const,
+            description: 'Start date in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          },
+          date_to: {
+            type: 'string' as const,
+            description: 'End date in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'report.month-by-group',
+      description:
+        'Monthly HR summary for a group or center. Use group_name, year and month only. The runtime applies paging and scope.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['group_name', 'year', 'month'],
+        additionalProperties: false as const,
+        properties: {
+          group_name: {
+            type: 'string' as const,
+            description: 'Group or center name exactly as written by the user. Never use group_id.'
+          },
+          year: {
+            type: 'string' as const,
+            description: 'Four-digit year from the user request.',
+            pattern: '^\\d{4}$'
+          },
+          month: {
+            type: 'integer' as const,
+            description: 'Month number from 1 to 12.',
+            minimum: 1,
+            maximum: 12
+          }
+        }
+      }
+    }
+  ];
   const clarificationTool: QwenToolDefinition = {
     capability_key: 'request_clarification',
     description: 'Ask the user to clarify missing or unsupported details without inventing parameters.',
@@ -393,7 +524,7 @@ function buildQwenToolCatalog() {
       }
     }
   };
-  return [pricingTool, pricingDraftTool, readTool, clarificationTool];
+  return [pricingTool, pricingDraftTool, readTool, ...numaHrTools, clarificationTool];
 }
 
 function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secrets: ResolvedRuntimeSecrets) {
@@ -550,6 +681,7 @@ function buildOrchestrationBoundary(options: {
   holdedFetch: HoldedFetch;
   pacoPrintFetch: PacoPrintFetch;
   presenceReadPort?: PresenceReadPort | null;
+  numaHrConfig?: RuntimeNumaHrConfig | null;
   hrReadPort?: NumaHrReadPort | null;
   numaPostgresQueryRunner?: PgPresenceQueryRunner | null;
   now: () => Date;
@@ -605,6 +737,7 @@ function buildOrchestrationBoundary(options: {
     now: options.now,
     workflowRuntime,
     orchestrator,
+    numaHrConfig: options.numaHrConfig ?? null,
     installationCapabilities: {
       [options.config.installation_id]: [
         ...options.config.active_capabilities,
@@ -841,6 +974,7 @@ export function startInstallationRuntime(input: {
     secrets,
     qwenTransport,
     holdedFetch,
+    numaHrConfig: loaded.config.runtime_options.numa_hr,
     pacoPrintFetch,
     presenceReadPort,
     hrReadPort,

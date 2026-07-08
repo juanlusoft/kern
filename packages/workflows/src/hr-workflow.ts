@@ -33,6 +33,10 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
   const capabilityId = input.capability_id;
   const organization_id = input.organization_hint?.trim() || 'unknown';
   const params = normalizeParams(input.params);
+  const normalizedParams = {
+    ...params,
+    year: typeof params.year === 'string' ? Number(params.year) : params.year
+  };
   const steps: WorkflowStep[] = [];
   const evidenceRecords: { evidence_id: string; record_type: string }[] = [];
 
@@ -177,7 +181,7 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
       payload: {
         organization_id: organizationContext.organization_id,
         correlation_id,
-        ...params
+        ...normalizedParams
       }
     },
     requested_at,
