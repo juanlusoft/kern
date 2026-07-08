@@ -60,3 +60,15 @@ test('runtime config rejects unsupported module keys', () => {
     RuntimeConfigError
   );
 });
+test('runtime config accepts numa-postgres-read module key', () => {
+  const sample = createSampleInstallationConfig();
+  const loaded = loadInstallationConfig(
+    {
+      ...sample,
+      active_modules: [...sample.active_modules, 'numa-postgres-read']
+    },
+    buildEnv()
+  );
+
+  assert.equal(loaded.config.active_modules.includes('numa-postgres-read'), true);
+});

@@ -17,6 +17,7 @@ import { createMockResourceReadCapability } from '../../capabilities/src/index';
 import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } from '../../workflows/src/index';
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
 import { createPacoPrintCatalogAdapter } from '../../adapters/pacoprint-catalog/src/index';
+import { createPgConnectionConfigFromEnv, createPgReadAdapter, createPgSyncQueryRunner, type PgPresenceQueryRunner } from '../../adapters/numa-postgres/src/index';
 import {
   createNodeFetchHoldedTransport,
   createNodeFetchPacoPrintTransport,
@@ -45,7 +46,7 @@ import {
 } from '../../identity/src/index';
 
 const REQUIRED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog', 'numa-postgres-read'];
 
 export interface RuntimeModuleDefinition {
   module_key: RuntimeModuleKey;
@@ -106,6 +107,7 @@ export interface RuntimeSliceDependencies {
   pacoPrintFetch?: PacoPrintFetch | null;
   presenceReadPort?: PresenceReadPort | null;
   hrReadPort?: NumaHrReadPort | null;
+  numaPostgresQueryRunner?: PgPresenceQueryRunner | null;
 }
 
 export interface RuntimeSliceOptions extends RuntimeSliceDependencies {
@@ -210,7 +212,7 @@ function buildRuntimeModuleRegistry(config: RuntimeInstallationConfig): RuntimeM
             ? 'Qwen orchestrator'
             : moduleKey === 'holded-read'
               ? 'Holded read adapter'
-              : 'PacoPrint catalog adapter'
+              : moduleKey === 'pacoprint-catalog' ? 'PacoPrint catalog adapter' : 'Numa PostgreSQL read runner'
     });
   }
   return registry;
@@ -527,6 +529,20 @@ function buildIdentityResolver(config: RuntimeInstallationConfig, now: () => Dat
   };
 }
 
+function buildNumaPostgresReadAdapter(options: {
+  env: NodeJS.ProcessEnv;
+  now: () => Date;
+  queryRunner?: PgPresenceQueryRunner | null;
+}) {
+  const connection = createPgConnectionConfigFromEnv(options.env);
+  const queryRunner = options.queryRunner ?? createPgSyncQueryRunner({ connection });
+  return createPgReadAdapter({
+    queryRunner,
+    connection,
+    now: options.now,
+    statement_timeout_ms: connection.statement_timeout_ms
+  });
+}
 function buildOrchestrationBoundary(options: {
   config: RuntimeInstallationConfig;
   secrets: ResolvedRuntimeSecrets;
@@ -535,6 +551,7 @@ function buildOrchestrationBoundary(options: {
   pacoPrintFetch: PacoPrintFetch;
   presenceReadPort?: PresenceReadPort | null;
   hrReadPort?: NumaHrReadPort | null;
+  numaPostgresQueryRunner?: PgPresenceQueryRunner | null;
   now: () => Date;
 }) {
   const externalReadAdapter = createHoldedReadAdapter({
@@ -610,6 +627,7 @@ export function startInstallationRuntime(input: {
   pacoPrintFetch?: PacoPrintFetch | null;
   presenceReadPort?: PresenceReadPort | null;
   hrReadPort?: NumaHrReadPort | null;
+  numaPostgresQueryRunner?: PgPresenceQueryRunner | null;
 }): RuntimeStartResult {
   const now = input.now ?? (() => new Date());
   const evidenceLedger = new InMemoryEvidenceLedger({
@@ -786,14 +804,46 @@ export function startInstallationRuntime(input: {
       apiToken: secrets.PACOPRINT_API_TOKEN,
       timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
     });
+  let presenceReadPort = input.presenceReadPort ?? null;
+  let hrReadPort = input.hrReadPort ?? null;
+  if (loaded.config.active_modules.includes('numa-postgres-read')) {
+    try {
+      const numaPostgresAdapter = buildNumaPostgresReadAdapter({
+        env: input.env ?? process.env,
+        now: nowFn,
+        queryRunner: input.numaPostgresQueryRunner ?? null
+      });
+      presenceReadPort = presenceReadPort ?? numaPostgresAdapter;
+      hrReadPort = hrReadPort ?? numaPostgresAdapter;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'numa postgres read runner failed';
+      createRuntimeEvidence(evidenceLedger, nowFn, {
+        organization_id: loaded.config.organization.organization_id,
+        correlation_id: bootstrapCorrelationId,
+        record_type: 'installation_start_blocked',
+        subject: loaded.config.installation_id,
+        data: {
+          reason,
+          module_key: 'numa-postgres-read'
+        }
+      });
+      return {
+        status: 'blocked',
+        reason,
+        evidenceLedger,
+        moduleRegistry,
+        runtime: null
+      };
+    }
+  }
   const { workflowRuntime, orchestrationBoundary } = buildOrchestrationBoundary({
     config: loaded.config,
     secrets,
     qwenTransport,
     holdedFetch,
     pacoPrintFetch,
-    presenceReadPort: input.presenceReadPort ?? null,
-    hrReadPort: input.hrReadPort ?? null,
+    presenceReadPort,
+    hrReadPort,
     now: nowFn
   });
   const conversationMemoryStore = createConversationMemoryStore({
