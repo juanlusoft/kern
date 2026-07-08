@@ -25,7 +25,7 @@ export interface QwenParameterSchemaProperty {
   minimum?: number;
   maximum?: number;
   /** Esquema de los elementos cuando `type` es 'array'. */
-  items?: QwenParameterSchema;
+  items?: QwenParameterSchema | QwenParameterSchemaProperty;
   /** Mínimo de elementos cuando `type` es 'array'. */
   minItems?: number;
 }

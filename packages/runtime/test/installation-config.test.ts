@@ -27,6 +27,14 @@ test('runtime config sample validates and resolves secrets', () => {
   assert.deepEqual(loaded.config.active_modules, ['telegram-channel', 'qwen-orchestrator', 'holded-read']);
   assert.deepEqual(loaded.config.active_capabilities, ['mock.resource.read']);
   assert.equal(loaded.config.runtime_options.evidence_ledger_file_path, null);
+  assert.deepEqual(loaded.config.runtime_options.numa_hr?.time_type_by_label, {
+    vacaciones: [5],
+    'asuntos propios': [34]
+  });
+  assert.deepEqual(loaded.config.runtime_options.numa_hr?.annual_quota_by_time_type, {
+    5: 22,
+    34: 6
+  });
   assert.equal(loaded.config.organization.organization_id, 'org-pacoprint');
   assert.equal(loaded.secrets.HOLDED_API_KEY, 'holded-secret');
   assert.equal(loaded.secrets.KERN_TELEGRAM_BOT_TOKEN, 'telegram-secret');

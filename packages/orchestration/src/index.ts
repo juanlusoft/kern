@@ -23,11 +23,13 @@ import {
 } from '../../contracts/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
+import { normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds, type NumaHrToolMappingConfig } from './numa-hr';
 
 export interface OrchestrationBoundaryOptions {
   orchestrator?: OrchestratorPort | null;
   workflowRuntime?: InMemoryGovernedWorkflowRuntime;
   installationCapabilities?: Record<string, string[]>;
+  numaHrConfig?: NumaHrToolMappingConfig | null;
   now?: () => Date;
 }
 
@@ -266,31 +268,39 @@ function isValidPricingQuoteLineProposal(params: Record<string, unknown>): boole
 }
 
 function isValidNumaHrProposal(capability_key: string, params: Record<string, unknown>): boolean {
-  const employee_id = normalizeOptionalString(params.employee_id);
+  const forbiddenFields = [
+    'organization_id',
+    'correlation_id',
+    'employee_id',
+    'time_type_id',
+    'time_type_ids',
+    'annual_quota_by_time_type',
+    'group_id',
+    'limit',
+    'offset',
+    'include_pending',
+    'theoretical_workday_minutes'
+  ];
+  if (forbiddenFields.some((field) => Object.prototype.hasOwnProperty.call(params, field))) {
+    return false;
+  }
   const employee_name = normalizeOptionalString(params.employee_name);
-  const hasEmployee = Boolean(employee_id || employee_name);
   if (capability_key === 'punch.day') {
-    return Boolean(normalizeOptionalString(params.date) && hasEmployee);
+    return Boolean(employee_name && normalizeOptionalString(params.date));
   }
   if (capability_key === 'leave.days' || capability_key === 'leave.balance') {
     const year = normalizeYear(params.year);
-    const time_type_ids = Array.isArray(params.time_type_ids) ? params.time_type_ids.filter((entry) => Number.isInteger(Number(entry))) : [];
-    if (!year || time_type_ids.length === 0 || !hasEmployee) {
-      return false;
-    }
-    if (capability_key === 'leave.balance') {
-      return params.annual_quota_by_time_type === undefined || params.annual_quota_by_time_type === null || (typeof params.annual_quota_by_time_type === 'object' && !Array.isArray(params.annual_quota_by_time_type));
-    }
-    return true;
+    const time_type_labels = normalizeNumaHrTimeTypeLabels(params.time_type_labels);
+    return Boolean(year && employee_name && time_type_labels && time_type_labels.length > 0);
   }
   if (capability_key === 'worktime.summary') {
-    return Boolean(normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to) && hasEmployee);
+    return Boolean(employee_name && normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to));
   }
   if (capability_key === 'report.month-by-group') {
     const year = normalizeYear(params.year);
     const month = normalizeLimit(params.month);
-    const hasGroup = Boolean(normalizeOptionalString(params.group_id) || normalizeOptionalString(params.group_name));
-    return Boolean(year && month && hasGroup);
+    const group_name = normalizeOptionalString(params.group_name);
+    return Boolean(year && month && group_name);
   }
   return false;
 }
@@ -363,7 +373,8 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
 
 function resolveWorkflowRequest(
   proposal: OrchestrationProposal,
-  request: OrchestrationRequest
+  request: OrchestrationRequest,
+  numaHrConfig: NumaHrToolMappingConfig | null | undefined
 ):
   | MockReadEstimateWorkflowInput
   | MockEmailSendWorkflowInput
@@ -413,8 +424,10 @@ function resolveWorkflowRequest(
     };
   }
 
-  if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
-    if (!isValidNumaHrProposal(proposal.capability_key, proposal.params)) {
+  if (proposal.capability_key === 'punch.day') {
+    const employee_name = normalizeOptionalString(proposal.params.employee_name);
+    const date = normalizeOptionalString(proposal.params.date);
+    if (!employee_name || !date) {
       return null;
     }
     return {
@@ -424,7 +437,101 @@ function resolveWorkflowRequest(
       principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
       correlation_id: request.correlation_id,
       capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
-      params: normalizeCapabilityParams(proposal.params),
+      params: normalizeCapabilityParams({
+        employee_name,
+        date
+      }),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance') {
+    const employee_name = normalizeOptionalString(proposal.params.employee_name);
+    const year = normalizeYear(proposal.params.year);
+    const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
+    const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
+    if (!employee_name || !year || !time_type_ids || time_type_ids.length === 0) {
+      return null;
+    }
+    const params: Record<string, unknown> = {
+      employee_name,
+      year,
+      time_type_ids
+    };
+    if (proposal.capability_key === 'leave.balance') {
+      if (!numaHrConfig) {
+        return null;
+      }
+      params.annual_quota_by_time_type = { ...numaHrConfig.annual_quota_by_time_type };
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams(params),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'worktime.summary') {
+    const employee_name = normalizeOptionalString(proposal.params.employee_name);
+    const date_from = normalizeOptionalString(proposal.params.date_from);
+    const date_to = normalizeOptionalString(proposal.params.date_to);
+    if (!employee_name || !date_from || !date_to) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        employee_name,
+        date_from,
+        date_to
+      }),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'report.month-by-group') {
+    const group_name = normalizeOptionalString(proposal.params.group_name);
+    const year = normalizeYear(proposal.params.year);
+    const month = normalizeLimit(proposal.params.month);
+    if (!group_name || !year || !month) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        group_name,
+        year,
+        month,
+        limit: 25,
+        offset: 0
+      }),
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
       caller_result: request.caller_result ?? null,
@@ -531,6 +638,7 @@ export class InMemoryOrchestrationBoundary {
   private readonly orchestrator: OrchestratorPort | null;
   private readonly workflowRuntime: InMemoryGovernedWorkflowRuntime;
   private readonly installationCapabilities: Record<string, string[]>;
+  private readonly numaHrConfig: NumaHrToolMappingConfig | null;
   private readonly now: () => Date;
 
   constructor(options: OrchestrationBoundaryOptions = {}) {
@@ -541,6 +649,7 @@ export class InMemoryOrchestrationBoundary {
         now: options.now
       });
     this.installationCapabilities = options.installationCapabilities ?? {};
+    this.numaHrConfig = options.numaHrConfig ?? null;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -769,7 +878,7 @@ export class InMemoryOrchestrationBoundary {
       });
     }
 
-    const workflowRequest = resolveWorkflowRequest(proposal, normalizedRequest);
+    const workflowRequest = resolveWorkflowRequest(proposal, normalizedRequest, this.numaHrConfig);
     if (!workflowRequest) {
       return this.finishBlockedOutcome({
         request: orchestratorRequest,

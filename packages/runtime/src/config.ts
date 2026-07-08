@@ -2,6 +2,11 @@ import type { ChannelIdentityMapping, PrincipalType } from '../../contracts/src/
 
 export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read' | 'pacoprint-catalog' | 'numa-postgres-read';
 
+export interface RuntimeNumaHrConfig {
+  time_type_by_label: Record<string, number[]>;
+  annual_quota_by_time_type: Record<number, number>;
+}
+
 export interface RuntimeOrganizationConfig {
   organization_id: string;
   name: string;
@@ -36,6 +41,7 @@ export interface RuntimeOptions {
   conversation_memory_file_path?: string | null;
   evidence_ledger_file_path?: string | null;
   polling_iterations: number;
+  numa_hr?: RuntimeNumaHrConfig | null;
 }
 
 export interface RuntimeInstallationConfig {
@@ -201,8 +207,79 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
       holded_base_url: null,
       conversation_memory_file_path: null,
       evidence_ledger_file_path: null,
-      polling_iterations: 1
+      polling_iterations: 1,
+      numa_hr: {
+        time_type_by_label: {
+          vacaciones: [5],
+          'asuntos propios': [34]
+        },
+        annual_quota_by_time_type: {
+          5: 22,
+          34: 6
+        }
+      }
     }
+  };
+}
+
+function normalizeBusinessLabel(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeNumaHrConfig(value: unknown): RuntimeNumaHrConfig | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isPlainObject(value)) {
+    fail('runtime_options.numa_hr', 'numa_hr must be an object');
+  }
+
+  const timeTypeByLabelRaw = value.time_type_by_label;
+  if (!isPlainObject(timeTypeByLabelRaw)) {
+    fail('runtime_options.numa_hr.time_type_by_label', 'time_type_by_label must be an object');
+  }
+  const time_type_by_label: Record<string, number[]> = {};
+  for (const [label, idsValue] of Object.entries(timeTypeByLabelRaw)) {
+    const normalizedLabel = normalizeBusinessLabel(label);
+    if (!normalizedLabel) {
+      fail('runtime_options.numa_hr.time_type_by_label', 'time_type_by_label keys must be non-empty strings');
+    }
+    if (!Array.isArray(idsValue) || idsValue.length === 0) {
+      fail(`runtime_options.numa_hr.time_type_by_label.${label}`, 'time_type_by_label values must be non-empty arrays');
+    }
+    const ids = idsValue.map((entry) => normalizePositiveInteger(entry)).filter((entry): entry is number => entry !== null);
+    if (ids.length !== idsValue.length) {
+      fail(`runtime_options.numa_hr.time_type_by_label.${label}`, 'time_type_by_label values must be positive integers');
+    }
+    time_type_by_label[normalizedLabel] = [...new Set(ids)];
+  }
+
+  const annualQuotaByTimeTypeRaw = value.annual_quota_by_time_type;
+  if (!isPlainObject(annualQuotaByTimeTypeRaw)) {
+    fail('runtime_options.numa_hr.annual_quota_by_time_type', 'annual_quota_by_time_type must be an object');
+  }
+  const annual_quota_by_time_type: Record<number, number> = {};
+  for (const [key, quotaValue] of Object.entries(annualQuotaByTimeTypeRaw)) {
+    const timeTypeId = normalizePositiveInteger(Number(key));
+    const quota = normalizePositiveInteger(quotaValue);
+    if (timeTypeId === null || quota === null) {
+      fail('runtime_options.numa_hr.annual_quota_by_time_type', 'annual_quota_by_time_type entries must be positive integers');
+    }
+    annual_quota_by_time_type[timeTypeId] = quota;
+  }
+
+  return {
+    time_type_by_label,
+    annual_quota_by_time_type
   };
 }
 
@@ -344,6 +421,7 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
   const conversation_memory_file_path = normalizeString(value.conversation_memory_file_path ?? null);
   const evidence_ledger_file_path = normalizeString(value.evidence_ledger_file_path ?? null);
   const polling_iterations = normalizePositiveInteger(value.polling_iterations) ?? 1;
+  const numa_hr = normalizeNumaHrConfig(value.numa_hr);
   return {
     telegram_mode,
     telegram_poll_timeout_ms,
@@ -353,7 +431,8 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
     holded_base_url,
     conversation_memory_file_path,
     evidence_ledger_file_path,
-    polling_iterations
+    polling_iterations,
+    numa_hr
   };
 }
 
