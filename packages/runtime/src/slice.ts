@@ -2,6 +2,8 @@ import {
   createEvidenceRecord,
   type ChannelMessageResult,
   type GovernedWorkflowKind,
+  type PresenceReadPort,
+  type NumaHrReadPort,
   type OrchestrationRequest,
   type TelegramChannelUpdate,
   type TelegramOutboundMessage
@@ -102,6 +104,8 @@ export interface RuntimeSliceDependencies {
   qwenTransport?: QwenChatCompletionsTransport | null;
   holdedFetch?: HoldedFetch | null;
   pacoPrintFetch?: PacoPrintFetch | null;
+  presenceReadPort?: PresenceReadPort | null;
+  hrReadPort?: NumaHrReadPort | null;
 }
 
 export interface RuntimeSliceOptions extends RuntimeSliceDependencies {
@@ -529,6 +533,8 @@ function buildOrchestrationBoundary(options: {
   qwenTransport: QwenChatCompletionsTransport;
   holdedFetch: HoldedFetch;
   pacoPrintFetch: PacoPrintFetch;
+  presenceReadPort?: PresenceReadPort | null;
+  hrReadPort?: NumaHrReadPort | null;
   now: () => Date;
 }) {
   const externalReadAdapter = createHoldedReadAdapter({
@@ -550,7 +556,10 @@ function buildOrchestrationBoundary(options: {
     resolveOrganizationContext: buildOrganizationResolver(options.config, options.now),
     resolveIdentityContext: buildIdentityResolver(options.config, options.now),
     externalReadAdapter,
-    pacoPrintCatalogAdapter
+    pacoPrintCatalogAdapter,
+    presenceReadPort: options.presenceReadPort ?? null,
+    hrReadPort: options.hrReadPort ?? null,
+    organization_id: options.config.organization.organization_id
   });
   workflowRuntime.registerCapability(
     createMockResourceReadCapability(externalReadAdapter, {}, options.config.organization.organization_id)
@@ -580,7 +589,11 @@ function buildOrchestrationBoundary(options: {
     workflowRuntime,
     orchestrator,
     installationCapabilities: {
-      [options.config.installation_id]: [...options.config.active_capabilities]
+      [options.config.installation_id]: [
+        ...options.config.active_capabilities,
+        ...(options.presenceReadPort ? ['employee.find', 'punches.list', 'presence.current'] : []),
+        ...(options.hrReadPort ? ['punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group'] : [])
+      ]
     }
   });
 
@@ -595,6 +608,8 @@ export function startInstallationRuntime(input: {
   qwenTransport?: QwenChatCompletionsTransport | null;
   holdedFetch?: HoldedFetch | null;
   pacoPrintFetch?: PacoPrintFetch | null;
+  presenceReadPort?: PresenceReadPort | null;
+  hrReadPort?: NumaHrReadPort | null;
 }): RuntimeStartResult {
   const now = input.now ?? (() => new Date());
   const evidenceLedger = new InMemoryEvidenceLedger({
@@ -777,6 +792,8 @@ export function startInstallationRuntime(input: {
     qwenTransport,
     holdedFetch,
     pacoPrintFetch,
+    presenceReadPort: input.presenceReadPort ?? null,
+    hrReadPort: input.hrReadPort ?? null,
     now: nowFn
   });
   const conversationMemoryStore = createConversationMemoryStore({

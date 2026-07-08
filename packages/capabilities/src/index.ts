@@ -896,3 +896,4 @@ export function createMockResourceReadCapability(
 }
 
 export * from './presence-capabilities';
+export * from './numa-capabilities';

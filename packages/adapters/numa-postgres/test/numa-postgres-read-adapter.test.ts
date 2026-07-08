@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   NUMA_POSTGRES_ROLE,
@@ -60,7 +60,7 @@ test('presence adapter search uses unaccent and closed query catalog', () => {
   assert.match(calls[0].statement, /unaccent\(lower/);
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.equal(calls[0].transactionRole, NUMA_POSTGRES_ROLE);
-  assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current']);
+  assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current', 'punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group']);
 });
 
 test('presence adapter truncates punch lists and resolves current presence from CTE-based rows', () => {

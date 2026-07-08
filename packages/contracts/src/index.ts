@@ -28,7 +28,7 @@ export type ReconciliationState = 'not_requested' | 'requested' | 'closed';
 export type CapabilityKind = 'read_only' | 'effectful';
 export type CapabilityInvocationStatus = 'executed' | 'unavailable' | 'error' | 'not_found' | 'denied';
 export type CapabilityRuntimeDecision = CapabilityInvocationStatus;
-export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send' | 'pricing.quote_line' | 'pricing.quote_draft';
+export type GovernedWorkflowKind = 'mock.estimate.read' | 'mock.email.send' | 'pricing.quote_line' | 'pricing.quote_draft' | 'numa.hr.read';
 export type WorkflowExecutionStatus =
   | 'completed'
   | 'blocked'
@@ -214,6 +214,173 @@ export interface PresenceReadPort {
   listPunches(input: PresencePunchesListParams): PresencePunchesListResult;
   currentPresence(input: PresenceCurrentParams): PresenceCurrentResult;
 }
+export type NumaHrCapabilityKey = 'punch.day' | 'leave.days' | 'leave.balance' | 'worktime.summary' | 'report.month-by-group';
+
+export interface NumaHrResultBase {
+  organization_id: string;
+  correlation_id: string;
+  row_count: number;
+  truncated: boolean;
+  citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+}
+
+export interface NumaHrPunchDayParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  date: string;
+}
+
+export interface NumaHrPunchDayRecord {
+  punched_at: string;
+  punching_point_id: number | null;
+  point_name: string | null;
+  direction: PresenceDirection | 'neutral';
+}
+
+export interface NumaHrPunchDayResult extends NumaHrResultBase {
+  query_id: 'punch.day';
+  employee_id: string | null;
+  employee_name: string | null;
+  date: string;
+  records: [NumaHrPunchDayRecord, ...NumaHrPunchDayRecord[]] | NumaHrPunchDayRecord[];
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  worked_minutes: number | null;
+}
+
+export interface NumaHrLeaveDaysParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  year: number;
+  time_type_ids: number[];
+  include_pending?: boolean;
+}
+
+export interface NumaHrLeaveDaysRecord {
+  time_type_id: number;
+  time_type_name: string | null;
+  days_disfrutados: number;
+  days_pendientes: number | null;
+}
+
+export interface NumaHrLeaveDaysResult extends NumaHrResultBase {
+  query_id: 'leave.days';
+  employee_id: string | null;
+  employee_name: string | null;
+  year: number;
+  time_type_ids: number[];
+  include_pending: boolean;
+  records: [NumaHrLeaveDaysRecord, ...NumaHrLeaveDaysRecord[]] | NumaHrLeaveDaysRecord[];
+}
+
+export interface NumaHrLeaveBalanceParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  year: number;
+  time_type_ids: number[];
+  annual_quota_by_time_type: Record<number, number>;
+  include_pending?: boolean;
+}
+
+export interface NumaHrLeaveBalanceRecord {
+  time_type_id: number;
+  time_type_name: string | null;
+  annual_quota: number | null;
+  days_disfrutados: number;
+  days_pendientes: number | null;
+  balance: number | null;
+  message: string | null;
+}
+
+export interface NumaHrLeaveBalanceResult extends NumaHrResultBase {
+  query_id: 'leave.balance';
+  employee_id: string | null;
+  employee_name: string | null;
+  year: number;
+  time_type_ids: number[];
+  include_pending: boolean;
+  records: [NumaHrLeaveBalanceRecord, ...NumaHrLeaveBalanceRecord[]] | NumaHrLeaveBalanceRecord[];
+}
+
+export interface NumaHrWorktimeSummaryParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  date_from: string;
+  date_to: string;
+  theoretical_workday_minutes?: number | null;
+}
+
+export interface NumaHrWorktimeSummaryRecord {
+  work_date: string;
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  punch_count: number;
+  worked_minutes: number;
+  theoretical_minutes: number | null;
+  overtime_minutes: number | null;
+}
+
+export interface NumaHrWorktimeSummaryResult extends NumaHrResultBase {
+  query_id: 'worktime.summary';
+  employee_id: string | null;
+  employee_name: string | null;
+  date_from: string;
+  date_to: string;
+  theoretical_workday_minutes: number | null;
+  records: [NumaHrWorktimeSummaryRecord, ...NumaHrWorktimeSummaryRecord[]] | NumaHrWorktimeSummaryRecord[];
+  total_worked_minutes: number;
+  total_overtime_minutes: number | null;
+}
+
+export interface NumaHrReportMonthByGroupParams {
+  organization_id: string;
+  correlation_id: string;
+  group_id?: string | null;
+  group_name?: string | null;
+  year: number;
+  month: number;
+  limit: number;
+  offset: number;
+}
+
+export interface NumaHrReportMonthByGroupEmployeeRecord {
+  employee_id: string;
+  employee_name: string;
+  days_with_punch: number;
+  worked_minutes: number | null;
+  leave_days: number | null;
+  vacation_days: number | null;
+  active: boolean;
+}
+
+export interface NumaHrReportMonthByGroupResult extends NumaHrResultBase {
+  query_id: 'report.month-by-group';
+  group_id: string | null;
+  group_name: string | null;
+  year: number;
+  month: number;
+  limit: number;
+  offset: number;
+  employee_count: number;
+  records: [NumaHrReportMonthByGroupEmployeeRecord, ...NumaHrReportMonthByGroupEmployeeRecord[]] | NumaHrReportMonthByGroupEmployeeRecord[];
+}
+
+export interface NumaHrReadPort {
+  punchDay(input: NumaHrPunchDayParams): NumaHrPunchDayResult;
+  leaveDays(input: NumaHrLeaveDaysParams): NumaHrLeaveDaysResult;
+  leaveBalance(input: NumaHrLeaveBalanceParams): NumaHrLeaveBalanceResult;
+  worktimeSummary(input: NumaHrWorktimeSummaryParams): NumaHrWorktimeSummaryResult;
+  reportMonthByGroup(input: NumaHrReportMonthByGroupParams): NumaHrReportMonthByGroupResult;
+}
+
 export interface CoreRequestFlags {
   force_policy_deny?: boolean;
   force_policy_defer?: boolean;
@@ -807,11 +974,18 @@ export interface PacoPrintCatalogAdapterPort {
   quoteLine(input: PacoPrintQuoteLineInput): ResourceResult;
 }
 
+export interface NumaHrReadWorkflowInput extends GovernedWorkflowRequestBase {
+  kind: 'numa.hr.read';
+  capability_id: NumaHrCapabilityKey;
+  params: Record<string, unknown>;
+}
+
 export type GovernedWorkflowRequest =
   | MockReadEstimateWorkflowInput
   | MockEmailSendWorkflowInput
   | PricingQuoteLineWorkflowInput
-  | PricingQuoteDraftWorkflowInput;
+  | PricingQuoteDraftWorkflowInput
+  | NumaHrReadWorkflowInput;
 
 export type OrchestrationStatus = 'proposal' | 'no_proposal' | 'denied' | 'blocked' | 'error';
 

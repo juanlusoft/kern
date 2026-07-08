@@ -18,6 +18,7 @@ import {
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
   type PresenceReadPort,
+  type NumaHrReadPort,
   type PrincipalType,
   type ResourceQuery,
   type ResourceResult,
@@ -29,7 +30,8 @@ import { InMemoryDecisionBindingStore } from '../../bindings/src/index';
 import {
   InMemoryCapabilityRuntime,
   createMockResourceReadCapability,
-  createPresenceCapabilitySet
+  createPresenceCapabilitySet,
+  createNumaHrCapabilitySet
 } from '../../capabilities/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
@@ -39,6 +41,7 @@ import { createMockExternalReadAdapter } from '../../external-read-adapters/src/
 import { type PacoPrintCatalogAdapterPort } from '../../contracts/src/index';
 import { buildWorkflowResult, workflowEvidenceTrace } from './workflow-internals';
 import { executeMockEstimateReadWorkflow } from './estimate-workflow';
+import { executeNumaHrReadWorkflow } from './hr-workflow';
 import { executeMockEmailSendWorkflow } from './email-workflow';
 import { executePricingQuoteLineWorkflow } from './pricing-workflow';
 import { executePricingQuoteDraftWorkflow } from './pricing-draft-workflow';
@@ -53,6 +56,8 @@ export interface GovernedWorkflowRuntimeOptions {
   externalReadAdapter?: ExternalReadAdapter;
   pacoPrintCatalogAdapter?: PacoPrintCatalogAdapterPort | null;
   presenceReadPort?: PresenceReadPort | null;
+  hrReadPort?: NumaHrReadPort | null;
+  organization_id?: string | null;
   resolveOrganizationContext?: typeof resolveOrganizationContext;
   resolveIdentityContext?: typeof resolveIdentityContext;
   now?: () => Date;
@@ -67,6 +72,7 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly resolveOrganizationContext: typeof resolveOrganizationContext;
   private readonly pacoPrintCatalogAdapter: PacoPrintCatalogAdapterPort | null;
   private readonly resolveIdentityContext: typeof resolveIdentityContext;
+  private readonly hrReadPort: NumaHrReadPort | null;
   private readonly now: () => Date;
   private readonly workflowRecords = new Map<string, GovernedWorkflowResult>();
 
@@ -81,14 +87,21 @@ export class InMemoryGovernedWorkflowRuntime {
       options.capabilityRuntime ?? new InMemoryCapabilityRuntime({ evidenceLedger: this.evidenceLedger, bindingStore: this.bindingStore, now: options.now });
     this.turnRuntime = options.turnRuntime ?? new InMemoryTurnRuntime({ evidenceLedger: this.evidenceLedger, now: options.now });
     this.now = options.now ?? (() => new Date());
+    this.hrReadPort = options.hrReadPort ?? null;
 
     if (!options.capabilityRuntime) {
+      const capabilityOrganizationId = options.organization_id ?? 'org-acme';
       this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter));
       this.registerCapability(createMockEstimateReadCapability());
       this.registerCapability(createMockEmailPreviewCapability());
       this.registerCapability(createMockEmailSendCapability());
       if (options.presenceReadPort) {
-        for (const capability of createPresenceCapabilitySet(options.presenceReadPort)) {
+        for (const capability of createPresenceCapabilitySet(options.presenceReadPort, capabilityOrganizationId)) {
+          this.registerCapability(capability);
+        }
+      }
+      if (options.hrReadPort) {
+        for (const capability of createNumaHrCapabilitySet(options.hrReadPort, capabilityOrganizationId)) {
           this.registerCapability(capability);
         }
       }
@@ -126,9 +139,11 @@ export class InMemoryGovernedWorkflowRuntime {
       ? executeMockEstimateReadWorkflow(runtimeContext, input)
       : input.kind === 'mock.email.send'
         ? executeMockEmailSendWorkflow(runtimeContext, input)
-        : input.kind === 'pricing.quote_draft'
-          ? executePricingQuoteDraftWorkflow(runtimeContext, input)
-          : executePricingQuoteLineWorkflow(runtimeContext, input);
+        : input.kind === 'numa.hr.read'
+          ? executeNumaHrReadWorkflow(runtimeContext, input)
+          : input.kind === 'pricing.quote_draft'
+            ? executePricingQuoteDraftWorkflow(runtimeContext, input)
+            : executePricingQuoteLineWorkflow(runtimeContext, input);
   }
 
   private createWorkflowRuntimeContext(): WorkflowRuntimeContext {
@@ -139,6 +154,7 @@ export class InMemoryGovernedWorkflowRuntime {
       turnRuntime: this.turnRuntime,
       externalReadAdapter: this.externalReadAdapter,
       pacoPrintCatalogAdapter: this.pacoPrintCatalogAdapter,
+      hrReadPort: this.hrReadPort,
       resolveOrganizationContext: this.resolveOrganizationContext,
       resolveIdentityContext: this.resolveIdentityContext,
       now: this.now,

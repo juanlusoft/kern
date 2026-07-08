@@ -8,6 +8,7 @@ import {
   type GovernedWorkflowResult,
   type MockEmailSendWorkflowInput,
   type MockReadEstimateWorkflowInput,
+  type NumaHrReadWorkflowInput,
   type PricingQuoteLineWorkflowInput,
   type PricingQuoteDraftWorkflowInput,
   type PricingQuoteDraftLineInput,
@@ -264,6 +265,36 @@ function isValidPricingQuoteLineProposal(params: Record<string, unknown>): boole
   return true;
 }
 
+function isValidNumaHrProposal(capability_key: string, params: Record<string, unknown>): boolean {
+  const employee_id = normalizeOptionalString(params.employee_id);
+  const employee_name = normalizeOptionalString(params.employee_name);
+  const hasEmployee = Boolean(employee_id || employee_name);
+  if (capability_key === 'punch.day') {
+    return Boolean(normalizeOptionalString(params.date) && hasEmployee);
+  }
+  if (capability_key === 'leave.days' || capability_key === 'leave.balance') {
+    const year = normalizeYear(params.year);
+    const time_type_ids = Array.isArray(params.time_type_ids) ? params.time_type_ids.filter((entry) => Number.isInteger(Number(entry))) : [];
+    if (!year || time_type_ids.length === 0 || !hasEmployee) {
+      return false;
+    }
+    if (capability_key === 'leave.balance') {
+      return params.annual_quota_by_time_type === undefined || params.annual_quota_by_time_type === null || (typeof params.annual_quota_by_time_type === 'object' && !Array.isArray(params.annual_quota_by_time_type));
+    }
+    return true;
+  }
+  if (capability_key === 'worktime.summary') {
+    return Boolean(normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to) && hasEmployee);
+  }
+  if (capability_key === 'report.month-by-group') {
+    const year = normalizeYear(params.year);
+    const month = normalizeLimit(params.month);
+    const hasGroup = Boolean(normalizeOptionalString(params.group_id) || normalizeOptionalString(params.group_name));
+    return Boolean(year && month && hasGroup);
+  }
+  return false;
+}
+
 function normalizeDraftLine(value: unknown): PricingQuoteDraftLineInput | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -336,6 +367,7 @@ function resolveWorkflowRequest(
 ):
   | MockReadEstimateWorkflowInput
   | MockEmailSendWorkflowInput
+  | NumaHrReadWorkflowInput
   | PricingQuoteLineWorkflowInput
   | PricingQuoteDraftWorkflowInput
   | null {
@@ -373,6 +405,26 @@ function resolveWorkflowRequest(
       year,
       estimate_id,
       customer_id,
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
+    if (!isValidNumaHrProposal(proposal.capability_key, proposal.params)) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams(proposal.params),
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
       caller_result: request.caller_result ?? null,
@@ -937,6 +989,29 @@ export class InMemoryOrchestrationBoundary {
       };
     }
 
+    if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
+      if (!isValidNumaHrProposal(proposal.capability_key, proposal.params)) {
+        return {
+          valid: false,
+          status: 'blocked',
+          reason: 'proposal params invalid',
+          capability_key: proposal.capability_key,
+          params: proposal.params,
+          capability_active: true,
+          capability_known: true
+        };
+      }
+      return {
+        valid: true,
+        status: 'proposal',
+        reason: 'proposal validated',
+        capability_key: proposal.capability_key,
+        params: normalizeCapabilityParams(proposal.params),
+        capability_active: true,
+        capability_known: true
+      };
+    }
+
     if (proposal.capability_key === 'pricing.quote_line') {
       if (!isValidPricingQuoteLineProposal(proposal.params)) {
         return {
@@ -1044,6 +1119,9 @@ export class InMemoryOrchestrationBoundary {
     }
     if (capability_key === 'pricing.quote_draft') {
       return 'pricing.quote_draft';
+    }
+    if (capability_key === 'punch.day' || capability_key === 'leave.days' || capability_key === 'leave.balance' || capability_key === 'worktime.summary' || capability_key === 'report.month-by-group') {
+      return 'numa.hr.read';
     }
     return null;
   }
