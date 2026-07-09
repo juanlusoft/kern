@@ -1,10 +1,30 @@
 import type { ChannelIdentityMapping, PrincipalType } from '../../contracts/src/index';
 
-export type RuntimeModuleKey = 'telegram-channel' | 'qwen-orchestrator' | 'holded-read' | 'pacoprint-catalog' | 'numa-postgres-read';
+export type RuntimeModuleKey =
+  | 'telegram-channel'
+  | 'qwen-orchestrator'
+  | 'holded-read'
+  | 'pacoprint-catalog'
+  | 'numa-postgres-read'
+  | 'openwebui-channel';
 
 export interface RuntimeNumaHrConfig {
   time_type_by_label: Record<string, number[]>;
   annual_quota_by_time_type: Record<number, number>;
+}
+
+export interface RuntimeOpenWebUIUserConfig {
+  principal_id: string;
+  organization_id: string;
+  active: boolean;
+  display_name?: string | null;
+}
+
+export interface RuntimeOpenWebUIConfig {
+  host: string;
+  port: number;
+  request_body_limit_bytes: number;
+  users: Record<string, RuntimeOpenWebUIUserConfig>;
 }
 
 export interface RuntimeOrganizationConfig {
@@ -42,6 +62,7 @@ export interface RuntimeOptions {
   evidence_ledger_file_path?: string | null;
   polling_iterations: number;
   numa_hr?: RuntimeNumaHrConfig | null;
+  openwebui_channel?: RuntimeOpenWebUIConfig | null;
 }
 
 export interface RuntimeInstallationConfig {
@@ -79,7 +100,14 @@ export class RuntimeConfigError extends Error {
   }
 }
 
-const SUPPORTED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read', 'pacoprint-catalog', 'numa-postgres-read'];
+const SUPPORTED_MODULES: RuntimeModuleKey[] = [
+  'telegram-channel',
+  'qwen-orchestrator',
+  'holded-read',
+  'pacoprint-catalog',
+  'numa-postgres-read',
+  'openwebui-channel'
+];
 const PRINCIPAL_TYPES: PrincipalType[] = ['human', 'service', 'agent'];
 const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
@@ -93,6 +121,10 @@ function normalizeBoolean(value: unknown): boolean | null {
 
 function normalizePositiveInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function normalizePortNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 65_535 ? value : null;
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -208,6 +240,7 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
       conversation_memory_file_path: null,
       evidence_ledger_file_path: null,
       polling_iterations: 1,
+      openwebui_channel: null,
       numa_hr: {
         time_type_by_label: {
           vacaciones: [5],
@@ -280,6 +313,70 @@ function normalizeNumaHrConfig(value: unknown): RuntimeNumaHrConfig | null {
   return {
     time_type_by_label,
     annual_quota_by_time_type
+  };
+}
+
+function normalizeOpenWebUIUserConfig(value: unknown, field: string): RuntimeOpenWebUIUserConfig {
+  if (!isPlainObject(value)) {
+    fail(field, 'openwebui user mapping must be an object');
+  }
+  const principal_id = normalizeString(value.principal_id);
+  const organization_id = normalizeString(value.organization_id);
+  const active = normalizeBoolean(value.active);
+  const display_name = normalizeString(value.display_name ?? null);
+  if (!principal_id) {
+    fail(field + '.principal_id', 'principal_id is required');
+  }
+  if (!organization_id) {
+    fail(field + '.organization_id', 'organization_id is required');
+  }
+  if (active === null) {
+    fail(field + '.active', 'active must be boolean');
+  }
+  return {
+    principal_id,
+    organization_id,
+    active,
+    display_name
+  };
+}
+
+function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isPlainObject(value)) {
+    fail('runtime_options.openwebui_channel', 'openwebui_channel must be an object');
+  }
+  const host = normalizeString(value.host) ?? '127.0.0.1';
+  const port = normalizePortNumber(value.port);
+  const request_body_limit_bytes = normalizePositiveInteger(value.request_body_limit_bytes) ?? 1_000_000;
+  const usersRaw = value.users;
+  if (!isPlainObject(usersRaw)) {
+    fail('runtime_options.openwebui_channel.users', 'users must be an object');
+  }
+  const users: Record<string, RuntimeOpenWebUIUserConfig> = {};
+  for (const [external_user_id, userValue] of Object.entries(usersRaw)) {
+    const normalizedExternalUserId = normalizeString(external_user_id);
+    if (!normalizedExternalUserId) {
+      fail('runtime_options.openwebui_channel.users', 'user ids must be non-empty strings');
+    }
+    users[normalizedExternalUserId] = normalizeOpenWebUIUserConfig(
+      userValue,
+      'runtime_options.openwebui_channel.users.' + normalizedExternalUserId
+    );
+  }
+  if (Object.keys(users).length === 0) {
+    fail('runtime_options.openwebui_channel.users', 'users must not be empty');
+  }
+  if (port === null) {
+    fail('runtime_options.openwebui_channel.port', 'port must be an integer between 0 and 65535');
+  }
+  return {
+    host,
+    port,
+    request_body_limit_bytes,
+    users
   };
 }
 
@@ -422,6 +519,7 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
   const evidence_ledger_file_path = normalizeString(value.evidence_ledger_file_path ?? null);
   const polling_iterations = normalizePositiveInteger(value.polling_iterations) ?? 1;
   const numa_hr = normalizeNumaHrConfig(value.numa_hr);
+  const openwebui_channel = normalizeOpenWebUIConfig(value.openwebui_channel);
   return {
     telegram_mode,
     telegram_poll_timeout_ms,
@@ -432,7 +530,8 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
     conversation_memory_file_path,
     evidence_ledger_file_path,
     polling_iterations,
-    numa_hr
+    numa_hr,
+    openwebui_channel
   };
 }
 
