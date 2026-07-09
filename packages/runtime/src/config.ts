@@ -11,6 +11,7 @@ export type RuntimeModuleKey =
 export interface RuntimeNumaHrConfig {
   time_type_by_label: Record<string, number[]>;
   annual_quota_by_time_type: Record<number, number>;
+  company_id_by_organization_id?: Record<string, string>;
 }
 
 export interface RuntimeOpenWebUIUserConfig {
@@ -255,6 +256,9 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
         annual_quota_by_time_type: {
           5: 22,
           34: 6
+        },
+        company_id_by_organization_id: {
+          'org-pacoprint': 'company-pacoprint'
         }
       }
     }
@@ -316,12 +320,32 @@ function normalizeNumaHrConfig(value: unknown): RuntimeNumaHrConfig | null {
     annual_quota_by_time_type[timeTypeId] = quota;
   }
 
+  const companyIdByOrganizationIdRaw = value.company_id_by_organization_id;
+  let company_id_by_organization_id: Record<string, string> | undefined;
+  if (companyIdByOrganizationIdRaw !== undefined && companyIdByOrganizationIdRaw !== null) {
+    if (!isPlainObject(companyIdByOrganizationIdRaw)) {
+      fail('runtime_options.numa_hr.company_id_by_organization_id', 'company_id_by_organization_id must be an object');
+    }
+    company_id_by_organization_id = {};
+    for (const [organizationId, companyIdValue] of Object.entries(companyIdByOrganizationIdRaw)) {
+      const normalizedOrganizationId = normalizeString(organizationId);
+      const normalizedCompanyId = normalizeString(companyIdValue);
+      if (!normalizedOrganizationId) {
+        fail('runtime_options.numa_hr.company_id_by_organization_id', 'company_id_by_organization_id keys must be non-empty strings');
+      }
+      if (!normalizedCompanyId) {
+        fail('runtime_options.numa_hr.company_id_by_organization_id.' + organizationId, 'company_id_by_organization_id values must be non-empty strings');
+      }
+      company_id_by_organization_id[normalizedOrganizationId] = normalizedCompanyId;
+    }
+  }
+
   return {
     time_type_by_label,
-    annual_quota_by_time_type
+    annual_quota_by_time_type,
+    company_id_by_organization_id
   };
 }
-
 function normalizeOpenWebUIIdentityConfig(value: unknown): RuntimeOpenWebUIIdentityConfig {
   if (value === undefined || value === null) {
     return {

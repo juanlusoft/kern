@@ -106,20 +106,20 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
       JOIN core_persons p ON p.id = e.person_id
       LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
       WHERE cp.type = 1
+        AND e.company_id = $1
         AND cp.stamp::date = $2::date
         AND (
-          $1::text IS NULL
-          OR cp.person_id::text = $1
-          OR e.code::text = $1
+          $3::text IS NULL
+          OR cp.person_id::text = $3
+          OR e.code::text = $3
           OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($3))
         )
       ORDER BY cp.stamp ASC, cp.id ASC
       LIMIT $4 + 1
     `.trim(),
-    values: [input.employee_id ?? null, input.date, buildLikePattern(input.employee_name ?? null), input.limit]
+    values: [input.organization_id, input.date, buildLikePattern(input.employee_name ?? null), input.limit]
   };
 }
-
 function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalanceParams): PgSqlStatement {
   const yearStart = `${input.year}-01-01`;
   const yearEnd = `${input.year + 1}-01-01`;
@@ -130,7 +130,7 @@ function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalancePa
           e.person_id::text AS employee_id
         FROM org_employees e
         JOIN core_persons p ON p.id = e.person_id
-        WHERE e.organization_id = $1
+        WHERE e.company_id = $1
           AND e.active = TRUE
           AND (
             $5::text IS NULL
@@ -157,7 +157,7 @@ function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalancePa
        AND r.arg_time_type_1 = rt.time_type_id
        AND r.arg_date_1 >= $2::date
        AND r.arg_date_1 < $3::date
-      LEFT JOIN ta_time_types tt ON tt.id = rt.time_type_id
+      LEFT JOIN ta_time_types tt ON tt.id = rt.time_type_id AND tt.company_id = $1
       GROUP BY rt.time_type_id, tt.name
       ORDER BY rt.time_type_id ASC
     `.trim(),
@@ -194,6 +194,7 @@ export function buildNumaHrWorktimeSummaryStatement(input: NumaHrWorktimeSummary
       JOIN core_persons p ON p.id = e.person_id
       LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
       WHERE cp.type = 1
+        AND e.company_id = $1
         AND cp.stamp::date >= $2::date
         AND cp.stamp::date < $3::date
         AND (
@@ -217,10 +218,11 @@ export function buildNumaHrReportMonthByGroupStatement(input: NumaHrReportMonthB
       WITH group_scope AS (
         SELECT g.id
         FROM org_employee_groups g
-        WHERE (
-          $2::text IS NULL
-          OR g.id::text = $2
-        )
+        WHERE g.company_id = $1
+          AND (
+            $2::text IS NULL
+            OR g.id::text = $2
+          )
         AND (
           $3::text IS NULL
           OR unaccent(lower(g.name)) LIKE unaccent(lower($3))
@@ -239,7 +241,7 @@ export function buildNumaHrReportMonthByGroupStatement(input: NumaHrReportMonthB
         JOIN org_employees e ON e.id = ge.employee_id
         JOIN core_persons p ON p.id = e.person_id
         WHERE ge.status = TRUE
-          AND e.organization_id = $1
+          AND e.company_id = $1
       ),
       punch_summary AS (
         SELECT
@@ -297,7 +299,6 @@ export function buildNumaHrReportMonthByGroupStatement(input: NumaHrReportMonthB
     values: [input.organization_id, input.group_id ?? null, buildLikePattern(input.group_name ?? null), start, end, input.limit, input.offset]
   };
 }
-
 function pairWorkedMinutes(rows: PgHrWorktimeSummaryPunchRow[]): number | null {
   if (rows.length === 0) {
     return null;

@@ -40,6 +40,7 @@ import {
   type PgHrReportMonthByGroupRow,
   type PgHrWorktimeSummaryRow
 } from './hr';
+import { normalizeNumaCompanyIdByOrganizationId, resolveNumaCompanyId, type NumaCompanyIdByOrganizationId } from './company-scope';
 
 export const NUMA_POSTGRES_READ_ADAPTER_ID = 'numa-postgres' as const;
 export const NUMA_POSTGRES_SOURCE_SYSTEM = 'postgres' as const;
@@ -92,6 +93,7 @@ export interface PgReadAdapterOptions {
   current_window_hours?: number;
   employee_find_limit?: number;
   punches_list_limit?: number;
+  company_id_by_organization_id?: Record<string, string>;
 }
 
 export interface PgPresenceSearchRow {
@@ -213,7 +215,7 @@ function buildEmployeeFindStatement(input: PresenceEmployeeFindParams): PgSqlSta
         e.email,
         e.active
       FROM kern.employees e
-      WHERE e.organization_id = $1
+      WHERE e.company_id = $1
         AND (
           unaccent(lower(COALESCE(e.display_name, ''))) LIKE unaccent(lower($2))
           OR unaccent(lower(COALESCE(e.email, ''))) LIKE unaccent(lower($2))
@@ -240,8 +242,8 @@ function buildPunchesListStatement(input: PresencePunchesListParams): PgSqlState
       FROM kern.employee_punches p
       JOIN kern.employees e
         ON e.employee_id = p.employee_id
-       AND e.organization_id = p.organization_id
-      WHERE p.organization_id = $1
+       AND e.company_id = p.company_id
+      WHERE p.company_id = $1
         AND ($2::text IS NULL OR p.employee_id = $2)
       ORDER BY p.punched_at DESC, p.punch_id DESC
       LIMIT $3 + 1
@@ -260,7 +262,7 @@ function buildCurrentPresenceStatement(input: PresenceCurrentParams, windowStart
           e.principal_id,
           e.display_name
         FROM kern.employees e
-        WHERE e.organization_id = $1
+        WHERE e.company_id = $1
           AND e.active = TRUE
           AND (
             $2 = 'organization'
@@ -277,7 +279,7 @@ function buildCurrentPresenceStatement(input: PresenceCurrentParams, windowStart
         FROM kern.employee_punches p
         JOIN active_employees ae
           ON ae.employee_id = p.employee_id
-        WHERE p.organization_id = $1
+        WHERE p.company_id = $1
           AND timezone('Europe/Madrid', p.punched_at) >= $5::timestamp
           AND timezone('Europe/Madrid', p.punched_at) < $6::timestamp
       ),
@@ -900,6 +902,7 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
   private readonly currentWindowHours: number;
   private readonly employeeFindLimit: number;
   private readonly punchesListLimit: number;
+  private readonly companyIdByOrganizationId: NumaCompanyIdByOrganizationId;
   private readonly now: () => Date;
 
   constructor(options: PgReadAdapterOptions) {
@@ -912,7 +915,12 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
     this.currentWindowHours = clampInteger(options.current_window_hours ?? 24, 1, 24);
     this.employeeFindLimit = options.employee_find_limit ?? 25;
     this.punchesListLimit = options.punches_list_limit ?? 25;
+    this.companyIdByOrganizationId = normalizeNumaCompanyIdByOrganizationId(options.company_id_by_organization_id ?? null, 'company_id_by_organization_id');
     this.now = options.now ?? (() => new Date());
+  }
+
+  private resolveCompanyId(organizationId: string): string {
+    return resolveNumaCompanyId(organizationId, this.companyIdByOrganizationId);
   }
 
   findEmployee(input: PresenceEmployeeFindParams): PresenceEmployeeFindResult {
@@ -922,7 +930,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       term: input.term.trim(),
       limit: normalizeLimit(input.limit, this.employeeFindLimit)
     };
-    const statement = buildEmployeeFindStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildEmployeeFindStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgPresenceSearchRow>({
       query_id: 'employee.find',
       statement,
@@ -940,7 +949,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       limit: normalizeLimit(input.limit, this.punchesListLimit),
       offset: normalizeOffset(input.offset)
     };
-    const statement = buildPunchesListStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildPunchesListStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgPresencePunchRow>({
       query_id: 'punches.list',
       statement,
@@ -986,7 +996,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
     const currentWindowHours = normalized.current_window_hours ?? 24;
     const windowStart = formatMadridTimestamp(new Date(now.getTime() - currentWindowHours * 60 * 60 * 1000));
     const windowEnd = formatMadridTimestamp(now);
-    const statement = buildCurrentPresenceStatement(normalized, windowStart, windowEnd);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildCurrentPresenceStatement({ ...normalized, organization_id: companyId }, windowStart, windowEnd);
     const rows = this.queryRunner.query<PgPresenceCurrentRow>({
       query_id: 'presence.current',
       statement,
@@ -1010,7 +1021,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       employee_name: normalizeString(input.employee_name),
       date: input.date.trim()
     };
-    const statement = buildNumaHrPunchDayStatement({ ...normalized, limit: this.punchesListLimit });
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrPunchDayStatement({ ...normalized, organization_id: companyId, limit: this.punchesListLimit });
     const rows = this.queryRunner.query<PgHrPunchDayRow>({
       query_id: 'punch.day',
       statement,
@@ -1030,7 +1042,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       time_type_ids: input.time_type_ids.map((entry) => Math.trunc(entry)),
       include_pending: Boolean(input.include_pending)
     };
-    const statement = buildNumaHrLeaveDaysStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrLeaveDaysStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrLeaveDaysRow>({
       query_id: 'leave.days',
       statement,
@@ -1051,7 +1064,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       annual_quota_by_time_type: { ...input.annual_quota_by_time_type },
       include_pending: Boolean(input.include_pending)
     };
-    const statement = buildNumaHrLeaveBalanceStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrLeaveBalanceStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrLeaveDaysRow>({
       query_id: 'leave.balance',
       statement,
@@ -1071,7 +1085,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       date_to: input.date_to.trim(),
       theoretical_workday_minutes: input.theoretical_workday_minutes === undefined || input.theoretical_workday_minutes === null ? null : Math.trunc(input.theoretical_workday_minutes)
     };
-    const statement = buildNumaHrWorktimeSummaryStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrWorktimeSummaryStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrWorktimeSummaryRow>({
       query_id: 'worktime.summary',
       statement,
@@ -1092,7 +1107,8 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       limit: Math.trunc(input.limit),
       offset: Math.trunc(input.offset)
     };
-    const statement = buildNumaHrReportMonthByGroupStatement(normalized);
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrReportMonthByGroupStatement({ ...normalized, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrReportMonthByGroupRow>({
       query_id: 'report.month-by-group',
       statement,

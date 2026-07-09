@@ -7,6 +7,8 @@ import {
   type PgPresenceQueryRunner
 } from '../src/index';
 
+const company_id_by_organization_id = { 'org-acme': 'company-acme' };
+
 function createRunner(responseByQueryId: Record<string, unknown[]>) {
   const calls: Array<{ query_id: string; statement: string; transactionRole: string; values: readonly unknown[] }> = [];
   const runner: PgPresenceQueryRunner = {
@@ -37,6 +39,7 @@ test('presence adapter search uses unaccent and closed query catalog', () => {
   });
   const adapter = createPgReadAdapter({
     queryRunner: runner,
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -52,17 +55,49 @@ test('presence adapter search uses unaccent and closed query catalog', () => {
   const result = adapter.findEmployee({
     organization_id: 'org-acme',
     correlation_id: 'corr-001',
-    term: 'jos\u00E9',
+    term: 'Jos\u00E9',
     limit: 5
   });
 
   assert.equal(result.records[0]?.display_name, 'Jos\u00E9 Alvarez');
   assert.match(calls[0].statement, /unaccent\(lower/);
+  assert.match(calls[0].statement, /company_id = \$1/);
+  assert.equal(calls[0].values[0], 'company-acme');
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.equal(calls[0].transactionRole, NUMA_POSTGRES_ROLE);
   assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current', 'punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group']);
 });
 
+test('presence adapter fails closed when company mapping is missing', () => {
+  const { runner } = createRunner({
+    'employee.find': []
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id: {},
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  assert.throws(
+    () =>
+      adapter.findEmployee({
+        organization_id: 'org-acme',
+        correlation_id: 'corr-missing-company-id',
+        term: 'Jos\u00E9',
+        limit: 5
+      }),
+    /Missing Numa company_id mapping/
+  );
+});
 test('presence adapter truncates punch lists and resolves current presence from CTE-based rows', () => {
   const { runner, calls } = createRunner({
     'punches.list': [
@@ -109,6 +144,7 @@ test('presence adapter truncates punch lists and resolves current presence from 
   });
   const adapter = createPgReadAdapter({
     queryRunner: runner,
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -145,6 +181,7 @@ test('presence adapter truncates punch lists and resolves current presence from 
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.match(calls[0].statement, /OFFSET \$4/);
   assert.match(calls[1].statement, /WITH active_employees AS/);
+    assert.match(calls[1].statement, /company_id = \$1/);
   assert.match(calls[1].statement, /last_directional_punch/);
   assert.equal(current.status, 'inside');
   assert.equal(current.citations[0]?.rowCount, 3);
@@ -168,6 +205,7 @@ test('presence adapter returns unknown for neutral-only punches and no_data for 
   const adapter = createPgReadAdapter({
     queryRunner: runner,
     now: () => new Date('2026-07-03T18:30:00.000Z'),
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -201,6 +239,7 @@ test('presence adapter returns unknown for neutral-only punches and no_data for 
   const emptyAdapter = createPgReadAdapter({
     queryRunner: emptyRunner.runner,
     now: () => new Date('2026-07-03T18:30:00.000Z'),
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -247,6 +286,7 @@ test('presence adapter uses a backward-moving window for night shifts', () => {
   const adapter = createPgReadAdapter({
     queryRunner: runner,
     now: () => new Date('2026-07-04T01:30:00.000Z'),
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -276,6 +316,7 @@ test('presence adapter uses a backward-moving window for night shifts', () => {
   assert.equal(calls[0].values[4], '2026-07-03 21:30:00');
   assert.equal(calls[0].values[5], '2026-07-04 03:30:00');
   assert.match(calls[0].statement, /timezone\('Europe\/Madrid', p\.punched_at\)/);
+  assert.match(calls[0].statement, /company_id = \$1/);
 });
 
 
@@ -335,6 +376,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
   });
   const adapter = createPgReadAdapter({
     queryRunner: runner,
+    company_id_by_organization_id,
     connection: {
       host: 'postgres.example.test',
       port: 5432,
@@ -396,9 +438,13 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(worktime.employee_name, 'Ana Garc\u00eda');
   assert.equal(report.group_name, 'Martos');
   assert.match(calls[0].statement, /unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$3\)\)/);
+  assert.match(calls[0].statement, /company_id = \$1/);
   const punchDaySearchTerm = String(calls[0].values[2]);
   assert.equal(punchDaySearchTerm.toLowerCase(), '%ana garc\u00eda%');
+  assert.equal(calls[1].values[0], 'company-acme');
   assert.equal(calls[1].values[5], '%Ana Garc\u00eda%');
+  assert.equal(calls[2].values[0], 'company-acme');
   assert.equal(calls[2].values[5], '%Juan Mag\u00e1n%');
+  assert.equal(calls[4].values[0], 'company-acme');
   assert.equal(calls[4].values[2], '%Martos%');
 });

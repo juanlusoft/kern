@@ -114,6 +114,9 @@ function buildInstallationConfig(memoryFilePath: string, evidenceFilePath: strin
         annual_quota_by_time_type: {
           5: 22,
           34: 6
+        },
+        company_id_by_organization_id: {
+          'org-numa-hr-tools-test': 'company-numa-hr-tools-test'
         }
       }
     }
