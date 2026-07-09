@@ -525,3 +525,71 @@ for (const demoCase of demoCases) {
   });
 }
 
+
+
+const variableEmployeeCases: Array<{
+  name: string;
+  text: string;
+  capabilityKey: HrToolName;
+  args: Record<string, unknown>;
+  expectedMethod: HrCall['method'];
+}> = [
+  {
+    name: 'leave days for Ana Garc\u00eda',
+    text: 'D\u00edas de asuntos propios del trabajador Ana Garc\u00eda.',
+    capabilityKey: 'leave.days',
+    args: {
+      employee_name: 'Ana Garc\u00eda',
+      year: '2026',
+      time_type_labels: ['asuntos propios']
+    },
+    expectedMethod: 'leaveDays'
+  },
+  {
+    name: 'leave balance for Juan Mag\u00e1n',
+    text: 'D\u00edas vacaciones del trabajador Juan Mag\u00e1n.',
+    capabilityKey: 'leave.balance',
+    args: {
+      employee_name: 'Juan Mag\u00e1n',
+      year: '2026',
+      time_type_labels: ['vacaciones']
+    },
+    expectedMethod: 'leaveBalance'
+  },
+  {
+    name: 'punch day for Pepito P\u00e9rez',
+    text: 'A qu\u00e9 hora ha fichado esta ma\u00f1ana Pepito P\u00e9rez.',
+    capabilityKey: 'punch.day',
+    args: {
+      employee_name: 'Pepito P\u00e9rez',
+      date: '2026-07-01'
+    },
+    expectedMethod: 'punchDay'
+  },
+  {
+    name: 'report month by group for MANINDU MARTOS',
+    text: 'Informe del mes de junio de los trabajadores del centro MANINDU MARTOS.',
+    capabilityKey: 'report.month-by-group',
+    args: {
+      group_name: 'MANINDU MARTOS',
+      year: '2026',
+      month: 6
+    },
+    expectedMethod: 'reportMonthByGroup'
+  }
+];
+
+for (const variableCase of variableEmployeeCases) {
+  test('runtime slice forwards variable HR names: ' + variableCase.name, () => {
+    const { hrCalls, channelResult } = startRuntimeForCase(variableCase.capabilityKey, variableCase.args, variableCase.text, 300);
+
+    assert.equal(hrCalls.length > 0, true);
+    assert.equal(hrCalls[0].method, variableCase.expectedMethod);
+    if (variableCase.capabilityKey === 'report.month-by-group') {
+      assert.equal((hrCalls[0].input as { group_name?: string }).group_name, 'MANINDU MARTOS');
+    } else {
+      assert.equal((hrCalls[0].input as { employee_name?: string }).employee_name, variableCase.args.employee_name);
+    }
+    assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
+  });
+}

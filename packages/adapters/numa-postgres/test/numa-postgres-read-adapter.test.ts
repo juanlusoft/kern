@@ -277,3 +277,128 @@ test('presence adapter uses a backward-moving window for night shifts', () => {
   assert.equal(calls[0].values[5], '2026-07-04 03:30:00');
   assert.match(calls[0].statement, /timezone\('Europe\/Madrid', p\.punched_at\)/);
 });
+
+
+test('HR adapter forwards variable employee and group names without tying behavior to a single fixture', () => {
+  const { runner, calls } = createRunner({
+    'punch.day': [
+      {
+        punch_id: 'punch-001',
+        employee_id: 'emp-002',
+        employee_name: 'Ana Garc\u00eda',
+        punched_at: '2026-07-02T08:00:00.000Z',
+        punching_point_id: 1,
+        point_name: 'ENTRADA',
+        direction: 'in'
+      }
+    ],
+    'leave.days': [
+      {
+        time_type_id: 34,
+        time_type_name: 'Asuntos propios',
+        days_disfrutados: 1,
+        days_pendientes: 0
+      }
+    ],
+    'leave.balance': [
+      {
+        time_type_id: 5,
+        time_type_name: 'Vacaciones',
+        days_disfrutados: 4,
+        days_pendientes: 1
+      }
+    ],
+    'worktime.summary': [
+      {
+        work_date: '2026-07-02',
+        punches: [],
+        first_entry_at: '2026-07-02T08:00:00.000Z',
+        last_exit_at: '2026-07-02T16:00:00.000Z',
+        punch_count: 2,
+        worked_minutes: 480,
+        theoretical_minutes: 480,
+        overtime_minutes: 0
+      }
+    ],
+    'report.month-by-group': [
+      {
+        employee_id: 'emp-002',
+        employee_name: 'Ana Garc\u00eda',
+        active: true,
+        days_with_punch: 2,
+        punches: [],
+        leave_days: 1,
+        vacation_days: 1,
+        worked_minutes: 480
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const punchDay = adapter.punchDay({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-punch-day-ana',
+    employee_name: 'ANA GARC\u00cdA',
+    date: '2026-07-02'
+  });
+  const leaveDays = adapter.leaveDays({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-days-ana',
+    employee_name: 'Ana Garc\u00eda',
+    year: 2026,
+    time_type_ids: [34],
+    include_pending: false
+  });
+  const leaveBalance = adapter.leaveBalance({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-balance-juan',
+    employee_name: 'Juan Mag\u00e1n',
+    year: 2026,
+    time_type_ids: [5],
+    annual_quota_by_time_type: { 5: 22 },
+    include_pending: false
+  });
+  const worktime = adapter.worktimeSummary({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-worktime-ana',
+    employee_name: 'Ana Garc\u00eda',
+    date_from: '2026-07-01',
+    date_to: '2026-07-31',
+    theoretical_workday_minutes: 480
+  });
+  const report = adapter.reportMonthByGroup({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-report-martos',
+    group_name: 'Martos',
+    year: 2026,
+    month: 7,
+    limit: 10,
+    offset: 0
+  });
+
+  const punchDayEmployeeName = punchDay.employee_name;
+  assert.ok(punchDayEmployeeName);
+  assert.equal(punchDayEmployeeName.toLowerCase(), 'ana garc\u00eda');
+  assert.equal(leaveDays.employee_name, 'Ana Garc\u00eda');
+  assert.equal(leaveBalance.employee_name, 'Juan Mag\u00e1n');
+  assert.equal(worktime.employee_name, 'Ana Garc\u00eda');
+  assert.equal(report.group_name, 'Martos');
+  assert.match(calls[0].statement, /unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$3\)\)/);
+  const punchDaySearchTerm = String(calls[0].values[2]);
+  assert.equal(punchDaySearchTerm.toLowerCase(), '%ana garc\u00eda%');
+  assert.equal(calls[1].values[5], '%Ana Garc\u00eda%');
+  assert.equal(calls[2].values[5], '%Juan Mag\u00e1n%');
+  assert.equal(calls[4].values[2], '%Martos%');
+});
