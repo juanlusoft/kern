@@ -181,7 +181,7 @@ test('presence adapter truncates punch lists and resolves current presence from 
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.match(calls[0].statement, /OFFSET \$4/);
   assert.match(calls[1].statement, /WITH active_employees AS/);
-    assert.match(calls[1].statement, /company_id = \$1/);
+  assert.match(calls[1].statement, /company_id = \$1/);
   assert.match(calls[1].statement, /last_directional_punch/);
   assert.equal(current.status, 'inside');
   assert.equal(current.citations[0]?.rowCount, 3);
@@ -437,6 +437,12 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(leaveBalance.employee_name, 'Juan Mag\u00e1n');
   assert.equal(worktime.employee_name, 'Ana Garc\u00eda');
   assert.equal(report.group_name, 'Martos');
+  assert.match(calls[1].statement, /company_id = \$1/);
+  assert.match(calls[2].statement, /company_id = \$1/);
+  assert.doesNotMatch(calls[1].statement, /\be\.(?:active|organization_id)\b/);
+  assert.doesNotMatch(calls[2].statement, /\be\.(?:active|organization_id)\b/);
+  assert.match(calls[4].statement, /TRUE AS active/);
+  assert.doesNotMatch(calls[4].statement, /\be\.(?:active|organization_id)\b/);
   assert.match(calls[0].statement, /unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$3\)\)/);
   assert.match(calls[0].statement, /company_id = \$1/);
   const punchDaySearchTerm = String(calls[0].values[2]);

@@ -131,7 +131,6 @@ function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalancePa
         FROM org_employees e
         JOIN core_persons p ON p.id = e.person_id
         WHERE e.company_id = $1
-          AND e.active = TRUE
           AND (
             $5::text IS NULL
             OR e.person_id::text = $5
@@ -235,7 +234,7 @@ export function buildNumaHrReportMonthByGroupStatement(input: NumaHrReportMonthB
           e.id AS employee_row_id,
           e.person_id::text AS employee_id,
           concat_ws(' ', p.name, p.surname) AS employee_name,
-          e.active
+          TRUE AS active
         FROM org_employee_groups_employees ge
         JOIN group_scope gs ON gs.id = ge.group_id
         JOIN org_employees e ON e.id = ge.employee_id
@@ -284,7 +283,7 @@ export function buildNumaHrReportMonthByGroupStatement(input: NumaHrReportMonthB
       SELECT
         e.employee_id,
         e.employee_name,
-        e.active,
+          TRUE AS active,
         COALESCE(ps.days_with_punch, 0) AS days_with_punch,
         COALESCE(ps.punches, '[]'::jsonb) AS punches,
         COALESCE(ls.leave_days, 0) AS leave_days,

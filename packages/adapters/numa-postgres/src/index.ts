@@ -566,8 +566,7 @@ function buildReportMonthByGroupStatement(input: NumaHrReportMonthByGroupParams)
       WITH emp AS (
         SELECT
           e.person_id::text AS employee_id,
-          concat_ws(' \n', p.name, p.surname) AS employee_name,
-          e.active
+          concat_ws(' ', p.name, p.surname) AS employee_name
         FROM org_employee_groups_employees ge
         JOIN org_employees e ON e.id = ge.employee_id
         JOIN core_persons p ON p.id = e.person_id
@@ -582,7 +581,7 @@ function buildReportMonthByGroupStatement(input: NumaHrReportMonthByGroupParams)
         COALESCE(SUM(0), 0) AS worked_minutes,
         COALESCE(COUNT(DISTINCT r.arg_date_1), 0) AS leave_days,
         COALESCE(COUNT(DISTINCT r.arg_date_1), 0) AS vacation_days,
-        emp.active
+        TRUE AS active
       FROM emp
       LEFT JOIN core_punches cp
         ON cp.person_id::text = emp.employee_id
@@ -595,7 +594,7 @@ function buildReportMonthByGroupStatement(input: NumaHrReportMonthByGroupParams)
        AND r.val_accepted IS TRUE
        AND r.arg_date_1 >= $3::date
        AND r.arg_date_1 < $4::date
-      GROUP BY emp.employee_id, emp.employee_name, emp.active
+      GROUP BY emp.employee_id, emp.employee_name
       ORDER BY emp.employee_name ASC
       LIMIT $5 + 1
       OFFSET $6
