@@ -90,7 +90,7 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
   return {
     text: `
       SELECT
-        cp.punch_id,
+        cp.id AS punch_id,
         cp.person_id::text AS employee_id,
         concat_ws(' ', p.name, p.surname) AS employee_name,
         cp.stamp::text AS punched_at,
