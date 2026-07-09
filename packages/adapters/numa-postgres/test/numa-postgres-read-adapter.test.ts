@@ -326,7 +326,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
       {
         punch_id: 'punch-001',
         employee_id: 'emp-002',
-        employee_name: 'Ana Garc\u00eda',
+        employee_name: 'Ana García',
         punched_at: '2026-07-02T08:00:00.000Z',
         punching_point_id: 1,
         point_name: 'ENTRADA',
@@ -364,7 +364,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
     'report.month-by-group': [
       {
         employee_id: 'emp-002',
-        employee_name: 'Ana Garc\u00eda',
+        employee_name: 'Ana García',
         active: true,
         days_with_punch: 2,
         punches: [],
@@ -392,13 +392,13 @@ test('HR adapter forwards variable employee and group names without tying behavi
   const punchDay = adapter.punchDay({
     organization_id: 'org-acme',
     correlation_id: 'corr-punch-day-ana',
-    employee_name: 'ANA GARC\u00cdA',
+    employee_name: 'ANA GARCÍA',
     date: '2026-07-02'
   });
   const leaveDays = adapter.leaveDays({
     organization_id: 'org-acme',
     correlation_id: 'corr-leave-days-ana',
-    employee_name: 'Ana Garc\u00eda',
+    employee_name: 'Ana García',
     year: 2026,
     time_type_ids: [34],
     include_pending: false
@@ -406,7 +406,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
   const leaveBalance = adapter.leaveBalance({
     organization_id: 'org-acme',
     correlation_id: 'corr-leave-balance-juan',
-    employee_name: 'Juan Mag\u00e1n',
+    employee_name: 'Juan Magán',
     year: 2026,
     time_type_ids: [5],
     annual_quota_by_time_type: { 5: 22 },
@@ -415,7 +415,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
   const worktime = adapter.worktimeSummary({
     organization_id: 'org-acme',
     correlation_id: 'corr-worktime-ana',
-    employee_name: 'Ana Garc\u00eda',
+    employee_name: 'Ana García',
     date_from: '2026-07-01',
     date_to: '2026-07-31',
     theoretical_workday_minutes: 480
@@ -432,10 +432,10 @@ test('HR adapter forwards variable employee and group names without tying behavi
 
   const punchDayEmployeeName = punchDay.employee_name;
   assert.ok(punchDayEmployeeName);
-  assert.equal(punchDayEmployeeName.toLowerCase(), 'ana garc\u00eda');
-  assert.equal(leaveDays.employee_name, 'Ana Garc\u00eda');
-  assert.equal(leaveBalance.employee_name, 'Juan Mag\u00e1n');
-  assert.equal(worktime.employee_name, 'Ana Garc\u00eda');
+  assert.equal(punchDayEmployeeName.toLowerCase(), 'ana garcía');
+  assert.equal(leaveDays.employee_name, 'Ana García');
+  assert.equal(leaveBalance.employee_name, 'Juan Magán');
+  assert.equal(worktime.employee_name, 'Ana García');
   assert.equal(report.group_name, 'Martos');
   assert.match(calls[1].statement, /company_id = \$1/);
   assert.match(calls[2].statement, /company_id = \$1/);
@@ -443,14 +443,61 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.doesNotMatch(calls[2].statement, /\be\.(?:active|organization_id)\b/);
   assert.match(calls[4].statement, /TRUE AS active/);
   assert.doesNotMatch(calls[4].statement, /\be\.(?:active|organization_id)\b/);
-  assert.match(calls[0].statement, /unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$3\)\)/);
+  assert.match(calls[0].statement, /cp\.person_id::text = \$3/);
+  assert.match(calls[0].statement, /e\.code::text = \$3/);
+  assert.match(calls[0].statement, /LIKE unaccent\(lower\(\$4\)\)/);
   assert.match(calls[0].statement, /company_id = \$1/);
-  const punchDaySearchTerm = String(calls[0].values[2]);
-  assert.equal(punchDaySearchTerm.toLowerCase(), '%ana garc\u00eda%');
+  assert.equal(calls[0].values[2], null);
+  assert.equal(String(calls[0].values[3]).toLowerCase(), '%ana garcía%');
+  assert.equal(calls[0].values[4], 25);
   assert.equal(calls[1].values[0], 'company-acme');
-  assert.equal(calls[1].values[5], '%Ana Garc\u00eda%');
+  assert.equal(calls[1].values[5], '%Ana García%');
   assert.equal(calls[2].values[0], 'company-acme');
-  assert.equal(calls[2].values[5], '%Juan Mag\u00e1n%');
+  assert.equal(calls[2].values[5], '%Juan Magán%');
   assert.equal(calls[4].values[0], 'company-acme');
   assert.equal(calls[4].values[2], '%Martos%');
+});
+
+test('punch.day binds employee_id exactly when provided', () => {
+  const { runner, calls } = createRunner({
+    'punch.day': [
+      {
+        punch_id: 'punch-002',
+        employee_id: 'emp-002',
+        employee_name: 'Ana García',
+        punched_at: '2026-07-02T08:00:00.000Z',
+        punching_point_id: 1,
+        point_name: 'ENTRADA',
+        direction: 'in'
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.punchDay({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-punch-day-id',
+    employee_id: 'emp-002',
+    date: '2026-07-02'
+  });
+
+  assert.equal(result.employee_id, 'emp-002');
+  assert.match(calls[0].statement, /cp\.person_id::text = \$3/);
+  assert.match(calls[0].statement, /e\.code::text = \$3/);
+  assert.equal(calls[0].values[2], 'emp-002');
+  assert.equal(calls[0].values[3], null);
+  assert.equal(calls[0].values[4], 25);
 });

@@ -112,12 +112,15 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
           $3::text IS NULL
           OR cp.person_id::text = $3
           OR e.code::text = $3
-          OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($3))
+          OR (
+            $4::text IS NOT NULL
+            AND unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($4))
+          )
         )
       ORDER BY cp.stamp ASC, cp.id ASC
-      LIMIT $4 + 1
+      LIMIT $5 + 1
     `.trim(),
-    values: [input.organization_id, input.date, buildLikePattern(input.employee_name ?? null), input.limit]
+    values: [input.organization_id, input.date, input.employee_id ?? null, buildLikePattern(input.employee_name ?? null), input.limit]
   };
 }
 function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalanceParams): PgSqlStatement {
