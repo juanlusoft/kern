@@ -19,6 +19,11 @@ export interface OpenWebUIIdentityMapping {
   display_name?: string | null;
 }
 
+export interface OpenWebUIIdentityConfig {
+  source: 'body_user' | 'header';
+  header: string | null;
+}
+
 export interface OpenWebUIInstallationConfig {
   channel: 'openwebui';
   installation_id: string;
@@ -26,6 +31,7 @@ export interface OpenWebUIInstallationConfig {
   host: string;
   port: number;
   request_body_limit_bytes: number;
+  identity?: OpenWebUIIdentityConfig | null;
   identity_mappings: OpenWebUIIdentityMapping[];
 }
 
@@ -115,8 +121,18 @@ export interface OpenWebUIChannelServerHandle {
   close(): Promise<void>;
 }
 
+export type OpenWebUIRequestHeaders = IncomingMessage['headers'];
+
+export interface OpenWebUIRequestContext {
+  headers?: OpenWebUIRequestHeaders | null;
+}
+
 function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeHeaderName(value: unknown): string | null {
+  return normalizeOptionalString(value)?.toLowerCase() ?? null;
 }
 
 function normalizeIdentifier(value: unknown): string | null {
@@ -153,6 +169,38 @@ function cloneSourceEvidence(value: unknown): SourceEvidence[] | null {
     );
   });
   return records.length > 0 ? records.map((record) => ({ ...record })) : null;
+}
+
+function getOpenWebUIIdentityConfig(installation: OpenWebUIInstallationConfig): OpenWebUIIdentityConfig {
+  return installation.identity ?? { source: 'body_user', header: null };
+}
+
+function getOpenWebUIHeaderValue(headers: OpenWebUIRequestHeaders | null | undefined, headerName: string): string | null {
+  if (!headers) {
+    return null;
+  }
+  const normalizedHeaderName = headerName.toLowerCase();
+  const value = headers[normalizedHeaderName] ?? headers[headerName as keyof OpenWebUIRequestHeaders];
+  if (Array.isArray(value)) {
+    return normalizeOptionalString(value[0]);
+  }
+  return normalizeOptionalString(value);
+}
+
+function resolveOpenWebUIExternalUserId(input: {
+  installation: OpenWebUIInstallationConfig;
+  request: OpenWebUIChatCompletionsRequest;
+  headers?: OpenWebUIRequestHeaders | null;
+}): string | null {
+  const identity = getOpenWebUIIdentityConfig(input.installation);
+  if (identity.source === 'header') {
+    const headerName = normalizeHeaderName(identity.header);
+    if (!headerName) {
+      return null;
+    }
+    return normalizeIdentifier(getOpenWebUIHeaderValue(input.headers, headerName));
+  }
+  return normalizeIdentifier(input.request.user);
 }
 
 function extractSourceEvidence(outcome: OrchestrationOutcome): SourceEvidence[] | null {
@@ -375,6 +423,8 @@ function buildErrorBody(input: {
 function buildValidatedRequest(input: {
   installation: OpenWebUIInstallationConfig;
   request: OpenWebUIChatCompletionsRequest;
+  headers?: OpenWebUIRequestHeaders | null;
+  externalUserId?: string | null;
 }):
   | {
       request_id: string;
@@ -388,7 +438,11 @@ function buildValidatedRequest(input: {
   if (input.request.stream === true) {
     return null;
   }
-  const externalUserId = normalizeIdentifier(input.request.user);
+  const externalUserId = input.externalUserId ?? resolveOpenWebUIExternalUserId({
+    installation: input.installation,
+    request: input.request,
+    headers: input.headers
+  });
   if (!externalUserId) {
     return null;
   }
@@ -441,13 +495,14 @@ export class OpenWebUIChannelAdapter {
   constructor(options: OpenWebUIChannelAdapterOptions) {
     this.installation = {
       ...options.installation,
+      identity: options.installation.identity ? { ...options.installation.identity } : undefined,
       identity_mappings: options.installation.identity_mappings.map((mapping) => ({ ...mapping }))
     };
     this.orchestrationBoundary = options.orchestrationBoundary;
     this.now = options.now ?? (() => new Date());
   }
 
-  handleChatCompletionRequest(request: unknown): OpenWebUIChannelResult {
+  handleChatCompletionRequest(request: unknown, context: OpenWebUIRequestContext = {}): OpenWebUIChannelResult {
     const normalizedRequest = isPlainObject(request) ? (request as unknown as OpenWebUIChatCompletionsRequest) : null;
     if (!normalizedRequest) {
       const request_id = 'openwebui:' + this.installation.installation_id + ':' + randomUUID();
@@ -476,6 +531,11 @@ export class OpenWebUIChannelAdapter {
     const request_id = buildRequestId({ installation_id: this.installation.installation_id, request: normalizedRequest });
     const baseCorrelationId =
       normalizeOptionalString(normalizedRequest.correlation_id) ?? normalizeOptionalString(normalizedRequest.kern?.correlation_id) ?? null;
+    const externalUserId = resolveOpenWebUIExternalUserId({
+      installation: this.installation,
+      request: normalizedRequest,
+      headers: context.headers
+    });
 
     appendEvidence(this.orchestrationBoundary, this.now, {
       organization_id: this.installation.identity_mappings[0]?.organization_id ?? 'unknown',
@@ -486,14 +546,16 @@ export class OpenWebUIChannelAdapter {
         channel: 'openwebui',
         request_id,
         model: normalizeOptionalString(normalizedRequest.model),
-        has_user: Boolean(normalizedRequest.user),
+        has_user: Boolean(externalUserId),
         message_count: Array.isArray(normalizedRequest.messages) ? normalizedRequest.messages.length : 0
       }
     });
 
     const validated = buildValidatedRequest({
       installation: this.installation,
-      request: normalizedRequest
+      request: normalizedRequest,
+      headers: context.headers,
+      externalUserId
     });
     if (!validated) {
       const correlation_id = baseCorrelationId ?? 'openwebui:' + this.installation.installation_id + ':' + request_id;
@@ -797,7 +859,9 @@ export function createOpenWebUIChannelServer(options: {
       return;
     }
 
-    const result = adapter.handleChatCompletionRequest(parsed);
+    const result = adapter.handleChatCompletionRequest(parsed, {
+      headers: request.headers
+    });
     writeJson(response, result.http_status, result.body);
   });
 

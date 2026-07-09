@@ -20,10 +20,16 @@ export interface RuntimeOpenWebUIUserConfig {
   display_name?: string | null;
 }
 
+export interface RuntimeOpenWebUIIdentityConfig {
+  source: 'body_user' | 'header';
+  header: string | null;
+}
+
 export interface RuntimeOpenWebUIConfig {
   host: string;
   port: number;
   request_body_limit_bytes: number;
+  identity: RuntimeOpenWebUIIdentityConfig;
   users: Record<string, RuntimeOpenWebUIUserConfig>;
 }
 
@@ -316,6 +322,36 @@ function normalizeNumaHrConfig(value: unknown): RuntimeNumaHrConfig | null {
   };
 }
 
+function normalizeOpenWebUIIdentityConfig(value: unknown): RuntimeOpenWebUIIdentityConfig {
+  if (value === undefined || value === null) {
+    return {
+      source: 'body_user',
+      header: null
+    };
+  }
+  if (!isPlainObject(value)) {
+    fail('runtime_options.openwebui_channel.identity', 'identity must be an object');
+  }
+  const source = normalizeString(value.source) ?? 'body_user';
+  if (source !== 'body_user' && source !== 'header') {
+    fail('runtime_options.openwebui_channel.identity.source', 'identity source must be body_user or header');
+  }
+  if (source === 'header') {
+    const header = normalizeString(value.header);
+    if (!header) {
+      fail('runtime_options.openwebui_channel.identity.header', 'identity header is required when source is header');
+    }
+    return {
+      source,
+      header: header.toLowerCase()
+    };
+  }
+  return {
+    source,
+    header: null
+  };
+}
+
 function normalizeOpenWebUIUserConfig(value: unknown, field: string): RuntimeOpenWebUIUserConfig {
   if (!isPlainObject(value)) {
     fail(field, 'openwebui user mapping must be an object');
@@ -351,6 +387,7 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
   const host = normalizeString(value.host) ?? '127.0.0.1';
   const port = normalizePortNumber(value.port);
   const request_body_limit_bytes = normalizePositiveInteger(value.request_body_limit_bytes) ?? 1_000_000;
+  const identity = normalizeOpenWebUIIdentityConfig(value.identity ?? null);
   const usersRaw = value.users;
   if (!isPlainObject(usersRaw)) {
     fail('runtime_options.openwebui_channel.users', 'users must be an object');
@@ -376,6 +413,7 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
     host,
     port,
     request_body_limit_bytes,
+    identity,
     users
   };
 }
