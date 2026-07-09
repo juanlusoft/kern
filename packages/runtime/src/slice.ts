@@ -19,6 +19,7 @@ import { createPricingQuoteLineCapability, createPricingQuoteDraftCapability } f
 import { createHoldedReadAdapter, type HoldedFetch } from '../../adapters/holded/src/index';
 import { createPacoPrintCatalogAdapter } from '../../adapters/pacoprint-catalog/src/index';
 import { createPgConnectionConfigFromEnv, createPgReadAdapter, createPgSyncQueryRunner, type PgPresenceQueryRunner } from '../../adapters/numa-postgres/src/index';
+import { resolveNumaCompanyId } from '../../adapters/numa-postgres/src/company-scope';
 import {
   createNodeFetchHoldedTransport,
   createNodeFetchPacoPrintTransport,
@@ -678,14 +679,19 @@ function buildNumaPostgresReadAdapter(options: {
   env: NodeJS.ProcessEnv;
   now: () => Date;
   queryRunner?: PgPresenceQueryRunner | null;
+  organization_id: string;
+  numaHrConfig?: RuntimeNumaHrConfig | null;
 }) {
   const connection = createPgConnectionConfigFromEnv(options.env);
+  const companyIdByOrganizationId = options.numaHrConfig?.company_id_by_organization_id ?? {};
+  resolveNumaCompanyId(options.organization_id, companyIdByOrganizationId);
   const queryRunner = options.queryRunner ?? createPgSyncQueryRunner({ connection });
   return createPgReadAdapter({
     queryRunner,
     connection,
     now: options.now,
-    statement_timeout_ms: connection.statement_timeout_ms
+    statement_timeout_ms: connection.statement_timeout_ms,
+    company_id_by_organization_id: companyIdByOrganizationId
   });
 }
 
@@ -982,7 +988,9 @@ export function startInstallationRuntime(input: {
       const numaPostgresAdapter = buildNumaPostgresReadAdapter({
         env: input.env ?? process.env,
         now: nowFn,
-        queryRunner: input.numaPostgresQueryRunner ?? null
+        queryRunner: input.numaPostgresQueryRunner ?? null,
+        organization_id: loaded.config.organization.organization_id,
+        numaHrConfig: loaded.config.runtime_options.numa_hr
       });
       presenceReadPort = presenceReadPort ?? numaPostgresAdapter;
       hrReadPort = hrReadPort ?? numaPostgresAdapter;

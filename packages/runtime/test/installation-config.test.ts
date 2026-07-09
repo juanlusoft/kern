@@ -35,6 +35,9 @@ test('runtime config sample validates and resolves secrets', () => {
     5: 22,
     34: 6
   });
+  assert.deepEqual(loaded.config.runtime_options.numa_hr?.company_id_by_organization_id, {
+    'org-pacoprint': 'company-pacoprint'
+  });
   assert.equal(loaded.config.organization.organization_id, 'org-pacoprint');
   assert.equal(loaded.secrets.HOLDED_API_KEY, 'holded-secret');
   assert.equal(loaded.secrets.KERN_TELEGRAM_BOT_TOKEN, 'telegram-secret');

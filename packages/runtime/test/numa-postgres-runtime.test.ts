@@ -74,7 +74,20 @@ function buildInstallationConfig(activeModules: RuntimeModuleKey[]): RuntimeInst
       holded_base_url: null,
       conversation_memory_file_path: null,
       evidence_ledger_file_path: null,
-      polling_iterations: 1
+      polling_iterations: 1,
+      numa_hr: {
+        time_type_by_label: {
+          vacaciones: [5],
+          'asuntos propios': [34]
+        },
+        annual_quota_by_time_type: {
+          5: 22,
+          34: 6
+        },
+        company_id_by_organization_id: {
+          'org-numa-runtime-test': 'company-numa-runtime-test'
+        }
+      }
     }
   };
 }
@@ -278,6 +291,24 @@ test('runtime slice builds the Numa PostgreSQL read runner when the module is ac
   assert.equal(calls.some((call) => call.statement.includes('BEGIN READ ONLY')), false);
 });
 
+test('runtime slice fails closed when the Numa company mapping is missing', () => {
+  const rawConfig = buildInstallationConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read', 'numa-postgres-read']);
+  if (rawConfig.runtime_options.numa_hr) {
+    rawConfig.runtime_options.numa_hr.company_id_by_organization_id = {};
+  }
+  const runtimeResult = startInstallationRuntime({
+    rawConfig,
+    env: buildEnv(),
+    telegramTransport: new InMemoryTelegramTransport(),
+    qwenTransport: buildQwenTransport(),
+    holdedFetch: buildHoldedFetch(),
+    numaPostgresQueryRunner: buildNumaRunner([])
+  });
+
+  assert.equal(runtimeResult.status, 'blocked');
+  assert.equal(runtimeResult.reason?.includes('organization_id'), true);
+  assert.equal(runtimeResult.runtime, null);
+});
 test('runtime slice fails closed when the Numa PostgreSQL env is incomplete', () => {
   const runtimeResult = startInstallationRuntime({
     rawConfig: buildInstallationConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read', 'numa-postgres-read']),

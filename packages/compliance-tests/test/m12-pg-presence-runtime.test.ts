@@ -67,6 +67,9 @@ function createRuntime() {
   const { runner, calls } = createPresenceQueryRunner();
   const adapter = createPgReadAdapter({
     queryRunner: runner,
+    company_id_by_organization_id: {
+      'org-acme': 'company-acme'
+    },
     connection: {
       host: 'postgres.example.test',
       port: 5432,
