@@ -114,6 +114,10 @@ test('runtime config accepts openwebui channel settings', () => {
           host: '127.0.0.1',
           port: 8787,
           request_body_limit_bytes: 10_000,
+          identity: {
+            source: 'header',
+            header: 'X-OpenWebUI-User-Id'
+          },
           users: {
             'openwebui-user-1': {
               principal_id: 'principal-openwebui-runtime-test',
@@ -128,6 +132,8 @@ test('runtime config accepts openwebui channel settings', () => {
     buildEnv()
   );
 
+  assert.equal(loaded.config.runtime_options.openwebui_channel?.identity.source, 'header');
+  assert.equal(loaded.config.runtime_options.openwebui_channel?.identity.header, 'x-openwebui-user-id');
   assert.equal(loaded.config.runtime_options.openwebui_channel?.users['openwebui-user-1'].organization_id, 'org-openwebui-runtime-test');
   assert.equal(loaded.config.runtime_options.openwebui_channel?.users['openwebui-user-1'].principal_id, 'principal-openwebui-runtime-test');
 });
@@ -143,6 +149,10 @@ test('runtime slice starts the Open WebUI server only when the module is active'
           host: '127.0.0.1',
           port: 0,
           request_body_limit_bytes: 10_000,
+          identity: {
+            source: 'body_user',
+            header: null
+          },
           users: {
             'openwebui-user-1': {
               principal_id: 'principal-openwebui-runtime-test',
@@ -208,6 +218,10 @@ test('runtime config rejects openwebui user mappings without organization_id', (
               host: '127.0.0.1',
               port: 8787,
               request_body_limit_bytes: 10_000,
+              identity: {
+                source: 'body_user',
+                header: null
+              },
               users: {
                 'openwebui-user-1': {
                   principal_id: 'principal-openwebui-runtime-test',

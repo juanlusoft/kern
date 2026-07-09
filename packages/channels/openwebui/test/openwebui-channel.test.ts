@@ -19,6 +19,10 @@ function buildInstallation(port = 0): OpenWebUIInstallationConfig {
     host: '127.0.0.1',
     port,
     request_body_limit_bytes: 100_000,
+    identity: {
+      source: 'body_user',
+      header: null
+    },
     identity_mappings: [
       {
         openwebui_user_id: 'openwebui-user-1',
@@ -224,4 +228,92 @@ test('Open WebUI adapter fails closed for unknown users', () => {
   assert.equal(errorBody.error.type, 'authentication_error');
   assert.equal(errorBody.kern.channel, 'openwebui');
   assert.equal(result.orchestration_outcome, null);
+});
+
+test('Open WebUI adapter resolves identity from configured forwarded header', () => {
+  const calls: Array<unknown> = [];
+  const adapter = createOpenWebUIChannelAdapter({
+    installation: {
+      ...buildInstallation(),
+      identity: {
+        source: 'header',
+        header: 'x-openwebui-user-id'
+      }
+    },
+    orchestrationBoundary: buildBoundary(calls)
+  });
+
+  const result = adapter.handleChatCompletionRequest(
+    {
+      model: 'kern-numa',
+      messages: [{ role: 'user', content: 'Días vacaciones del trabajador Eugenio Moya' }]
+    } satisfies OpenWebUIChatCompletionsRequest,
+    {
+      headers: {
+        'x-openwebui-user-id': 'openwebui-user-1'
+      }
+    }
+  );
+
+  assert.equal(result.http_status, 200);
+  assert.equal(result.status, 'sent');
+  assert.equal(result.organization_id, 'org-openwebui-test');
+  assert.equal(result.principal_id, 'principal-openwebui-test');
+  assert.equal(calls.length, 1);
+  const request = calls[0] as { context?: { metadata?: { user_id?: string } } };
+  assert.equal(request.context?.metadata?.user_id, 'openwebui-user-1');
+});
+
+test('Open WebUI adapter fails closed when forwarded header is missing or unmapped', () => {
+  const missingHeaderCalls: Array<unknown> = [];
+  const missingHeaderAdapter = createOpenWebUIChannelAdapter({
+    installation: {
+      ...buildInstallation(),
+      identity: {
+        source: 'header',
+        header: 'x-openwebui-user-id'
+      }
+    },
+    orchestrationBoundary: buildBoundary(missingHeaderCalls)
+  });
+
+  const missingHeaderResult = missingHeaderAdapter.handleChatCompletionRequest(
+    {
+      messages: [{ role: 'user', content: 'Días vacaciones del trabajador Eugenio Moya' }]
+    } satisfies OpenWebUIChatCompletionsRequest,
+    {
+      headers: {}
+    }
+  );
+
+  assert.equal(missingHeaderResult.http_status, 403);
+  assert.equal(missingHeaderResult.status, 'denied');
+  assert.equal(missingHeaderCalls.length, 0);
+
+  const unmappedHeaderCalls: Array<unknown> = [];
+  const unmappedHeaderAdapter = createOpenWebUIChannelAdapter({
+    installation: {
+      ...buildInstallation(),
+      identity: {
+        source: 'header',
+        header: 'x-openwebui-user-id'
+      }
+    },
+    orchestrationBoundary: buildBoundary(unmappedHeaderCalls)
+  });
+
+  const unmappedHeaderResult = unmappedHeaderAdapter.handleChatCompletionRequest(
+    {
+      messages: [{ role: 'user', content: 'Días vacaciones del trabajador Eugenio Moya' }]
+    } satisfies OpenWebUIChatCompletionsRequest,
+    {
+      headers: {
+        'x-openwebui-user-id': 'unknown-user'
+      }
+    }
+  );
+
+  assert.equal(unmappedHeaderResult.http_status, 403);
+  assert.equal(unmappedHeaderResult.status, 'denied');
+  assert.equal(unmappedHeaderCalls.length, 0);
 });

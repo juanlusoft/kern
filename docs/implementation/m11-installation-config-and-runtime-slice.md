@@ -45,6 +45,12 @@ No checked-in `.env` file is required.
 
 `KERN_MODEL_BASE_URL` is treated as a base URL compatible with OpenAI-style chat-completions endpoints. The runtime appends `/chat/completions` when needed and does not duplicate that path when it is already present.
 
+### Open WebUI identity
+
+The `openwebui-channel` slice accepts `body.user` for backward compatibility and can also resolve identity from a forwarded `X-OpenWebUI-User-Id` header when the installation config sets the identity source to `header`.
+
+This keeps the channel fail-closed while allowing Spark/Open WebUI to forward user information explicitly.
+
 ## 3. Module registry and composition
 
 M11 adds a small in-memory module registry used to compose the runtime slice.
