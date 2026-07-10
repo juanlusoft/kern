@@ -495,6 +495,8 @@ test('punch.day binds employee_id exactly when provided', () => {
   });
 
   assert.equal(result.employee_id, 'emp-002');
+  assert.match(calls[0].statement, /cp\.id AS punch_id/);
+  assert.doesNotMatch(calls[0].statement, /cp\.punch_id/);
   assert.match(calls[0].statement, /cp\.person_id::text = \$3/);
   assert.match(calls[0].statement, /e\.code::text = \$3/);
   assert.equal(calls[0].values[2], 'emp-002');
