@@ -83,6 +83,14 @@ function mapHrResultRows<TRecord>(rows: TRecord[], limit: number): { records: TR
   };
 }
 
+function normalizePgNumeric(value: number | string): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    throw new TypeError(`Expected a finite PostgreSQL numeric value, received ${String(value)}`);
+  }
+  return numeric;
+}
+
 
 type NumaHrPunchDayQueryInput = NumaHrPunchDayParams & { limit: number };
 
@@ -372,8 +380,8 @@ export function mapNumaHrLeaveDaysResult(rows: PgHrLeaveDaysRow[], input: NumaHr
   const records = summary.records.map((row) => ({
     time_type_id: row.time_type_id,
     time_type_name: row.time_type_name,
-    days_disfrutados: row.days_disfrutados,
-    days_pendientes: input.include_pending ? row.days_pendientes : null
+    days_disfrutados: normalizePgNumeric(row.days_disfrutados),
+    days_pendientes: input.include_pending ? normalizePgNumeric(row.days_pendientes) : null
   })) as NumaHrLeaveDaysResult['records'];
   return {
     query_id: 'leave.days',
@@ -395,13 +403,14 @@ export function mapNumaHrLeaveBalanceResult(rows: PgHrLeaveDaysRow[], input: Num
   const summary = mapHrResultRows(rows, input.time_type_ids.length);
   const records = summary.records.map((row) => {
     const annualQuota = input.annual_quota_by_time_type[row.time_type_id] ?? (row.time_type_id === 5 ? 22 : null);
+    const daysDisfrutados = normalizePgNumeric(row.days_disfrutados);
     return {
       time_type_id: row.time_type_id,
       time_type_name: row.time_type_name,
       annual_quota: annualQuota,
-      days_disfrutados: row.days_disfrutados,
-      days_pendientes: input.include_pending ? row.days_pendientes : null,
-      balance: annualQuota === null ? null : annualQuota - row.days_disfrutados,
+      days_disfrutados: daysDisfrutados,
+      days_pendientes: input.include_pending ? normalizePgNumeric(row.days_pendientes) : null,
+      balance: annualQuota === null ? null : annualQuota - daysDisfrutados,
       message: annualQuota === null ? `cupo anual no configurado para ${row.time_type_name ?? row.time_type_id}` : null
     };
   }) as NumaHrLeaveBalanceResult['records'];
@@ -465,10 +474,10 @@ export function mapNumaHrReportMonthByGroupResult(rows: PgHrReportMonthByGroupRo
     return {
       employee_id: row.employee_id,
       employee_name: row.employee_name,
-      days_with_punch: row.days_with_punch,
+      days_with_punch: normalizePgNumeric(row.days_with_punch),
       worked_minutes: workedMinutes,
-      leave_days: row.leave_days,
-      vacation_days: row.vacation_days,
+      leave_days: normalizePgNumeric(row.leave_days),
+      vacation_days: normalizePgNumeric(row.vacation_days),
       active: row.active
     };
   }) as NumaHrReportMonthByGroupResult['records'];
