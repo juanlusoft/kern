@@ -109,13 +109,10 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
         AND e.company_id = $1
         AND cp.stamp::date = $2::date
         AND (
-          $3::text IS NULL
+          ($3::text IS NULL AND $4::text IS NULL)
           OR cp.person_id::text = $3
           OR e.code::text = $3
-          OR (
-            $4::text IS NOT NULL
-            AND unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($4))
-          )
+          OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($4))
         )
       ORDER BY cp.stamp ASC, cp.id ASC
       LIMIT $5 + 1
@@ -135,7 +132,7 @@ function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalancePa
         JOIN core_persons p ON p.id = e.person_id
         WHERE e.company_id = $1
           AND (
-            $5::text IS NULL
+            ($5::text IS NULL AND $6::text IS NULL)
             OR e.person_id::text = $5
             OR e.code::text = $5
             OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($6))
@@ -200,7 +197,7 @@ export function buildNumaHrWorktimeSummaryStatement(input: NumaHrWorktimeSummary
         AND cp.stamp::date >= $2::date
         AND cp.stamp::date < $3::date
         AND (
-          $4::text IS NULL
+          ($4::text IS NULL AND $5::text IS NULL)
           OR cp.person_id::text = $4
           OR e.code::text = $4
           OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($5))

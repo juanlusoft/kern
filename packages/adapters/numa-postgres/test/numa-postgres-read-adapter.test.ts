@@ -6,6 +6,12 @@ import {
   getPgPresenceQueryCatalog,
   type PgPresenceQueryRunner
 } from '../src/index';
+import {
+  buildNumaHrLeaveBalanceStatement,
+  buildNumaHrLeaveDaysStatement,
+  buildNumaHrPunchDayStatement,
+  buildNumaHrWorktimeSummaryStatement
+} from '../src/hr';
 
 const company_id_by_organization_id = { 'org-acme': 'company-acme' };
 
@@ -319,6 +325,70 @@ test('presence adapter uses a backward-moving window for night shifts', () => {
   assert.match(calls[0].statement, /company_id = \$1/);
 });
 
+
+test('HR builders keep name filters from short-circuiting when employee_id is null', () => {
+  const punchDayStatement = buildNumaHrPunchDayStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-punch',
+    employee_id: null,
+    employee_name: 'Ana García',
+    date: '2026-07-02',
+    limit: 25
+  });
+  assert.match(punchDayStatement.text, /\(\$1::text IS NULL AND \$3::text IS NULL\)/);
+  assert.match(punchDayStatement.text, /OR unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$3\)\)/);
+  assert.deepEqual(punchDayStatement.values, [null, '2026-07-02', '%Ana García%', 25]);
+
+  const leaveDaysStatement = buildNumaHrLeaveDaysStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-days',
+    employee_id: null,
+    employee_name: 'Ana García',
+    year: 2026,
+    time_type_ids: [34],
+    include_pending: false
+  });
+  assert.match(leaveDaysStatement.text, /\(\$5::text IS NULL AND \$6::text IS NULL\)/);
+  assert.match(leaveDaysStatement.text, /OR unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$6\)\)/);
+  assert.deepEqual(leaveDaysStatement.values, ['org-acme', '2026-01-01', '2027-01-01', [34], null, '%Ana García%']);
+
+  const leaveBalanceStatement = buildNumaHrLeaveBalanceStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-balance',
+    employee_id: '185',
+    employee_name: null,
+    year: 2026,
+    time_type_ids: [5],
+    annual_quota_by_time_type: { 5: 22 },
+    include_pending: false
+  });
+  assert.match(leaveBalanceStatement.text, /\(\$5::text IS NULL AND \$6::text IS NULL\)/);
+  assert.match(leaveBalanceStatement.text, /OR e\.person_id::text = \$5/);
+  assert.deepEqual(leaveBalanceStatement.values, ['org-acme', '2026-01-01', '2027-01-01', [5], '185', null]);
+
+  const worktimeStatement = buildNumaHrWorktimeSummaryStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-worktime',
+    employee_id: null,
+    employee_name: 'Ana García',
+    date_from: '2026-07-01',
+    date_to: '2026-07-31',
+    theoretical_workday_minutes: 480
+  });
+  assert.match(worktimeStatement.text, /\(\$4::text IS NULL AND \$5::text IS NULL\)/);
+  assert.match(worktimeStatement.text, /OR unaccent\(lower\(concat_ws\(' ', p\.name, p\.surname\)\)\) LIKE unaccent\(lower\(\$5\)\)/);
+  assert.deepEqual(worktimeStatement.values, ['org-acme', '2026-07-01', '2026-07-31', null, '%Ana García%']);
+
+  const punchDayUnfiltered = buildNumaHrPunchDayStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-punch-unfiltered',
+    employee_id: null,
+    employee_name: null,
+    date: '2026-07-02',
+    limit: 25
+  });
+  assert.deepEqual(punchDayUnfiltered.values, [null, '2026-07-02', null, 25]);
+});
 
 test('HR adapter forwards variable employee and group names without tying behavior to a single fixture', () => {
   const { runner, calls } = createRunner({
