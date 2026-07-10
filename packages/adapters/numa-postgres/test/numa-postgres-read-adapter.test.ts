@@ -407,16 +407,16 @@ test('HR adapter forwards variable employee and group names without tying behavi
       {
         time_type_id: 34,
         time_type_name: 'Asuntos propios',
-        days_disfrutados: 1,
-        days_pendientes: 0
+        days_disfrutados: '1',
+        days_pendientes: '0'
       }
     ],
     'leave.balance': [
       {
         time_type_id: 5,
         time_type_name: 'Vacaciones',
-        days_disfrutados: 4,
-        days_pendientes: 1
+        days_disfrutados: '4',
+        days_pendientes: '1'
       }
     ],
     'worktime.summary': [
@@ -436,10 +436,10 @@ test('HR adapter forwards variable employee and group names without tying behavi
         employee_id: 'emp-002',
         employee_name: 'Ana Garc\u00EDa',
         active: true,
-        days_with_punch: 2,
+        days_with_punch: '2',
         punches: [],
-        leave_days: 1,
-        vacation_days: 1,
+        leave_days: '1',
+        vacation_days: '1',
         worked_minutes: 480
       }
     ]
@@ -471,7 +471,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
     employee_name: 'Ana Garc\u00EDa',
     year: 2026,
     time_type_ids: [34],
-    include_pending: false
+    include_pending: true
   });
   const leaveBalance = adapter.leaveBalance({
     organization_id: 'org-acme',
@@ -480,7 +480,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
     year: 2026,
     time_type_ids: [5],
     annual_quota_by_time_type: { 5: 22 },
-    include_pending: false
+    include_pending: true
   });
   const worktime = adapter.worktimeSummary({
     organization_id: 'org-acme',
@@ -507,6 +507,37 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(leaveBalance.employee_name, 'Juan Mag\u00E1n');
   assert.equal(worktime.employee_name, 'Ana Garc\u00EDa');
   assert.equal(report.group_name, 'Martos');
+  assert.deepEqual(leaveDays.records[0], {
+    time_type_id: 34,
+    time_type_name: 'Asuntos propios',
+    days_disfrutados: 1,
+    days_pendientes: 0
+  });
+  assert.equal(typeof leaveDays.records[0]?.days_disfrutados, 'number');
+  assert.equal(typeof leaveDays.records[0]?.days_pendientes, 'number');
+  assert.deepEqual(leaveBalance.records[0], {
+    time_type_id: 5,
+    time_type_name: 'Vacaciones',
+    annual_quota: 22,
+    days_disfrutados: 4,
+    days_pendientes: 1,
+    balance: 18,
+    message: null
+  });
+  assert.equal(typeof leaveBalance.records[0]?.days_disfrutados, 'number');
+  assert.equal(typeof leaveBalance.records[0]?.days_pendientes, 'number');
+  assert.deepEqual(report.records[0], {
+    employee_id: 'emp-002',
+    employee_name: 'Ana Garc\u00EDa',
+    days_with_punch: 2,
+    worked_minutes: null,
+    leave_days: 1,
+    vacation_days: 1,
+    active: true
+  });
+  assert.equal(typeof report.records[0]?.days_with_punch, 'number');
+  assert.equal(typeof report.records[0]?.leave_days, 'number');
+  assert.equal(typeof report.records[0]?.vacation_days, 'number');
   assert.match(calls[1].statement, /company_id = \$1/);
   assert.match(calls[2].statement, /company_id = \$1/);
   assert.doesNotMatch(calls[1].statement, /\be\.(?:active|organization_id)\b/);
