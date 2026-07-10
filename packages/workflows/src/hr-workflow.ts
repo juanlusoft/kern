@@ -9,6 +9,7 @@ import {
 } from '../../contracts/src/index';
 import { buildWorkflowStep, createRuntimeResponse, createWorkflowCoreRequest } from './workflow-internals';
 import type { WorkflowRuntimeContext } from './workflow-runtime-context';
+import { renderNumaHrResponseMessage } from './numa-hr-response-renderer';
 
 const WORKFLOW_KIND: GovernedWorkflowKind = 'numa.hr.read';
 
@@ -205,10 +206,11 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
   );
 
   const responseData = capability_result.status === 'executed' && capability_result.output ? (capability_result.output.result as Record<string, unknown>) : null;
+  const renderedMessage = capability_result.status === 'executed' ? renderNumaHrResponseMessage(responseData) : null;
   const response = createRuntimeResponse({
     kind: WORKFLOW_KIND,
     status: buildStatus(capability_result.status),
-    message: capability_result.reason ?? capability_result.error ?? 'Numa HR read completed',
+    message: renderedMessage ?? capability_result.reason ?? capability_result.error ?? 'Numa HR read completed',
     data: responseData,
     runtimeDriven: true
   });
