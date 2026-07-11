@@ -293,6 +293,10 @@ function isValidNumaHrProposal(capability_key: string, params: Record<string, un
     const time_type_labels = normalizeNumaHrTimeTypeLabels(params.time_type_labels);
     return Boolean(year && employee_name && time_type_labels && time_type_labels.length > 0);
   }
+  if (capability_key === 'leave.detail') {
+    const time_type_labels = normalizeNumaHrTimeTypeLabels(params.time_type_labels);
+    return Boolean(employee_name && normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to) && time_type_labels && time_type_labels.length > 0);
+  }
   if (capability_key === 'worktime.summary') {
     return Boolean(employee_name && normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to));
   }
@@ -476,6 +480,37 @@ function resolveWorkflowRequest(
       correlation_id: request.correlation_id,
       capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
       params: normalizeCapabilityParams(params),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'leave.detail') {
+    const employee_name = normalizeOptionalString(proposal.params.employee_name);
+    const date_from = normalizeOptionalString(proposal.params.date_from);
+    const date_to = normalizeOptionalString(proposal.params.date_to);
+    const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
+    const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
+    if (!employee_name || !date_from || !date_to || !time_type_ids || time_type_ids.length === 0) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        employee_name,
+        date_from,
+        date_to,
+        time_type_ids,
+        limit: 100
+      }),
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
       caller_result: request.caller_result ?? null,
@@ -1098,7 +1133,7 @@ export class InMemoryOrchestrationBoundary {
       };
     }
 
-    if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
+    if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'leave.detail' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
       if (!isValidNumaHrProposal(proposal.capability_key, proposal.params)) {
         return {
           valid: false,
@@ -1229,7 +1264,7 @@ export class InMemoryOrchestrationBoundary {
     if (capability_key === 'pricing.quote_draft') {
       return 'pricing.quote_draft';
     }
-    if (capability_key === 'punch.day' || capability_key === 'leave.days' || capability_key === 'leave.balance' || capability_key === 'worktime.summary' || capability_key === 'report.month-by-group') {
+    if (capability_key === 'punch.day' || capability_key === 'leave.days' || capability_key === 'leave.balance' || capability_key === 'leave.detail' || capability_key === 'worktime.summary' || capability_key === 'report.month-by-group') {
       return 'numa.hr.read';
     }
     return null;
@@ -1450,5 +1485,3 @@ export function createMockOrchestrationBoundary(options: OrchestrationBoundaryOp
     orchestrator: options.orchestrator ?? null
   });
 }
-
-

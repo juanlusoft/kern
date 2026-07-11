@@ -16,6 +16,8 @@ import type {
   NumaHrLeaveBalanceResult,
   NumaHrLeaveDaysParams,
   NumaHrLeaveDaysResult,
+  NumaHrLeaveDetailParams,
+  NumaHrLeaveDetailResult,
   NumaHrPunchDayParams,
   NumaHrPunchDayResult,
   NumaHrReadPort,
@@ -31,6 +33,8 @@ import {
   buildNumaHrGroupResolveStatement,
   buildNumaHrLeaveBalanceResolutionResult,
   buildNumaHrLeaveDaysResolutionResult,
+  buildNumaHrLeaveDetailResolutionResult,
+  buildNumaHrLeaveDetailStatement,
   buildNumaHrPunchDayStatement,
   buildNumaHrPunchDayResolutionResult,
   buildNumaHrReportMonthByGroupStatement,
@@ -41,10 +45,12 @@ import {
   type PgHrGroupCandidateRow,
   mapNumaHrLeaveBalanceResult,
   mapNumaHrLeaveDaysResult,
+  mapNumaHrLeaveDetailResult,
   mapNumaHrPunchDayResult,
   mapNumaHrReportMonthByGroupResult,
   mapNumaHrWorktimeSummaryResult,
   type PgHrLeaveDaysRow,
+  type PgHrLeaveDetailRow,
   type PgHrPunchDayRow,
   type PgHrReportMonthByGroupRow,
   type PgHrWorktimeSummaryRow
@@ -56,7 +62,7 @@ export const NUMA_POSTGRES_SOURCE_SYSTEM = 'postgres' as const;
 export const NUMA_POSTGRES_ROLE = 'kern_ro' as const;
 
 export type PgPresenceQueryId = 'employee.find' | 'punches.list' | 'presence.current';
-export type PgHrQueryId = 'employee.resolve' | 'group.resolve' | 'punch.day' | 'leave.days' | 'leave.balance' | 'worktime.summary' | 'report.month-by-group';
+export type PgHrQueryId = 'employee.resolve' | 'group.resolve' | 'punch.day' | 'leave.days' | 'leave.balance' | 'leave.detail' | 'worktime.summary' | 'report.month-by-group';
 export type PgQueryId = PgPresenceQueryId | PgHrQueryId;
 
 export interface PgSqlStatement {
@@ -854,6 +860,22 @@ export function getPgPresenceQueryCatalog(): PgPresenceQueryCatalogEntry[] {
         })
     },
     {
+      query_id: 'leave.detail',
+      description: 'Read detailed leave records by time type and date range',
+      buildStatement: (input) =>
+        buildNumaHrLeaveDetailStatement({
+          organization_id: String(input.organization_id ?? ''),
+          correlation_id: String(input.correlation_id ?? ''),
+          employee_id: input.employee_id === null ? null : normalizeString(input.employee_id),
+          employee_name: input.employee_name === null ? null : normalizeString(input.employee_name),
+          date_from: String(input.date_from ?? ''),
+          date_to: String(input.date_to ?? ''),
+          time_type_ids: Array.isArray(input.time_type_ids) ? input.time_type_ids.map((entry: unknown) => Number(entry)).filter((entry: number) => Number.isFinite(entry)) : [],
+          include_pending: Boolean(input.include_pending),
+          limit: Number(input.limit ?? 100)
+        })
+    },
+    {
       query_id: 'worktime.summary',
       description: 'Read worktime summary for a date range',
       buildStatement: (input) =>
@@ -1194,6 +1216,42 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       transaction: this.createTransactionPlan()
     });
     return mapNumaHrLeaveBalanceResult(rows, resolved);
+  }
+
+  leaveDetail(input: NumaHrLeaveDetailParams): NumaHrLeaveDetailResult {
+    const normalized: NumaHrLeaveDetailParams = {
+      organization_id: input.organization_id.trim(),
+      correlation_id: input.correlation_id.trim(),
+      employee_id: normalizeString(input.employee_id),
+      employee_name: normalizeString(input.employee_name),
+      date_from: input.date_from.trim(),
+      date_to: input.date_to.trim(),
+      time_type_ids: input.time_type_ids.map((entry) => Math.trunc(entry)),
+      include_pending: Boolean(input.include_pending),
+      limit: Math.trunc(input.limit)
+    };
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrLeaveDetailResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrLeaveDetailStatement({ ...resolved, organization_id: companyId });
+    const rows = this.queryRunner.query<PgHrLeaveDetailRow>({
+      query_id: 'leave.detail',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    return mapNumaHrLeaveDetailResult(rows, resolved);
   }
 
   worktimeSummary(input: NumaHrWorktimeSummaryParams): NumaHrWorktimeSummaryResult {

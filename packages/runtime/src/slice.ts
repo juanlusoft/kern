@@ -461,6 +461,38 @@ function buildQwenToolCatalog() {
       }
     },
     {
+      capability_key: 'leave.detail',
+      description:
+        'Read detailed leave or absence records for one employee in a date range. Use employee_name, date_from, date_to and time_type_labels only. Never emit employee_id or time type ids.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'date_from', 'date_to', 'time_type_labels'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          date_from: {
+            type: 'string' as const,
+            description: 'Start date in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          },
+          date_to: {
+            type: 'string' as const,
+            description: 'End date in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          },
+          time_type_labels: {
+            type: 'array' as const,
+            minItems: 1,
+            items: { type: 'string' as const },
+            description: 'Business labels like vacaciones or asuntos propios. Never use internal ids.'
+          }
+        }
+      }
+    },
+    {
       capability_key: 'worktime.summary',
       description:
         'Summarize worked time for one employee in a date range. Use employee_name, date_from and date_to only. The runtime computes the rest.',
@@ -789,7 +821,7 @@ function buildOrchestrationBoundary(options: {
       [options.config.installation_id]: [
         ...options.config.active_capabilities,
         ...(options.presenceReadPort ? ['employee.find', 'punches.list', 'presence.current'] : []),
-        ...(options.hrReadPort ? ['punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group'] : [])
+        ...(options.hrReadPort ? ['punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group'] : [])
       ]
     }
   });

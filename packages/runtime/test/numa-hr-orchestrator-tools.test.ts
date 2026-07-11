@@ -10,6 +10,8 @@ import type {
   NumaHrLeaveBalanceResult,
   NumaHrLeaveDaysParams,
   NumaHrLeaveDaysResult,
+  NumaHrLeaveDetailParams,
+  NumaHrLeaveDetailResult,
   NumaHrPunchDayParams,
   NumaHrPunchDayResult,
   NumaHrReadPort,
@@ -22,7 +24,7 @@ import type {
 import type { QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { startInstallationRuntime, type RuntimeInstallationConfig } from '../src/index';
 
-const HR_TOOL_NAMES = ['punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group'] as const;
+const HR_TOOL_NAMES = ['punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group'] as const;
 
 type HrToolName = (typeof HR_TOOL_NAMES)[number];
 
@@ -43,6 +45,7 @@ type HrCall =
   | { method: 'punchDay'; input: NumaHrPunchDayParams }
   | { method: 'leaveDays'; input: NumaHrLeaveDaysParams }
   | { method: 'leaveBalance'; input: NumaHrLeaveBalanceParams }
+  | { method: 'leaveDetail'; input: NumaHrLeaveDetailParams }
   | { method: 'worktimeSummary'; input: NumaHrWorktimeSummaryParams }
   | { method: 'reportMonthByGroup'; input: NumaHrReportMonthByGroupParams };
 
@@ -271,6 +274,36 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
       };
       return result;
     },
+    leaveDetail(input) {
+      calls.push({ method: 'leaveDetail', input });
+      const result: NumaHrLeaveDetailResult = {
+        query_id: 'leave.detail',
+        organization_id: input.organization_id,
+        correlation_id: input.correlation_id,
+        row_count: 1,
+        truncated: false,
+        citations: [citation('leave.detail')],
+        employee_id: 'emp-001',
+        employee_name: input.employee_name ?? 'Eugenio Moya',
+        date_from: input.date_from,
+        date_to: input.date_to,
+        time_type_ids: [...input.time_type_ids],
+        include_pending: Boolean(input.include_pending),
+        limit: input.limit,
+        records: [
+          {
+            request_id: 'request-001',
+            time_type_id: input.time_type_ids[0] ?? 5,
+            time_type_name: 'Vacaciones',
+            start_date: '2026-08-01',
+            end_date: '2026-08-05',
+            day_count: 5,
+            status: 'accepted'
+          }
+        ]
+      };
+      return result;
+    },
     worktimeSummary(input) {
       calls.push({ method: 'worktimeSummary', input });
       const result: NumaHrWorktimeSummaryResult = {
@@ -372,6 +405,7 @@ function assertHrToolSchemas(request: QwenRequest) {
     'punch.day': ['employee_name', 'date'],
     'leave.days': ['employee_name', 'year', 'time_type_labels'],
     'leave.balance': ['employee_name', 'year', 'time_type_labels'],
+    'leave.detail': ['employee_name', 'date_from', 'date_to', 'time_type_labels'],
     'worktime.summary': ['employee_name', 'date_from', 'date_to'],
     'report.month-by-group': ['group_name', 'year', 'month']
   };
@@ -388,7 +422,7 @@ function assertHrToolSchemas(request: QwenRequest) {
   }
 }
 
-test('runtime slice exposes the five Numa HR tools in the Qwen catalog without ids or quotas', () => {
+test('runtime slice exposes the Numa HR tools in the Qwen catalog without ids or quotas', () => {
   const { qwenRequests } = startRuntimeForCase(
     'leave.days',
     {
@@ -452,6 +486,28 @@ const demoCases: Array<{
         34: 6
       },
       include_pending: false
+    }
+  },
+  {
+    name: 'leave detail',
+    text: 'Que dias estuvo de vacaciones el trabajador Eugenio Moya en 2026.',
+    messageId: 206,
+    capabilityKey: 'leave.detail',
+    args: {
+      employee_name: 'Eugenio Moya',
+      date_from: '2026-01-01',
+      date_to: '2026-12-31',
+      time_type_labels: ['vacaciones']
+    },
+    expectedMethod: 'leaveDetail',
+    expectedInput: {
+      employee_id: null,
+      employee_name: 'Eugenio Moya',
+      date_from: '2026-01-01',
+      date_to: '2026-12-31',
+      time_type_ids: [5],
+      include_pending: false,
+      limit: 100
     }
   },
   {
