@@ -281,6 +281,87 @@ test('Open WebUI adapter resolves identity from configured forwarded header', ()
   assert.equal(request.context?.metadata?.user_id, 'openwebui-user-1');
 });
 
+test('Open WebUI adapter accepts streaming requests with forwarded header identity', () => {
+  const calls: Array<unknown> = [];
+  const adapter = createOpenWebUIChannelAdapter({
+    installation: {
+      ...buildInstallation(),
+      identity: {
+        source: 'header',
+        header: 'x-openwebui-user-id'
+      }
+    },
+    orchestrationBoundary: buildBoundary(calls)
+  });
+
+  const result = adapter.handleChatCompletionRequest(
+    {
+      model: 'kern-numa',
+      messages: [{ role: 'user', content: 'Días vacaciones del trabajador Eugenio Moya' }],
+      stream: true
+    } satisfies OpenWebUIChatCompletionsRequest,
+    {
+      headers: {
+        'x-openwebui-user-id': 'openwebui-user-1'
+      }
+    }
+  );
+
+  assert.equal(result.http_status, 200);
+  assert.equal(result.status, 'sent');
+  assert.equal(result.organization_id, 'org-openwebui-test');
+  assert.equal(result.principal_id, 'principal-openwebui-test');
+  assert.equal(calls.length, 1);
+  const request = calls[0] as { context?: { metadata?: { user_id?: string } } };
+  assert.equal(request.context?.metadata?.user_id, 'openwebui-user-1');
+});
+
+test('Open WebUI server accepts stream flag and returns JSON completion', async () => {
+  const calls: Array<unknown> = [];
+  const server = createOpenWebUIChannelServer({
+    installation: {
+      ...buildInstallation(0),
+      identity: {
+        source: 'header',
+        header: 'x-openwebui-user-id'
+      }
+    },
+    orchestrationBoundary: buildBoundary(calls),
+    now: () => new Date('2026-07-08T00:00:00.000Z')
+  });
+
+  const port = await server.ready;
+  try {
+    const response = await fetch('http://127.0.0.1:' + port + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openwebui-user-id': 'openwebui-user-1'
+      },
+      body: JSON.stringify({
+        model: 'kern-numa',
+        messages: [{ role: 'user', content: 'Días vacaciones del trabajador Eugenio Moya' }],
+        stream: true
+      })
+    });
+    const json = (await response.json()) as {
+      object?: string;
+      choices?: Array<{ message?: { content?: string } }>;
+      kern?: { organization_id?: string | null; principal_id?: string | null };
+    };
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /application\/json/);
+    assert.equal(json.object, 'chat.completion');
+    assert.equal(json.kern?.organization_id, 'org-openwebui-test');
+    assert.equal(json.kern?.principal_id, 'principal-openwebui-test');
+    assert.equal(json.choices?.[0]?.message?.content?.includes('Dias vacaciones'), true);
+    assert.equal(calls.length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
 test('Open WebUI adapter fails closed when forwarded header is missing or unmapped', () => {
   const missingHeaderCalls: Array<unknown> = [];
   const missingHeaderAdapter = createOpenWebUIChannelAdapter({
