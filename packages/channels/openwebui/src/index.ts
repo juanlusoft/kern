@@ -85,6 +85,16 @@ export interface OpenWebUIChatCompletionResponse {
   kern: OpenWebUIResponseKernel;
 }
 
+export interface OpenWebUIModelListResponse {
+  object: 'list';
+  data: Array<{
+    id: string;
+    object: 'model';
+    created: number;
+    owned_by: string;
+  }>;
+}
+
 export interface OpenWebUIErrorResponse {
   error: {
     message: string;
@@ -234,6 +244,20 @@ function buildRequestId(options: { installation_id: string; request: OpenWebUICh
     normalizeOptionalString(options.request.conversation_id) ??
     'openwebui:' + options.installation_id + ':' + randomUUID()
   );
+}
+
+function buildModelsResponse(now: () => Date): OpenWebUIModelListResponse {
+  return {
+    object: 'list',
+    data: [
+      {
+        id: 'kern-numa',
+        object: 'model',
+        created: Math.floor(now().getTime() / 1000),
+        owned_by: 'kern'
+      }
+    ]
+  };
 }
 function extractConversationHistory(messages: OpenWebUIChatMessage[], lastUserMessageIndex: number): ConversationHistoryTurn[] | null {
   if (lastUserMessageIndex <= 0) {
@@ -750,7 +774,11 @@ async function readRequestBody(request: IncomingMessage, limitBytes: number): Pr
   return { ok: true, body: Buffer.concat(chunks).toString('utf8') };
 }
 
-function writeJson(response: ServerResponse, statusCode: number, body: OpenWebUIChatCompletionResponse | OpenWebUIErrorResponse): void {
+function writeJson(
+  response: ServerResponse,
+  statusCode: number,
+  body: OpenWebUIChatCompletionResponse | OpenWebUIErrorResponse | OpenWebUIModelListResponse
+): void {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json; charset=utf-8');
   response.end(JSON.stringify(body));
@@ -787,6 +815,28 @@ export function createOpenWebUIChannelServer(options: {
           code: 'not_found'
         })
       );
+      return;
+    }
+    if (url.pathname === '/v1/models') {
+      if (method !== 'GET') {
+        const request_id = 'openwebui:' + options.installation.installation_id + ':' + randomUUID();
+        response.statusCode = 405;
+        response.setHeader('allow', 'GET');
+        response.setHeader('content-type', 'application/json; charset=utf-8');
+        response.end(
+          JSON.stringify(
+            buildErrorBody({
+              request_id,
+              correlation_id: request_id,
+              message: 'method not allowed',
+              type: 'invalid_request_error',
+              code: 'method_not_allowed'
+            })
+          )
+        );
+        return;
+      }
+      writeJson(response, 200, buildModelsResponse(options.now ?? (() => new Date())));
       return;
     }
     if (url.pathname !== '/v1/chat/completions') {

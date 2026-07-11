@@ -183,6 +183,23 @@ test('Open WebUI server serves OpenAI-style JSON and supports error handling', a
     assert.equal(json.kern?.sources?.includes('source-1'), true);
     assert.equal(json.choices?.[0]?.message?.content?.includes('Dias vacaciones'), true);
 
+    const modelsResponse = await fetch('http://127.0.0.1:' + port + '/v1/models');
+    const modelsJson = (await modelsResponse.json()) as {
+      object?: string;
+      data?: Array<{ id?: string; object?: string; owned_by?: string }>;
+    };
+    assert.equal(modelsResponse.status, 200);
+    assert.equal(modelsJson.object, 'list');
+    assert.equal(modelsJson.data?.[0]?.id, 'kern-numa');
+    assert.equal(modelsJson.data?.[0]?.object, 'model');
+    assert.equal(modelsJson.data?.[0]?.owned_by, 'kern');
+
+    const modelsMethodResponse = await fetch('http://127.0.0.1:' + port + '/v1/models', {
+      method: 'POST'
+    });
+    assert.equal(modelsMethodResponse.status, 405);
+    assert.equal(modelsMethodResponse.headers.get('allow'), 'GET');
+
     const badJsonResponse = await fetch('http://127.0.0.1:' + port + '/v1/chat/completions', {
       method: 'POST',
       headers: {
