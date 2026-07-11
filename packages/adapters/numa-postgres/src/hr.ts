@@ -56,6 +56,18 @@ export interface PgHrReportMonthByGroupRow {
   worked_minutes?: number | null;
 }
 
+export interface PgHrEmployeeCandidateRow {
+  employee_id: string;
+  employee_name: string;
+  exact_match: boolean;
+}
+
+export interface PgHrGroupCandidateRow {
+  group_id: string;
+  group_name: string;
+  exact_match: boolean;
+}
+
 export interface PgSqlStatement {
   text: string;
   values: readonly unknown[];
@@ -94,6 +106,41 @@ function normalizePgNumeric(value: number | string): number {
 
 type NumaHrPunchDayQueryInput = NumaHrPunchDayParams & { limit: number };
 
+export function buildNumaHrEmployeeResolveStatement(input: Pick<NumaHrPunchDayParams, 'organization_id' | 'employee_name'> & { limit: number }): PgSqlStatement {
+  return {
+    text: `
+      SELECT
+        e.person_id::text AS employee_id,
+        concat_ws(' ', p.name, p.surname) AS employee_name,
+        unaccent(lower(concat_ws(' ', p.name, p.surname))) = unaccent(lower($2)) AS exact_match
+      FROM org_employees e
+      JOIN core_persons p ON p.id = e.person_id
+      WHERE e.company_id = $1
+        AND unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($3))
+      ORDER BY exact_match DESC, employee_name ASC, e.person_id ASC
+      LIMIT $4 + 1
+    `.trim(),
+    values: [input.organization_id, input.employee_name, buildLikePattern(input.employee_name ?? null), input.limit]
+  };
+}
+
+export function buildNumaHrGroupResolveStatement(input: Pick<NumaHrReportMonthByGroupParams, 'organization_id' | 'group_name'> & { limit: number }): PgSqlStatement {
+  return {
+    text: `
+      SELECT
+        g.id::text AS group_id,
+        g.name AS group_name,
+        unaccent(lower(g.name)) = unaccent(lower($2)) AS exact_match
+      FROM org_employee_groups g
+      WHERE g.company_id = $1
+        AND unaccent(lower(g.name)) LIKE unaccent(lower($3))
+      ORDER BY exact_match DESC, group_name ASC, g.id ASC
+      LIMIT $4 + 1
+    `.trim(),
+    values: [input.organization_id, input.group_name, buildLikePattern(input.group_name ?? null), input.limit]
+  };
+}
+
 export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): PgSqlStatement {
   return {
     text: `
@@ -126,6 +173,153 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
       LIMIT $5 + 1
     `.trim(),
     values: [input.organization_id, input.date, input.employee_id ?? null, buildLikePattern(input.employee_name ?? null), input.limit]
+  };
+}
+
+function buildResolutionCandidates(rows: Array<{ employee_name?: string; group_name?: string }>, limit: number): Array<{ name: string }> {
+  return rows
+    .slice(0, limit)
+    .map((row) => row.employee_name ?? row.group_name ?? null)
+    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+    .map((name) => ({ name }));
+}
+
+function buildResolutionMessage(kind: 'employee' | 'group', requestedName: string | null | undefined, candidateCount: number): string {
+  const label = kind === 'employee' ? 'trabajador' : 'centro';
+  const requested = requestedName?.trim() ? `"${requestedName.trim()}"` : `el ${label} indicado`;
+  if (candidateCount === 0) {
+    return `No he encontrado ${label} para ${requested}.`;
+  }
+  return `He encontrado varios resultados para ${requested}. Necesito que concretes el ${label}.`;
+}
+
+export function buildNumaHrPunchDayResolutionResult(
+  input: NumaHrPunchDayParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrPunchDayResult {
+  return {
+    query_id: 'punch.day',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date: input.date,
+    records: [],
+    first_entry_at: null,
+    last_exit_at: null,
+    worked_minutes: null,
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
+export function buildNumaHrLeaveDaysResolutionResult(
+  input: NumaHrLeaveDaysParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrLeaveDaysResult {
+  return {
+    query_id: 'leave.days',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    year: input.year,
+    time_type_ids: [...input.time_type_ids],
+    include_pending: Boolean(input.include_pending),
+    records: [],
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
+export function buildNumaHrLeaveBalanceResolutionResult(
+  input: NumaHrLeaveBalanceParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrLeaveBalanceResult {
+  return {
+    query_id: 'leave.balance',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    year: input.year,
+    time_type_ids: [...input.time_type_ids],
+    include_pending: Boolean(input.include_pending),
+    records: [],
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
+export function buildNumaHrWorktimeSummaryResolutionResult(
+  input: NumaHrWorktimeSummaryParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrWorktimeSummaryResult {
+  return {
+    query_id: 'worktime.summary',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date_from: input.date_from,
+    date_to: input.date_to,
+    theoretical_workday_minutes: input.theoretical_workday_minutes ?? null,
+    records: [],
+    total_worked_minutes: 0,
+    total_overtime_minutes: null,
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
+export function buildNumaHrReportMonthByGroupResolutionResult(
+  input: NumaHrReportMonthByGroupParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrGroupCandidateRow[],
+  limit: number
+): NumaHrReportMonthByGroupResult {
+  return {
+    query_id: 'report.month-by-group',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    group_id: input.group_id ?? null,
+    group_name: input.group_name ?? null,
+    year: input.year,
+    month: input.month,
+    limit: input.limit,
+    offset: input.offset,
+    employee_count: 0,
+    records: [],
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employee_groups'], queryId: 'group.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('group', input.group_name, candidates.length)
   };
 }
 function buildLeaveStatement(input: NumaHrLeaveDaysParams | NumaHrLeaveBalanceParams): PgSqlStatement {

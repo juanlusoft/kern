@@ -15,7 +15,7 @@ import {
 
 const company_id_by_organization_id = { 'org-acme': 'company-acme' };
 
-function createRunner(responseByQueryId: Record<string, unknown[]>) {
+function createRunner(responseByQueryId: Record<string, unknown[] | ((input: { values: readonly unknown[]; statement: string }) => unknown[])>) {
   const calls: Array<{ query_id: string; statement: string; transactionRole: string; values: readonly unknown[] }> = [];
   const runner: PgPresenceQueryRunner = {
     query(input) {
@@ -25,7 +25,11 @@ function createRunner(responseByQueryId: Record<string, unknown[]>) {
         transactionRole: input.transaction.role,
         values: input.statement.values
       });
-      return (responseByQueryId[input.query_id] ?? []) as never[];
+      const response = responseByQueryId[input.query_id];
+      if (typeof response === 'function') {
+        return response({ values: input.statement.values, statement: input.statement.text }) as never[];
+      }
+      return (response ?? []) as never[];
     }
   };
   return { runner, calls };
@@ -392,6 +396,17 @@ test('HR builders keep name filters from short-circuiting when employee_id is nu
 
 test('HR adapter forwards variable employee and group names without tying behavior to a single fixture', () => {
   const { runner, calls } = createRunner({
+    'employee.resolve': ({ values }) => {
+      const requested = values[1];
+      if (requested === 'ANA GARC\u00CDA' || requested === 'Ana Garc\u00EDa') {
+        return [{ employee_id: 'emp-002', employee_name: 'Ana Garc\u00EDa', exact_match: true }];
+      }
+      if (requested === 'Juan Mag\u00E1n') {
+        return [{ employee_id: 'emp-003', employee_name: 'Juan Mag\u00E1n', exact_match: true }];
+      }
+      return [];
+    },
+    'group.resolve': [{ group_id: 'group-martos', group_name: 'Martos', exact_match: false }],
     'punch.day': [
       {
         punch_id: 'punch-001',
@@ -538,25 +553,234 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(typeof report.records[0]?.days_with_punch, 'number');
   assert.equal(typeof report.records[0]?.leave_days, 'number');
   assert.equal(typeof report.records[0]?.vacation_days, 'number');
-  assert.match(calls[1].statement, /company_id = \$1/);
-  assert.match(calls[2].statement, /company_id = \$1/);
-  assert.doesNotMatch(calls[1].statement, /\be\.(?:active|organization_id)\b/);
-  assert.doesNotMatch(calls[2].statement, /\be\.(?:active|organization_id)\b/);
-  assert.match(calls[4].statement, /TRUE AS active/);
-  assert.doesNotMatch(calls[4].statement, /\be\.(?:active|organization_id)\b/);
-  assert.match(calls[0].statement, /cp\.person_id::text = \$3/);
-  assert.match(calls[0].statement, /e\.code::text = \$3/);
-  assert.match(calls[0].statement, /LIKE unaccent\(lower\(\$4\)\)/);
-  assert.match(calls[0].statement, /company_id = \$1/);
-  assert.equal(calls[0].values[2], null);
-  assert.equal(String(calls[0].values[3]).toLowerCase(), '%ana garc\u00EDa%');
-  assert.equal(calls[0].values[4], 25);
-  assert.equal(calls[1].values[0], 'company-acme');
-  assert.equal(calls[1].values[5], '%Ana Garc\u00EDa%');
-  assert.equal(calls[2].values[0], 'company-acme');
-  assert.equal(calls[2].values[5], '%Juan Mag\u00E1n%');
-  assert.equal(calls[4].values[0], 'company-acme');
-  assert.equal(calls[4].values[2], '%Martos%');
+  const punchCall = calls.find((call) => call.query_id === 'punch.day');
+  const leaveDaysCall = calls.find((call) => call.query_id === 'leave.days');
+  const leaveBalanceCall = calls.find((call) => call.query_id === 'leave.balance');
+  const reportCall = calls.find((call) => call.query_id === 'report.month-by-group');
+  assert.ok(punchCall);
+  assert.ok(leaveDaysCall);
+  assert.ok(leaveBalanceCall);
+  assert.ok(reportCall);
+  assert.match(leaveDaysCall.statement, /company_id = \$1/);
+  assert.match(leaveBalanceCall.statement, /company_id = \$1/);
+  assert.doesNotMatch(leaveDaysCall.statement, /\be\.(?:active|organization_id)\b/);
+  assert.doesNotMatch(leaveBalanceCall.statement, /\be\.(?:active|organization_id)\b/);
+  assert.match(reportCall.statement, /TRUE AS active/);
+  assert.doesNotMatch(reportCall.statement, /\be\.(?:active|organization_id)\b/);
+  assert.match(punchCall.statement, /cp\.person_id::text = \$3/);
+  assert.match(punchCall.statement, /e\.code::text = \$3/);
+  assert.match(punchCall.statement, /LIKE unaccent\(lower\(\$4\)\)/);
+  assert.match(punchCall.statement, /company_id = \$1/);
+  assert.equal(punchCall.values[2], 'emp-002');
+  assert.equal(punchCall.values[3], '%Ana Garc\u00EDa%');
+  assert.equal(punchCall.values[4], 25);
+  assert.equal(leaveDaysCall.values[0], 'company-acme');
+  assert.equal(leaveDaysCall.values[4], 'emp-002');
+  assert.equal(leaveDaysCall.values[5], '%Ana Garc\u00EDa%');
+  assert.equal(leaveBalanceCall.values[0], 'company-acme');
+  assert.equal(leaveBalanceCall.values[4], 'emp-003');
+  assert.equal(leaveBalanceCall.values[5], '%Juan Mag\u00E1n%');
+  assert.equal(reportCall.values[0], 'company-acme');
+  assert.equal(reportCall.values[1], 'group-martos');
+  assert.equal(reportCall.values[2], '%Martos%');
+});
+
+test('HR adapter resolves employee names before data queries and fails closed on ambiguity', () => {
+  const { runner, calls } = createRunner({
+    'employee.resolve': [
+      { employee_id: 'emp-ana', employee_name: 'Ana Garc\u00EDa', exact_match: false },
+      { employee_id: 'emp-ana-maria', employee_name: 'Ana Mar\u00EDa', exact_match: false }
+    ],
+    'punch.day': [
+      {
+        punch_id: 'should-not-run',
+        employee_id: 'emp-ana',
+        employee_name: 'Ana Garc\u00EDa',
+        punched_at: '2026-07-02T08:00:00.000Z',
+        punching_point_id: 1,
+        point_name: 'ENTRADA',
+        direction: 'in'
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.punchDay({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-ambiguous-employee',
+    employee_name: 'Ana',
+    date: '2026-07-02'
+  });
+
+  assert.equal(result.resolution_status, 'ambiguous');
+  assert.deepEqual(result.resolution_candidates, [{ name: 'Ana Garc\u00EDa' }, { name: 'Ana Mar\u00EDa' }]);
+  assert.equal(result.records.length, 0);
+  assert.equal(calls.some((call) => call.query_id === 'punch.day'), false);
+  assert.deepEqual(calls.map((call) => call.query_id), ['employee.resolve']);
+
+  const worktime = adapter.worktimeSummary({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-ambiguous-worktime',
+    employee_name: 'Ana',
+    date_from: '2026-07-01',
+    date_to: '2026-07-31',
+    theoretical_workday_minutes: 480
+  });
+
+  assert.equal(worktime.resolution_status, 'ambiguous');
+  assert.equal(worktime.records.length, 0);
+  assert.equal(calls.some((call) => call.query_id === 'worktime.summary'), false);
+});
+
+test('HR adapter resolves a unique partial employee name and executes by resolved employee id', () => {
+  const { runner, calls } = createRunner({
+    'employee.resolve': [{ employee_id: 'emp-mariola', employee_name: 'MARIOLA NAVARRO LEON', exact_match: false }],
+    'leave.days': [
+      {
+        time_type_id: 5,
+        time_type_name: 'Vacaciones',
+        days_disfrutados: '5',
+        days_pendientes: '0'
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.leaveDays({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-unique-employee',
+    employee_name: 'Mariola Navarro',
+    year: 2025,
+    time_type_ids: [5],
+    include_pending: false
+  });
+
+  const leaveCall = calls.find((call) => call.query_id === 'leave.days');
+  assert.equal(result.resolution_status, undefined);
+  assert.equal(result.employee_id, 'emp-mariola');
+  assert.equal(result.employee_name, 'MARIOLA NAVARRO LEON');
+  assert.ok(leaveCall);
+  assert.equal(leaveCall.values[4], 'emp-mariola');
+  assert.equal(leaveCall.values[5], '%MARIOLA NAVARRO LEON%');
+});
+
+test('HR adapter returns not_found for missing employee names without executing data queries', () => {
+  const { runner, calls } = createRunner({
+    'employee.resolve': [],
+    'leave.balance': [
+      {
+        time_type_id: 5,
+        time_type_name: 'Vacaciones',
+        days_disfrutados: '1',
+        days_pendientes: '0'
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.leaveBalance({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-missing-employee',
+    employee_name: 'No Existe',
+    year: 2025,
+    time_type_ids: [5],
+    annual_quota_by_time_type: { 5: 22 },
+    include_pending: false
+  });
+
+  assert.equal(result.resolution_status, 'not_found');
+  assert.equal(result.records.length, 0);
+  assert.deepEqual(result.resolution_candidates, []);
+  assert.equal(calls.some((call) => call.query_id === 'leave.balance'), false);
+});
+
+test('HR adapter resolves group names before reports and fails closed on ambiguity', () => {
+  const { runner, calls } = createRunner({
+    'group.resolve': [
+      { group_id: 'group-manindu', group_name: 'MANINDU MARTOS', exact_match: false },
+      { group_id: 'group-manindu-2', group_name: 'MANINDU JAEN', exact_match: false }
+    ],
+    'report.month-by-group': [
+      {
+        employee_id: 'emp-1',
+        employee_name: 'Ana',
+        active: true,
+        days_with_punch: '1',
+        punches: [],
+        leave_days: '0',
+        vacation_days: '0',
+        worked_minutes: 60
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.reportMonthByGroup({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-ambiguous-group',
+    group_name: 'MANINDU',
+    year: 2026,
+    month: 5,
+    limit: 25,
+    offset: 0
+  });
+
+  assert.equal(result.resolution_status, 'ambiguous');
+  assert.deepEqual(result.resolution_candidates, [{ name: 'MANINDU MARTOS' }, { name: 'MANINDU JAEN' }]);
+  assert.equal(result.records.length, 0);
+  assert.equal(calls.some((call) => call.query_id === 'report.month-by-group'), false);
 });
 
 test('punch.day binds employee_id exactly when provided', () => {

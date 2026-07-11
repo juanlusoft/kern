@@ -222,6 +222,9 @@ export interface NumaHrResultBase {
   row_count: number;
   truncated: boolean;
   citations: [PresenceSourceCitation, ...PresenceSourceCitation[]];
+  resolution_status?: 'resolved' | 'ambiguous' | 'not_found';
+  resolution_candidates?: Array<{ name: string }>;
+  resolution_message?: string | null;
 }
 
 export interface NumaHrPunchDayParams {
@@ -1568,4 +1571,3 @@ function serialize(value: unknown): string {
   }
   return JSON.stringify(String(value));
 }
-

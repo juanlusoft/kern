@@ -27,9 +27,18 @@ import type {
 import {
   buildNumaHrLeaveBalanceStatement,
   buildNumaHrLeaveDaysStatement,
+  buildNumaHrEmployeeResolveStatement,
+  buildNumaHrGroupResolveStatement,
+  buildNumaHrLeaveBalanceResolutionResult,
+  buildNumaHrLeaveDaysResolutionResult,
   buildNumaHrPunchDayStatement,
+  buildNumaHrPunchDayResolutionResult,
   buildNumaHrReportMonthByGroupStatement,
+  buildNumaHrReportMonthByGroupResolutionResult,
   buildNumaHrWorktimeSummaryStatement,
+  buildNumaHrWorktimeSummaryResolutionResult,
+  type PgHrEmployeeCandidateRow,
+  type PgHrGroupCandidateRow,
   mapNumaHrLeaveBalanceResult,
   mapNumaHrLeaveDaysResult,
   mapNumaHrPunchDayResult,
@@ -47,7 +56,7 @@ export const NUMA_POSTGRES_SOURCE_SYSTEM = 'postgres' as const;
 export const NUMA_POSTGRES_ROLE = 'kern_ro' as const;
 
 export type PgPresenceQueryId = 'employee.find' | 'punches.list' | 'presence.current';
-export type PgHrQueryId = 'punch.day' | 'leave.days' | 'leave.balance' | 'worktime.summary' | 'report.month-by-group';
+export type PgHrQueryId = 'employee.resolve' | 'group.resolve' | 'punch.day' | 'leave.days' | 'leave.balance' | 'worktime.summary' | 'report.month-by-group';
 export type PgQueryId = PgPresenceQueryId | PgHrQueryId;
 
 export interface PgSqlStatement {
@@ -922,6 +931,80 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
     return resolveNumaCompanyId(organizationId, this.companyIdByOrganizationId);
   }
 
+  private resolveHrEmployee(input: {
+    company_id: string;
+    employee_id: string | null;
+    employee_name: string | null;
+  }):
+    | { status: 'resolved'; employee_id: string | null; employee_name: string | null }
+    | { status: 'ambiguous' | 'not_found'; candidates: PgHrEmployeeCandidateRow[] } {
+    if (input.employee_id || !input.employee_name) {
+      return { status: 'resolved', employee_id: input.employee_id, employee_name: input.employee_name };
+    }
+    const statement = buildNumaHrEmployeeResolveStatement({
+      organization_id: input.company_id,
+      employee_name: input.employee_name,
+      limit: 5
+    });
+    const rows = this.queryRunner.query<PgHrEmployeeCandidateRow>({
+      query_id: 'employee.resolve',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    const exactRows = rows.filter((row) => row.exact_match);
+    const candidates = exactRows.length > 0 ? exactRows : rows;
+    if (candidates.length === 0) {
+      return { status: 'not_found', candidates: [] };
+    }
+    if (candidates.length > 1) {
+      return { status: 'ambiguous', candidates };
+    }
+    const [candidate] = candidates;
+    return {
+      status: 'resolved',
+      employee_id: candidate.employee_id,
+      employee_name: candidate.employee_name
+    };
+  }
+
+  private resolveHrGroup(input: {
+    company_id: string;
+    group_id: string | null;
+    group_name: string | null;
+  }):
+    | { status: 'resolved'; group_id: string | null; group_name: string | null }
+    | { status: 'ambiguous' | 'not_found'; candidates: PgHrGroupCandidateRow[] } {
+    if (input.group_id || !input.group_name) {
+      return { status: 'resolved', group_id: input.group_id, group_name: input.group_name };
+    }
+    const statement = buildNumaHrGroupResolveStatement({
+      organization_id: input.company_id,
+      group_name: input.group_name,
+      limit: 5
+    });
+    const rows = this.queryRunner.query<PgHrGroupCandidateRow>({
+      query_id: 'group.resolve',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    const exactRows = rows.filter((row) => row.exact_match);
+    const candidates = exactRows.length > 0 ? exactRows : rows;
+    if (candidates.length === 0) {
+      return { status: 'not_found', candidates: [] };
+    }
+    if (candidates.length > 1) {
+      return { status: 'ambiguous', candidates };
+    }
+    const [candidate] = candidates;
+    return {
+      status: 'resolved',
+      group_id: candidate.group_id,
+      group_name: candidate.group_name
+    };
+  }
+
   findEmployee(input: PresenceEmployeeFindParams): PresenceEmployeeFindResult {
     const normalized: PresenceEmployeeFindParams = {
       organization_id: input.organization_id.trim(),
@@ -1021,14 +1104,27 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       date: input.date.trim()
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrPunchDayStatement({ ...normalized, organization_id: companyId, limit: this.punchesListLimit });
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrPunchDayResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrPunchDayStatement({ ...resolved, organization_id: companyId, limit: this.punchesListLimit });
     const rows = this.queryRunner.query<PgHrPunchDayRow>({
       query_id: 'punch.day',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrPunchDayResult(rows, normalized, this.punchesListLimit);
+    return mapNumaHrPunchDayResult(rows, resolved, this.punchesListLimit);
   }
 
   leaveDays(input: NumaHrLeaveDaysParams): NumaHrLeaveDaysResult {
@@ -1042,14 +1138,27 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       include_pending: Boolean(input.include_pending)
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrLeaveDaysStatement({ ...normalized, organization_id: companyId });
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrLeaveDaysResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrLeaveDaysStatement({ ...resolved, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrLeaveDaysRow>({
       query_id: 'leave.days',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrLeaveDaysResult(rows, normalized);
+    return mapNumaHrLeaveDaysResult(rows, resolved);
   }
 
   leaveBalance(input: NumaHrLeaveBalanceParams): NumaHrLeaveBalanceResult {
@@ -1064,14 +1173,27 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       include_pending: Boolean(input.include_pending)
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrLeaveBalanceStatement({ ...normalized, organization_id: companyId });
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrLeaveBalanceResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrLeaveBalanceStatement({ ...resolved, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrLeaveDaysRow>({
       query_id: 'leave.balance',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrLeaveBalanceResult(rows, normalized);
+    return mapNumaHrLeaveBalanceResult(rows, resolved);
   }
 
   worktimeSummary(input: NumaHrWorktimeSummaryParams): NumaHrWorktimeSummaryResult {
@@ -1085,14 +1207,27 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       theoretical_workday_minutes: input.theoretical_workday_minutes === undefined || input.theoretical_workday_minutes === null ? null : Math.trunc(input.theoretical_workday_minutes)
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrWorktimeSummaryStatement({ ...normalized, organization_id: companyId });
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrWorktimeSummaryResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrWorktimeSummaryStatement({ ...resolved, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrWorktimeSummaryRow>({
       query_id: 'worktime.summary',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrWorktimeSummaryResult(rows, normalized);
+    return mapNumaHrWorktimeSummaryResult(rows, resolved);
   }
 
   reportMonthByGroup(input: NumaHrReportMonthByGroupParams): NumaHrReportMonthByGroupResult {
@@ -1107,14 +1242,27 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       offset: Math.trunc(input.offset)
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrReportMonthByGroupStatement({ ...normalized, organization_id: companyId });
+    const resolvedGroup = this.resolveHrGroup({
+      company_id: companyId,
+      group_id: normalized.group_id ?? null,
+      group_name: normalized.group_name ?? null
+    });
+    if (resolvedGroup.status !== 'resolved') {
+      return buildNumaHrReportMonthByGroupResolutionResult(normalized, resolvedGroup.status, resolvedGroup.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      group_id: resolvedGroup.group_id,
+      group_name: resolvedGroup.group_name
+    };
+    const statement = buildNumaHrReportMonthByGroupStatement({ ...resolved, organization_id: companyId });
     const rows = this.queryRunner.query<PgHrReportMonthByGroupRow>({
       query_id: 'report.month-by-group',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrReportMonthByGroupResult(rows, normalized);
+    return mapNumaHrReportMonthByGroupResult(rows, resolved);
   }
 
   private createTransactionPlan(): PgReadOnlyTransactionPlan {
