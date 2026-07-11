@@ -100,17 +100,20 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
   - reenvío de `X-OpenWebUI-User-Id`;
   - ocultación de avisos de update.
 - `ENABLE_VERSION_UPDATE_CHECK=false` impide el aviso en el panel; por tanto la comprobación interna debe ejecutarse como operación.
+- El feedback bueno/malo de OpenWebUI `0.10.2` no tiene modo simple configurable: al pulsar puede abrir un modal detallado con escala, motivos y texto libre.
+- Para producción queda pendiente crear una imagen/parche propio de OpenWebUI para que thumbs up/down guarde el voto directamente, sin modal y sin guardar `snapshot` completo del chat.
 
 ## Bloqueos
 - Ninguno para el estado actual.
 
 ## Próximo paso exacto
-- Probar desde el panel OpenWebUI con un usuario cliente no admin:
-  1. Abrir `http://192.168.1.21:3001`.
-  2. Seleccionar `kern-numa`.
-  3. Verificar que en las respuestas solo aparecen copiar, pulgar arriba y pulgar abajo.
-  4. Emitir un voto.
-  5. Ejecutar `sudo /opt/openwebui/kern-daily-ops-report.sh` y confirmar que aumenta el contador.
+- Para producción, abrir una tarea específica de OpenWebUI:
+  1. Crear imagen Kern/OpenWebUI fijada a la versión elegida.
+  2. Parchear `ResponseMessage.svelte` para que thumbs up/down guarde feedback directamente.
+  3. Eliminar apertura de `RateComment`.
+  4. Eliminar `snapshot: { chat }` del payload si se requiere minimización estricta.
+  5. Validar que el reporte diario sigue contando positivos/negativos.
+  6. Mantener ocultos editar, regenerar, audio y avisos de update.
 
 ## Cómo retomar el trabajo
 1. Abrir `/home/jlu/proyectos/kern core/kern`.

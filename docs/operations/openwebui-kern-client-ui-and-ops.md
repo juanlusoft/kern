@@ -293,3 +293,62 @@ Ctrl+F5
 - This customization hides UI actions; it does not remove backend capabilities.
 - If OpenWebUI changes `ResponseMessage.svelte`, regenerate hiding may need an updated selector.
 - `ENABLE_VERSION_UPDATE_CHECK=false` disables client-visible update checks; internal update checks must be run from the operations script.
+
+## Pending production hardening
+
+### Simple feedback flow
+
+Status: pending.
+
+OpenWebUI `0.10.2` does not provide a configuration option to keep thumbs up/down while disabling only the detailed rating form.
+
+Current behavior:
+
+- Clicking thumbs up/down may open a detailed rating panel.
+- The panel can include:
+  - score from 1 to 10;
+  - generic reason tags;
+  - free-text comments;
+  - optional public/community review UI when community sharing is enabled.
+
+Current mitigation:
+
+- `ui.enable_community_sharing=false` disables public review/community sharing.
+- `ui.enable_message_rating=true` keeps thumbs up/down enabled.
+
+Required production behavior:
+
+- Clicking thumbs up/down stores the feedback immediately.
+- No detailed rating modal is shown to clients.
+- No free-text feedback field is shown to clients.
+- No public/community review path is shown to clients.
+- Feedback storage must not include a full chat `snapshot`.
+- The daily report keeps counting positive/negative votes by day and model.
+
+Recommended implementation:
+
+- Build and pin a Kern-owned OpenWebUI image based on the chosen upstream version.
+- Patch `src/lib/components/chat/Messages/ResponseMessage.svelte`.
+- In `feedbackHandler`, keep the `POST /api/v1/evaluations/feedback` call with `data.rating`.
+- Do not set `showRateComment` after thumbs up/down.
+- Remove `snapshot: { chat }` from the feedback payload if strict minimization is required.
+- Keep only technical metadata required for reporting, for example:
+  - `rating`;
+  - `model_id`;
+  - `message_id`;
+  - opaque `user_id`;
+  - timestamps.
+
+Acceptance criteria:
+
+- A non-admin client user clicks thumbs up and sees no modal.
+- A non-admin client user clicks thumbs down and sees no modal.
+- `feedback` receives one row per click.
+- The row contains rating and model metadata.
+- The row does not contain a chat snapshot.
+- The daily report includes the new positive/negative count.
+- Copy button still works.
+- Regenerate, edit and audio controls remain hidden.
+- OpenWebUI update notices remain hidden from clients.
+
+Do not solve this with CSS except as an emergency demo workaround. CSS can hide the panel visually, but it does not provide a robust product behavior or data-minimization guarantee across OpenWebUI upgrades.
