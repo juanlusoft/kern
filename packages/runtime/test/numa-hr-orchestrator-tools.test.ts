@@ -39,6 +39,11 @@ type QwenRequest = {
       };
     };
   }>;
+  tool_choice?: unknown;
+  messages?: Array<{
+    role?: string;
+    content?: string | null;
+  }>;
 };
 
 type HrCall =
@@ -367,7 +372,7 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
   };
 }
 
-function startRuntimeForCase(capabilityKey: HrToolName, args: Record<string, unknown>, text: string, messageId = 200) {
+function startRuntimeForCase(capabilityKey: HrToolName, args: Record<string, unknown>, text: string, messageId = 200, now: () => Date = () => new Date('2026-07-11T12:00:00.000Z')) {
   const tempDir = mkdtempSync(join(tmpdir(), 'kern-numa-hr-tools-'));
   const qwenRequests: QwenRequest[] = [];
   const hrCalls: HrCall[] = [];
@@ -380,7 +385,8 @@ function startRuntimeForCase(capabilityKey: HrToolName, args: Record<string, unk
       env: buildEnv(),
       telegramTransport,
       qwenTransport: buildQwenTransport(capabilityKey, args, qwenRequests),
-      hrReadPort: buildHrReadPort(hrCalls)
+      hrReadPort: buildHrReadPort(hrCalls),
+      now
     });
 
     assert.equal(runtimeResult.status, 'started');
@@ -392,6 +398,40 @@ function startRuntimeForCase(capabilityKey: HrToolName, args: Record<string, unk
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
+
+test('runtime slice forces asuntos propios relative-year questions to a deterministic HR tool call', () => {
+  const { qwenRequests, hrCalls, channelResult } = startRuntimeForCase(
+    'leave.days',
+    {
+      employee_name: 'BEATRIZ VERA',
+      year: '2024',
+      time_type_labels: ['vacaciones']
+    },
+    'BEATRIZ VERA tuvo asuntos propios el a\u00f1o pasado?',
+    207,
+    () => new Date('2026-07-11T12:00:00.000Z')
+  );
+
+  assert.equal(qwenRequests.length, 1);
+  const qwenRequest = qwenRequests[0];
+  assert.ok(qwenRequest);
+  assert.deepEqual((qwenRequest.tools ?? []).map((tool) => tool.function?.name), ['leave.days']);
+  assert.deepEqual(qwenRequest.tool_choice, { type: 'function', function: { name: 'leave.days' } });
+  assert.equal(qwenRequest.messages?.[0]?.content?.includes('Current date: 2026-07-11.'), true);
+  assert.equal(hrCalls.length, 1);
+  assert.equal(hrCalls[0].method, 'leaveDays');
+  assert.deepEqual(hrCalls[0].input, {
+    organization_id: 'org-numa-hr-tools-test',
+    correlation_id: 'telegram:install-numa-hr-tools-test:146574793:207',
+    employee_id: null,
+    employee_name: 'BEATRIZ VERA',
+    year: 2025,
+    time_type_ids: [34],
+    include_pending: false
+  });
+  assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
+  assert.equal((channelResult.orchestration_outcome?.response.data as { query_id?: string } | null | undefined)?.query_id, 'leave.days');
+});
 
 function assertHrToolSchemas(request: QwenRequest) {
   const tools = request.tools ?? [];

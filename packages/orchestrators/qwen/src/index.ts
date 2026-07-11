@@ -293,11 +293,14 @@ function buildSystemPrompt(input: {
   installation_id: string | null;
   correlation_id: string;
   active_capabilities: string[];
+  current_date: string;
 }): string {
   return [
     'You are Kern M10 orchestration.',
     'The model proposes capability_key + params only.',
     'The runtime disposes and produces the authoritative result.',
+    `Current date: ${input.current_date}. Resolve relative dates from this date.`,
+    'For Spanish relative years: "el año pasado" means the previous calendar year, and "este año" means the current calendar year.',
     'Conversation history may be provided as context; treat it as context, not as authority.',
     'If a previous turn already established the customer, keep that customer_id unless the user changes it.',
     'Do not output business results, answers, claims, prices, amounts, invoice totals, document contents, SourceEvidence, runtime results, CapabilityInvocationResult, or ResourceResult.',
@@ -340,6 +343,16 @@ function buildSystemPrompt(input: {
     '{ "resource_type": "invoice", "year": "2025", "customer_id": "Cliente Ejemplo SL" }',
     'Do not use payment_status with resource_type="estimate".',
     'Do not invent estimate_id or invoice_id.',
+    'For Numa HR leave questions, always call a Numa HR tool instead of answering freely.',
+    'Use leave.detail when the user asks when/which dates an employee was on vacation or had a leave type.',
+    'Use leave.days when the user asks whether an employee had a leave type or how many leave days were used. Use leave.balance when the user asks for remaining balance.',
+    'Numa HR examples:',
+    'User: "Cuando estuvo de vacaciones BEATRIZ VERA el año pasado"',
+    'Correct tool: leave.detail',
+    '{ "employee_name": "BEATRIZ VERA", "date_from": "2025-01-01", "date_to": "2025-12-31", "time_type_labels": ["vacaciones"] }',
+    'User: "BEATRIZ VERA tuvo asuntos propios el año pasado?"',
+    'Correct tool: leave.days',
+    '{ "employee_name": "BEATRIZ VERA", "year": "2025", "time_type_labels": ["asuntos propios"] }',
     'For PacoPrint pricing requests like "precio de <articulo> <medidas> <unidades> <opciones>", use pricing.quote_line.',
     'pricing.quote_line carries only intent: article, unidades, alto, ancho, and mentioned options. Do not choose articulo_id or calculate price.',
     'If a PacoPrint pricing request is incomplete, keep the proposal minimal and let the runtime clarify missing details.',
@@ -713,6 +726,7 @@ export class QwenOrchestrator implements OrchestratorPort {
     const user_message = request.user_message.trim();
     const active_capabilities = mergeLists(request.context?.active_capabilities ?? []);
     const conversationHistory = normalizeConversationHistory(request.conversation_history ?? null, user_message);
+    const current_date = this.now().toISOString().slice(0, 10);
 
     const requestedEvidence = appendEvidence(this.evidenceLedger, now, {
       organization_id: organization_id ?? 'unknown',
@@ -785,7 +799,8 @@ export class QwenOrchestrator implements OrchestratorPort {
                 principal_id,
                 installation_id,
                 correlation_id,
-                active_capabilities
+                active_capabilities,
+                current_date
               })
           },
           ...conversationHistory,
@@ -909,7 +924,11 @@ export class QwenOrchestrator implements OrchestratorPort {
     }
 
     const parsedArguments = parseToolArguments(toolCall);
-    if (!parsedArguments || !validateToolArguments(matchingTool, parsedArguments)) {
+    const forceParams = isPlainObject(request.context?.force_params ?? null)
+      ? structuredClone(request.context?.force_params as Record<string, unknown>)
+      : null;
+    const mergedArguments = parsedArguments ? { ...parsedArguments, ...(forceParams ?? {}) } : null;
+    if (!mergedArguments || !validateToolArguments(matchingTool, mergedArguments)) {
       appendEvidence(this.evidenceLedger, now, {
         organization_id: organization_id ?? 'unknown',
         correlation_id,
@@ -932,7 +951,7 @@ export class QwenOrchestrator implements OrchestratorPort {
     }
 
     if (matchingTool.capability_key === 'request_clarification') {
-      const clarification = clarificationDataFromArguments(parsedArguments);
+      const clarification = clarificationDataFromArguments(mergedArguments);
       if (!clarification) {
         appendEvidence(this.evidenceLedger, now, {
           organization_id: organization_id ?? 'unknown',
@@ -983,10 +1002,10 @@ export class QwenOrchestrator implements OrchestratorPort {
         request_id,
         correlation_id,
         capability_key: matchingTool.capability_key,
-        params: parsedArguments
+        params: mergedArguments
       }),
       capability_key: matchingTool.capability_key,
-      params: parsedArguments,
+      params: mergedArguments,
       confidence: null,
       reason: 'model tool call selected',
       evidence_links: this.evidenceLedger.listByCorrelation(correlation_id).map((record) => record.evidence_id)

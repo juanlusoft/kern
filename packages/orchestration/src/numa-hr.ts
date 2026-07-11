@@ -3,6 +3,14 @@ export interface NumaHrToolMappingConfig {
   annual_quota_by_time_type: Record<number, number>;
 }
 
+export interface NumaHrRoutingOverride {
+  force_capability_key: 'leave.days';
+  force_params: {
+    year: string;
+    time_type_labels: ['asuntos propios'];
+  };
+}
+
 function normalizeBusinessLabel(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -14,6 +22,15 @@ function normalizeBusinessLabel(value: unknown): string | null {
     .toLowerCase()
     .trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeMessage(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
 }
 
 function normalizePositiveInteger(value: unknown): number | null {
@@ -72,3 +89,19 @@ export function resolveNumaHrTimeTypeIds(
   return ids.size > 0 ? [...ids] : null;
 }
 
+export function deriveNumaHrRoutingOverride(message: string, now: Date): NumaHrRoutingOverride | null {
+  const normalized = normalizeMessage(message);
+  if (!/\basuntos propios\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(?:el\s+)?ano\s+pasado\b/.test(normalized)) {
+    return null;
+  }
+  return {
+    force_capability_key: 'leave.days',
+    force_params: {
+      year: String(now.getUTCFullYear() - 1),
+      time_type_labels: ['asuntos propios']
+    }
+  };
+}

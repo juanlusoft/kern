@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds } from '../src/numa-hr';
+import { deriveNumaHrRoutingOverride, normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds } from '../src/numa-hr';
 
 test('Numa HR mapping normaliza etiquetas y resuelve ids deterministas', () => {
   const mapping = {
@@ -23,4 +23,31 @@ test('Numa HR mapping falla cerrado con etiquetas vac?as o desconocidas', () => 
   assert.equal(resolveNumaHrTimeTypeIds([], mapping), null);
   assert.equal(resolveNumaHrTimeTypeIds(['desconocido'], mapping), null);
   assert.equal(normalizeNumaHrTimeTypeLabels([' ', 'vacaciones']), null);
+});
+
+test('Numa HR routing deriva asuntos propios del a\u00f1o pasado de forma determinista', () => {
+  const now = new Date('2026-07-11T12:00:00.000Z');
+
+  assert.deepEqual(deriveNumaHrRoutingOverride('BEATRIZ VERA tuvo asuntos propios el a\u00f1o pasado?', now), {
+    force_capability_key: 'leave.days',
+    force_params: {
+      year: '2025',
+      time_type_labels: ['asuntos propios']
+    }
+  });
+  assert.deepEqual(deriveNumaHrRoutingOverride('  BEATRIZ VERA tuvo   asuntos propios el ANO PASADO? ', now), {
+    force_capability_key: 'leave.days',
+    force_params: {
+      year: '2025',
+      time_type_labels: ['asuntos propios']
+    }
+  });
+});
+
+test('Numa HR routing no fuerza consultas fuera del patron acotado', () => {
+  const now = new Date('2026-07-11T12:00:00.000Z');
+
+  assert.equal(deriveNumaHrRoutingOverride('BEATRIZ VERA tuvo asuntos propios en 2025?', now), null);
+  assert.equal(deriveNumaHrRoutingOverride('BEATRIZ VERA estuvo de vacaciones el a\u00f1o pasado?', now), null);
+  assert.equal(deriveNumaHrRoutingOverride('BEATRIZ VERA tuvo asuntos propios?', now), null);
 });
