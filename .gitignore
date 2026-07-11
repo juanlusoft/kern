@@ -23,6 +23,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local agent/tool state
+.claude-flow/
+**/.claude-flow/
+
+# Untracked local prompt history may include private infrastructure details.
+prompts/
+
 # Node and TypeScript
 node_modules/
 dist/
