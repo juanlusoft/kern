@@ -409,7 +409,7 @@ test('leave.detail builder scopes by company, date range, time type and resolved
   });
 
   assert.match(statement.text, /e\.company_id = \$1/);
-  assert.match(statement.text, /r\.company_id = \$1/);
+  assert.doesNotMatch(statement.text, /\br\.company_id\b/);
   assert.match(statement.text, /r\.type = 4/);
   assert.match(statement.text, /r\.arg_time_type_1 = ANY\(\$4::int\[\]\)/);
   assert.match(statement.text, /\(\$6::text IS NULL AND \$7::text IS NULL\)/);

@@ -446,8 +446,7 @@ export function buildNumaHrLeaveDetailStatement(input: NumaHrLeaveDetailParams):
       FROM ta_requests r
       JOIN employee_scope es ON es.employee_id = r.employee_id::text
       LEFT JOIN ta_time_types tt ON tt.id = r.arg_time_type_1 AND tt.company_id = $1
-      WHERE r.company_id = $1
-        AND r.type = 4
+      WHERE r.type = 4
         AND r.arg_time_type_1 = ANY($4::int[])
         AND r.arg_date_1 IS NOT NULL
         AND r.arg_date_1 <= $3::date
