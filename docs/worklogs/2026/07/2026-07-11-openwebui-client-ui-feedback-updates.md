@@ -7,10 +7,10 @@ Nombre: Sol / ChatGPT CTO
 Proyecto: Kern / OpenWebUI Spark
 Repositorio: `https://github.com/juanlusoft/kern.git`
 Ruta: `/home/jlu/proyectos/kern core/kern`
-Rama: `main`
+Rama: `docs/openwebui-feedback-pending`
 Rama base: `main`
-Último commit: `34148a7`
-PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
+Último commit: `a101f8f`
+PR o ticket: PR #112 `https://github.com/juanlusoft/kern/pull/112`
 
 ## Objetivo del día
 - Ajustar OpenWebUI para una demo/uso cliente de Kern:
@@ -25,8 +25,8 @@ PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
 - Se ocultaron acciones de editar, leer en voz/audio y regenerar.
 - Se verificó que el botón de regenerar ya no aparece tras `Ctrl+F5`.
 - Se comprobó que OpenWebUI registra votos en SQLite.
-- Se verificaron 2 votos para `kern-numa`:
-  - 1 positivo.
+- Se verificaron 3 votos para `kern-numa`:
+  - 2 positivos.
   - 1 negativo.
 - Se desactivó el chequeo de actualización visible al cliente con `ENABLE_VERSION_UPDATE_CHECK=false`.
 - Se añadió script interno de comprobación de update.
@@ -57,10 +57,11 @@ PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
   - `/opt/openwebui/branding/start-kern.sh.bak-ui-actions-20260711-183844`
 - Documentación versionada:
   - `docs/operations/openwebui-kern-client-ui-and-ops.md`
+  - `docs/operations/numa-openwebui-demo-validation.md`
   - `docs/worklogs/2026/07/2026-07-11-openwebui-client-ui-feedback-updates.md`
 
 ## Estado actual
-Terminado para la personalización operativa de OpenWebUI en la Spark actual.
+En revisión. La personalización operativa de OpenWebUI está aplicada en la Spark actual y documentada en PR #112, pendiente de fusionar.
 
 ## Validaciones realizadas
 - Comando o prueba: `curl -fsS http://127.0.0.1:3001/static/custom.css`
@@ -70,7 +71,7 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
 - Resultado: PASS confirmado por usuario; el botón regenerar ya no aparece.
 
 - Comando o prueba: consulta SQLite solo sobre `feedback` sin leer `snapshot` ni mensajes.
-- Resultado: PASS, `kern-numa` tiene 1 voto positivo y 1 negativo el `2026-07-11`.
+- Resultado: PASS, `kern-numa` tiene 2 votos positivos y 1 negativo el `2026-07-11`.
 
 - Comando o prueba: `cd /opt/openwebui && sudo docker compose up -d`
 - Resultado: PASS, contenedor `openwebui` recreado y arrancado.
@@ -88,7 +89,10 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
 - Resultado: PASS, `status=up-to-date`.
 
 - Comando o prueba: `sudo /opt/openwebui/kern-daily-ops-report.sh 2026-07-11`
-- Resultado: PASS, genera `/opt/openwebui/reports/2026-07-11-openwebui-kern-report.txt`.
+- Resultado: PASS, genera `/opt/openwebui/reports/2026-07-11-openwebui-kern-report.txt`; OpenWebUI `status=up-to-date`.
+
+- Comando o prueba: login API con usuario demo no-admin.
+- Resultado: PASS, `demo@demo.com` entra como `role=user` y ve solo `kern-numa / Kern · Numa HR`.
 
 ## Decisiones tomadas
 - Se decidió ocultar acciones por CSS persistente en OpenWebUI porque la petición es visual/operativa y no requiere fork inmediato.
@@ -117,6 +121,14 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
 - Ninguno para el estado actual.
 
 ## Próximo paso exacto
+- Mantener PR #112 en espera hasta que Juanlu decida fusionarlo.
+- Para continuar mañana:
+  1. Abrir `http://192.168.1.21:3001`.
+  2. Entrar con el usuario demo no-admin.
+  3. Ejecutar `docs/operations/numa-openwebui-demo-validation.md`.
+  4. Confirmar que el usuario ve solo `Kern · Numa HR`.
+  5. Confirmar que las preguntas con trabajadores distintos funcionan.
+  6. Decidir mecanismo de túnel temporal para demo desde el PC del cliente.
 - Para producción, abrir una tarea específica de OpenWebUI:
   1. Crear imagen Kern/OpenWebUI fijada a la versión elegida.
   2. Parchear `ResponseMessage.svelte` para que thumbs up/down guarde feedback directamente.
@@ -159,7 +171,7 @@ sudo /opt/openwebui/kern-daily-ops-report.sh
 - `docs/worklogs/2026/07/2026-07-11-openwebui-client-ui-feedback-updates.md`
 
 ## Cambios locales sin guardar
-- Pendiente de revisar con `git status --short` tras crear esta documentación.
+- Ninguno al cierre antes de este último ajuste de documentación.
 
 ## Notas adicionales
 - No se tocaron:
@@ -170,3 +182,5 @@ sudo /opt/openwebui/kern-daily-ops-report.sh
   - Kern runtime.
   - Frontend de Kern.
 - No se guardaron secretos en documentación.
+- Usuario temporal documentado: `demo@demo.com`; la contraseña no está guardada en Git.
+- PR #112 queda abierto y sin fusionar.
