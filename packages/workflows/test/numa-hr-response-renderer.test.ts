@@ -192,6 +192,64 @@ test('renders explicit empty, truncated, and missing balance messages', () => {
   );
 });
 
+test('renders HR resolution ambiguity and not-found messages before empty-data messages', () => {
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
+      query_id: 'punch.day',
+      employee_id: null,
+      employee_name: 'Ana',
+      date: '2026-07-01',
+      records: [],
+      first_entry_at: null,
+      last_exit_at: null,
+      worked_minutes: null,
+      row_count: 2,
+      resolution_status: 'ambiguous',
+      resolution_message: 'He encontrado varios resultados para "Ana". Necesito que concretes el trabajador.',
+      resolution_candidates: [{ name: 'Ana Garc\u00EDa' }, { name: 'Ana Mar\u00EDa' }]
+    }),
+    'He encontrado varios resultados para "Ana". Necesito que concretes el trabajador.\n- Ana Garc\u00EDa\n- Ana Mar\u00EDa'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
+      query_id: 'leave.days',
+      employee_id: null,
+      employee_name: 'No Existe',
+      year: 2026,
+      time_type_ids: [5],
+      include_pending: false,
+      records: [],
+      row_count: 0,
+      resolution_status: 'not_found',
+      resolution_message: 'No he encontrado trabajador para "No Existe".',
+      resolution_candidates: []
+    }),
+    'No he encontrado trabajador para "No Existe".'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
+      query_id: 'report.month-by-group',
+      group_id: null,
+      group_name: 'MANINDU',
+      year: 2026,
+      month: 5,
+      limit: 25,
+      offset: 0,
+      employee_count: 0,
+      records: [],
+      row_count: 2,
+      resolution_status: 'ambiguous',
+      resolution_message: 'He encontrado varios resultados para "MANINDU". Necesito que concretes el centro.',
+      resolution_candidates: [{ name: 'MANINDU MARTOS' }, { name: 'MANINDU JAEN' }],
+      truncated: true
+    }),
+    'He encontrado varios resultados para "MANINDU". Necesito que concretes el centro.\n- MANINDU MARTOS\n- MANINDU JAEN\nNota: el resultado esta truncado; se muestran solo los registros disponibles.'
+  );
+});
+
 test('returns null for unknown and malformed payloads', () => {
   assert.equal(renderNumaHrResponseMessage({ query_id: 'other', records: [], truncated: false }), null);
   assert.equal(renderNumaHrResponseMessage({ query_id: 'punch.day', records: 'not-an-array', truncated: false }), null);

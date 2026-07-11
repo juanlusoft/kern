@@ -38,6 +38,29 @@ function appendTruncationNotice(message: string, truncated: boolean): string {
   return truncated ? `${message}\nNota: el resultado esta truncado; se muestran solo los registros disponibles.` : message;
 }
 
+function renderResolutionMessage(data: UnknownRecord, truncated: boolean): string | null {
+  const status = data.resolution_status;
+  if (status !== 'ambiguous' && status !== 'not_found') {
+    return null;
+  }
+  const message = asNullableString(data.resolution_message);
+  if (!message) {
+    return null;
+  }
+  const candidates = asRecords(data.resolution_candidates);
+  if (status === 'not_found' || !candidates || candidates.length === 0) {
+    return appendTruncationNotice(message, truncated);
+  }
+  const renderedCandidates = candidates
+    .map((candidate) => asString(candidate.name))
+    .filter((candidate): candidate is string => candidate !== null)
+    .map((candidate) => `- ${candidate}`);
+  if (renderedCandidates.length === 0) {
+    return appendTruncationNotice(message, truncated);
+  }
+  return appendTruncationNotice(`${message}\n${renderedCandidates.join('\n')}`, truncated);
+}
+
 function employeeName(value: unknown): string | null | undefined {
   return asNullableString(value);
 }
@@ -211,6 +234,10 @@ export function renderNumaHrResponseMessage(data: unknown): string | null {
   const result = asRecord(data);
   if (!result || typeof result.truncated !== 'boolean') {
     return null;
+  }
+  const resolutionMessage = renderResolutionMessage(result, result.truncated);
+  if (resolutionMessage) {
+    return resolutionMessage;
   }
   const records = asRecords(result.records);
   if (!records) {
