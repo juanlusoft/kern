@@ -40,6 +40,7 @@ PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
   - usuario temporal de validación `demo@demo.com` sin guardar contraseña;
   - `ui.enable_community_sharing=false`.
 - Se añadió checklist de validación manual para demo Numa/OpenWebUI.
+- Se registró como pendiente preparar un túnel temporal seguro para poder hacer la demo desde el PC del cliente sin exponer Kern ni PostgreSQL.
 
 ## Cambios realizados
 - Proyecto: OpenWebUI Spark
@@ -110,6 +111,7 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
 - `ENABLE_VERSION_UPDATE_CHECK=false` impide el aviso en el panel; por tanto la comprobación interna debe ejecutarse como operación.
 - El feedback bueno/malo de OpenWebUI `0.10.2` no tiene modo simple configurable: al pulsar puede abrir un modal detallado con escala, motivos y texto libre.
 - Para producción queda pendiente crear una imagen/parche propio de OpenWebUI para que thumbs up/down guarde el voto directamente, sin modal y sin guardar `snapshot` completo del chat.
+- Para la demo queda pendiente definir y probar un túnel temporal seguro hacia OpenWebUI. No debe exponer PostgreSQL, Kern runtime ni puertos internos.
 
 ## Bloqueos
 - Ninguno para el estado actual.
@@ -122,6 +124,12 @@ Terminado para la personalización operativa de OpenWebUI en la Spark actual.
   4. Eliminar `snapshot: { chat }` del payload si se requiere minimización estricta.
   5. Validar que el reporte diario sigue contando positivos/negativos.
   6. Mantener ocultos editar, regenerar, audio y avisos de update.
+- Para la demo desde PC del cliente:
+  1. Elegir mecanismo de túnel temporal.
+  2. Exponer solo OpenWebUI.
+  3. Validar login con usuario no-admin.
+  4. Ejecutar checklist Numa.
+  5. Cerrar túnel y confirmar que deja de responder.
 
 ## Cómo retomar el trabajo
 1. Abrir `/home/jlu/proyectos/kern core/kern`.

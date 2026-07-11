@@ -506,3 +506,48 @@ Acceptance criteria:
 - OpenWebUI update notices remain hidden from clients.
 
 Do not solve this with CSS except as an emergency demo workaround. CSS can hide the panel visually, but it does not provide a robust product behavior or data-minimization guarantee across OpenWebUI upgrades.
+
+### Client demo tunnel
+
+Status: pending.
+
+Goal:
+
+- Allow Juanlu to run the demo from the client's own PC without installing Kern or exposing internal services directly.
+
+Required behavior:
+
+- The client PC can open a temporary URL and reach only the OpenWebUI demo surface.
+- Kern, PostgreSQL and internal service ports remain inaccessible from the public internet.
+- The tunnel is time-bounded and can be revoked immediately after the demo.
+- The tunnel target is OpenWebUI, not the Kern runtime port or PostgreSQL.
+- Authentication remains required in OpenWebUI.
+- The demo user is non-admin and can only access `Kern · Numa HR`.
+
+Recommended approach:
+
+- Use a temporary tunnel to OpenWebUI, for example Cloudflare Tunnel, Tailscale Funnel, SSH reverse tunnel through a trusted host, or another approved secure tunnel.
+- Prefer a tunnel with:
+  - HTTPS;
+  - access control or allowlist where possible;
+  - short lifetime;
+  - audit/log visibility;
+  - easy teardown.
+
+Not allowed:
+
+- Publishing PostgreSQL.
+- Publishing Kern runtime directly.
+- Binding internal Kern ports to a public interface.
+- Using an unauthenticated tunnel.
+- Leaving the tunnel running after the demo without an explicit operations decision.
+
+Acceptance criteria:
+
+- From an external network, the client PC opens the tunnel URL and sees OpenWebUI login.
+- Login with the demo/client user succeeds.
+- The user sees only `Kern · Numa HR`.
+- Numa demo questions work.
+- Feedback can be submitted and counted.
+- No OpenWebUI update notice is visible.
+- After teardown, the tunnel URL no longer works.

@@ -17,6 +17,17 @@ This is a manual acceptance checklist. It should be run with a non-admin OpenWeb
 - `ui.enable_community_sharing=false`.
 - `ui.enable_message_rating=true`.
 
+If the demo is run from the client's own PC, use a temporary secure tunnel to OpenWebUI.
+
+The tunnel must expose only the OpenWebUI surface, not:
+
+- PostgreSQL;
+- Kern runtime port;
+- Docker socket;
+- internal service ports.
+
+The tunnel must be torn down after the demo unless there is an explicit operations decision to keep it.
+
 ## UI Checks
 
 1. Open the model selector.
@@ -34,6 +45,18 @@ This is a manual acceptance checklist. It should be run with a non-admin OpenWeb
    - regenerate;
    - read aloud/audio.
 9. Confirm no OpenWebUI update notice appears.
+
+## Remote Client PC Checks
+
+If using a tunnel:
+
+1. Open the temporary tunnel URL from an external network.
+2. Confirm it lands on OpenWebUI login.
+3. Login with the non-admin demo/client user.
+4. Confirm only `Kern · Numa HR` is visible.
+5. Run at least one Numa HR question.
+6. Tear down the tunnel.
+7. Confirm the tunnel URL no longer works.
 
 ## Functional Questions
 
