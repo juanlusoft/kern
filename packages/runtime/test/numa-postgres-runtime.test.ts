@@ -291,6 +291,48 @@ test('runtime slice builds the Numa PostgreSQL read runner when the module is ac
   assert.equal(calls.some((call) => call.statement.includes('BEGIN READ ONLY')), false);
 });
 
+test('runtime starts the Numa and OpenWebUI installation without Telegram or Holded secrets', async () => {
+  const rawConfig = {
+    ...buildInstallationConfig(['qwen-orchestrator', 'numa-postgres-read', 'openwebui-channel']),
+    secret_refs: {
+      KERN_MODEL_BASE_URL: 'KERN_MODEL_BASE_URL',
+      KERN_MODEL_NAME: 'KERN_MODEL_NAME',
+      KERN_MODEL_API_KEY: 'KERN_MODEL_API_KEY'
+    },
+    runtime_options: {
+      ...buildInstallationConfig(['qwen-orchestrator', 'numa-postgres-read', 'openwebui-channel']).runtime_options,
+      openwebui_channel: {
+        host: '127.0.0.1',
+        port: 0,
+        request_body_limit_bytes: 10_000,
+        identity: {
+          source: 'body_user',
+          header: null
+        },
+        users: {
+          'openwebui-user-1': {
+            principal_id: 'principal-001',
+            organization_id: 'org-numa-runtime-test',
+            active: true,
+            display_name: 'Principal One'
+          }
+        }
+      }
+    }
+  } satisfies RuntimeInstallationConfig;
+  const runtimeResult = startInstallationRuntime({
+    rawConfig,
+    env: buildEnv({ HOLDED_API_KEY: undefined, KERN_TELEGRAM_BOT_TOKEN: undefined }),
+    qwenTransport: buildQwenTransport(),
+    numaPostgresQueryRunner: buildNumaRunner([])
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  assert.ok(runtimeResult.runtime?.openwebuiServer);
+  await runtimeResult.runtime!.openwebuiServer!.ready;
+  await runtimeResult.runtime!.openwebuiServer!.close();
+});
+
 test('runtime slice fails closed when the Numa company mapping is missing', () => {
   const rawConfig = buildInstallationConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read', 'numa-postgres-read']);
   if (rawConfig.runtime_options.numa_hr) {
@@ -336,5 +378,4 @@ test('runtime slice does not require Numa PostgreSQL env when the module is inac
   assert.equal(runtimeResult.status, 'started');
   assert.equal(runtimeResult.moduleRegistry.listActive().some((module) => module.module_key === 'numa-postgres-read'), false);
 });
-
 

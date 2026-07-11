@@ -50,10 +50,10 @@ export interface RuntimePrincipalConfig {
 }
 
 export interface RuntimeSecretRefs {
-  HOLDED_API_KEY: string;
-  KERN_TELEGRAM_BOT_TOKEN: string;
-  KERN_MODEL_BASE_URL: string;
-  KERN_MODEL_NAME: string;
+  HOLDED_API_KEY?: string | null;
+  KERN_TELEGRAM_BOT_TOKEN?: string | null;
+  KERN_MODEL_BASE_URL?: string | null;
+  KERN_MODEL_NAME?: string | null;
   KERN_MODEL_API_KEY?: string | null;
   PACOPRINT_API_TOKEN?: string | null;
 }
@@ -84,10 +84,10 @@ export interface RuntimeInstallationConfig {
 }
 
 export interface ResolvedRuntimeSecrets {
-  HOLDED_API_KEY: string;
-  KERN_TELEGRAM_BOT_TOKEN: string;
-  KERN_MODEL_BASE_URL: string;
-  KERN_MODEL_NAME: string;
+  HOLDED_API_KEY: string | null;
+  KERN_TELEGRAM_BOT_TOKEN: string | null;
+  KERN_MODEL_BASE_URL: string | null;
+  KERN_MODEL_NAME: string | null;
   KERN_MODEL_API_KEY: string | null;
   PACOPRINT_API_TOKEN: string | null;
 }
@@ -548,19 +548,15 @@ function normalizeSecretRefs(value: unknown): RuntimeSecretRefs {
   if (!isPlainObject(value)) {
     fail('secret_refs', 'secret_refs must be an object');
   }
+  const normalizeOptionalRef = (candidate: unknown, field: string): string | null =>
+    candidate === undefined || candidate === null ? null : assertEnvName(candidate, field);
   return {
-    HOLDED_API_KEY: assertEnvName(value.HOLDED_API_KEY, 'secret_refs.HOLDED_API_KEY'),
-    KERN_TELEGRAM_BOT_TOKEN: assertEnvName(value.KERN_TELEGRAM_BOT_TOKEN, 'secret_refs.KERN_TELEGRAM_BOT_TOKEN'),
-    KERN_MODEL_BASE_URL: assertEnvName(value.KERN_MODEL_BASE_URL, 'secret_refs.KERN_MODEL_BASE_URL'),
-    KERN_MODEL_NAME: assertEnvName(value.KERN_MODEL_NAME, 'secret_refs.KERN_MODEL_NAME'),
-    KERN_MODEL_API_KEY:
-      value.KERN_MODEL_API_KEY === undefined || value.KERN_MODEL_API_KEY === null
-        ? null
-        : assertEnvName(value.KERN_MODEL_API_KEY, 'secret_refs.KERN_MODEL_API_KEY'),
-    PACOPRINT_API_TOKEN:
-      value.PACOPRINT_API_TOKEN === undefined || value.PACOPRINT_API_TOKEN === null
-        ? null
-        : assertEnvName(value.PACOPRINT_API_TOKEN, 'secret_refs.PACOPRINT_API_TOKEN')
+    HOLDED_API_KEY: normalizeOptionalRef(value.HOLDED_API_KEY, 'secret_refs.HOLDED_API_KEY'),
+    KERN_TELEGRAM_BOT_TOKEN: normalizeOptionalRef(value.KERN_TELEGRAM_BOT_TOKEN, 'secret_refs.KERN_TELEGRAM_BOT_TOKEN'),
+    KERN_MODEL_BASE_URL: normalizeOptionalRef(value.KERN_MODEL_BASE_URL, 'secret_refs.KERN_MODEL_BASE_URL'),
+    KERN_MODEL_NAME: normalizeOptionalRef(value.KERN_MODEL_NAME, 'secret_refs.KERN_MODEL_NAME'),
+    KERN_MODEL_API_KEY: normalizeOptionalRef(value.KERN_MODEL_API_KEY, 'secret_refs.KERN_MODEL_API_KEY'),
+    PACOPRINT_API_TOKEN: normalizeOptionalRef(value.PACOPRINT_API_TOKEN, 'secret_refs.PACOPRINT_API_TOKEN')
   };
 }
 
@@ -642,28 +638,44 @@ export function validateInstallationConfig(raw: unknown): RuntimeInstallationCon
   };
 }
 
-export function resolveRuntimeSecrets(secretRefs: RuntimeSecretRefs, env: NodeJS.ProcessEnv = process.env): ResolvedRuntimeSecrets {
-  const resolveRequired = (ref: string, field: string): string => {
+export function resolveRuntimeSecrets(
+  secretRefs: RuntimeSecretRefs,
+  activeModules: RuntimeModuleKey[],
+  env: NodeJS.ProcessEnv = process.env
+): ResolvedRuntimeSecrets {
+  const resolveRequired = (ref: string | null | undefined, field: string): string => {
+    if (!ref) {
+      fail(field, `Missing required secret ref: ${field}`);
+    }
     const value = normalizeString(env[ref]);
     if (!value) {
       fail(field, `Missing required secret ref: ${ref}`);
     }
     return value;
   };
-  const resolveOptional = (ref: string): string | null => normalizeString(env[ref]);
+  const resolveOptional = (ref: string | null | undefined): string | null => (ref ? normalizeString(env[ref]) : null);
+  const isActive = (moduleKey: RuntimeModuleKey): boolean => activeModules.includes(moduleKey);
 
   return {
-    HOLDED_API_KEY: resolveRequired(secretRefs.HOLDED_API_KEY, 'secret_refs.HOLDED_API_KEY'),
-    KERN_TELEGRAM_BOT_TOKEN: resolveRequired(secretRefs.KERN_TELEGRAM_BOT_TOKEN, 'secret_refs.KERN_TELEGRAM_BOT_TOKEN'),
-    KERN_MODEL_BASE_URL: resolveRequired(secretRefs.KERN_MODEL_BASE_URL, 'secret_refs.KERN_MODEL_BASE_URL'),
-    KERN_MODEL_NAME: resolveRequired(secretRefs.KERN_MODEL_NAME, 'secret_refs.KERN_MODEL_NAME'),
+    HOLDED_API_KEY: isActive('holded-read') ? resolveRequired(secretRefs.HOLDED_API_KEY, 'secret_refs.HOLDED_API_KEY') : resolveOptional(secretRefs.HOLDED_API_KEY),
+    KERN_TELEGRAM_BOT_TOKEN: isActive('telegram-channel')
+      ? resolveRequired(secretRefs.KERN_TELEGRAM_BOT_TOKEN, 'secret_refs.KERN_TELEGRAM_BOT_TOKEN')
+      : resolveOptional(secretRefs.KERN_TELEGRAM_BOT_TOKEN),
+    KERN_MODEL_BASE_URL: isActive('qwen-orchestrator')
+      ? resolveRequired(secretRefs.KERN_MODEL_BASE_URL, 'secret_refs.KERN_MODEL_BASE_URL')
+      : resolveOptional(secretRefs.KERN_MODEL_BASE_URL),
+    KERN_MODEL_NAME: isActive('qwen-orchestrator')
+      ? resolveRequired(secretRefs.KERN_MODEL_NAME, 'secret_refs.KERN_MODEL_NAME')
+      : resolveOptional(secretRefs.KERN_MODEL_NAME),
     KERN_MODEL_API_KEY: secretRefs.KERN_MODEL_API_KEY ? resolveOptional(secretRefs.KERN_MODEL_API_KEY) : null,
-    PACOPRINT_API_TOKEN: secretRefs.PACOPRINT_API_TOKEN ? resolveOptional(secretRefs.PACOPRINT_API_TOKEN) : null
+    PACOPRINT_API_TOKEN: isActive('pacoprint-catalog')
+      ? resolveRequired(secretRefs.PACOPRINT_API_TOKEN, 'secret_refs.PACOPRINT_API_TOKEN')
+      : resolveOptional(secretRefs.PACOPRINT_API_TOKEN)
   };
 }
 
 export function loadInstallationConfig(raw: unknown, env: NodeJS.ProcessEnv = process.env): LoadedRuntimeConfig {
   const config = validateInstallationConfig(raw);
-  const secrets = resolveRuntimeSecrets(config.secret_refs, env);
+  const secrets = resolveRuntimeSecrets(config.secret_refs, config.active_modules, env);
   return { config, secrets };
 }

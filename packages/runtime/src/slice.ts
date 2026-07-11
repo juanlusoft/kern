@@ -48,7 +48,6 @@ import {
   resolveOrganizationContext
 } from '../../identity/src/index';
 
-const REQUIRED_MODULES: RuntimeModuleKey[] = ['telegram-channel', 'qwen-orchestrator', 'holded-read'];
 const SUPPORTED_MODULES: RuntimeModuleKey[] = [
   'telegram-channel',
   'qwen-orchestrator',
@@ -133,7 +132,7 @@ export interface InstallationRuntimeSlice {
   readonly moduleRegistry: RuntimeModuleRegistry;
   readonly workflowRuntime: InMemoryGovernedWorkflowRuntime;
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
-  readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+  readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
   readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
   pollOnce(limit?: number): ChannelMessageResult[];
   runLoop(options?: { maxIterations?: number; limit?: number }): ChannelMessageResult[][];
@@ -232,10 +231,6 @@ function buildRuntimeModuleRegistry(config: RuntimeInstallationConfig): RuntimeM
     });
   }
   return registry;
-}
-
-function hasRequiredModules(registry: RuntimeModuleRegistry): boolean {
-  return REQUIRED_MODULES.every((moduleKey) => registry.has(moduleKey) && (registry as InMemoryRuntimeModuleRegistry).isActive(moduleKey));
 }
 
 function buildQwenToolCatalog() {
@@ -721,29 +716,33 @@ function buildOpenWebUIInstallationConfig(config: RuntimeInstallationConfig) {
 function buildOrchestrationBoundary(options: {
   config: RuntimeInstallationConfig;
   secrets: ResolvedRuntimeSecrets;
-  qwenTransport: QwenChatCompletionsTransport;
-  holdedFetch: HoldedFetch;
-  pacoPrintFetch: PacoPrintFetch;
+  qwenTransport: QwenChatCompletionsTransport | null;
+  holdedFetch: HoldedFetch | null;
+  pacoPrintFetch: PacoPrintFetch | null;
   presenceReadPort?: PresenceReadPort | null;
   numaHrConfig?: RuntimeNumaHrConfig | null;
   hrReadPort?: NumaHrReadPort | null;
   numaPostgresQueryRunner?: PgPresenceQueryRunner | null;
   now: () => Date;
 }) {
-  const externalReadAdapter = createHoldedReadAdapter({
-    apiKey: options.secrets.HOLDED_API_KEY,
-    baseUrl: options.config.runtime_options.holded_base_url ?? undefined,
-    fetch: options.holdedFetch,
-    now: options.now,
-    installation: buildHoldedInstallation(options.config)
-  });
-  const pacoPrintCatalogAdapter = createPacoPrintCatalogAdapter({
-    apiToken: options.secrets.PACOPRINT_API_TOKEN,
-    baseUrl: 'https://pacoprint.com/api/v1',
-    fetch: options.pacoPrintFetch,
-    now: options.now,
-    organization_id: options.config.organization.organization_id
-  });
+  const externalReadAdapter = options.config.active_modules.includes('holded-read')
+    ? createHoldedReadAdapter({
+        apiKey: options.secrets.HOLDED_API_KEY,
+        baseUrl: options.config.runtime_options.holded_base_url ?? undefined,
+        fetch: options.holdedFetch as HoldedFetch,
+        now: options.now,
+        installation: buildHoldedInstallation(options.config)
+      })
+    : undefined;
+  const pacoPrintCatalogAdapter = options.config.active_modules.includes('pacoprint-catalog')
+    ? createPacoPrintCatalogAdapter({
+        apiToken: options.secrets.PACOPRINT_API_TOKEN,
+        baseUrl: 'https://pacoprint.com/api/v1',
+        fetch: options.pacoPrintFetch as PacoPrintFetch,
+        now: options.now,
+        organization_id: options.config.organization.organization_id
+      })
+    : null;
   const workflowRuntime = new InMemoryGovernedWorkflowRuntime({
     now: options.now,
     resolveOrganizationContext: buildOrganizationResolver(options.config, options.now),
@@ -754,10 +753,12 @@ function buildOrchestrationBoundary(options: {
     hrReadPort: options.hrReadPort ?? null,
     organization_id: options.config.organization.organization_id
   });
-  workflowRuntime.registerCapability(
-    createMockResourceReadCapability(externalReadAdapter, {}, options.config.organization.organization_id)
-  );
-  if (options.config.active_modules.includes('pacoprint-catalog') && options.config.active_capabilities.includes('pricing.quote_line')) {
+  if (externalReadAdapter && options.config.active_capabilities.includes('mock.resource.read')) {
+    workflowRuntime.registerCapability(
+      createMockResourceReadCapability(externalReadAdapter, {}, options.config.organization.organization_id)
+    );
+  }
+  if (pacoPrintCatalogAdapter && options.config.active_capabilities.includes('pricing.quote_line')) {
     workflowRuntime.registerCapability(
       createPricingQuoteLineCapability(pacoPrintCatalogAdapter, {}, options.config.organization.organization_id)
     );
@@ -766,16 +767,18 @@ function buildOrchestrationBoundary(options: {
     workflowRuntime.registerCapability(createPricingQuoteDraftCapability({}, options.config.organization.organization_id));
   }
 
-  const orchestrator = createQwenOrchestrator({
-    baseUrl: options.secrets.KERN_MODEL_BASE_URL,
-    model: options.secrets.KERN_MODEL_NAME,
-    apiKey: options.secrets.KERN_MODEL_API_KEY,
-    toolCatalog: buildQwenToolCatalog(),
-    chatCompletionsTransport: options.qwenTransport,
-    now: options.now,
-    temperature: options.config.runtime_options.qwen_temperature,
-    requestTimeoutMs: options.config.runtime_options.qwen_request_timeout_ms
-  });
+  const orchestrator = options.config.active_modules.includes('qwen-orchestrator')
+    ? createQwenOrchestrator({
+        baseUrl: options.secrets.KERN_MODEL_BASE_URL as string,
+        model: options.secrets.KERN_MODEL_NAME as string,
+        apiKey: options.secrets.KERN_MODEL_API_KEY,
+        toolCatalog: buildQwenToolCatalog(),
+        chatCompletionsTransport: options.qwenTransport ?? undefined,
+        now: options.now,
+        temperature: options.config.runtime_options.qwen_temperature,
+        requestTimeoutMs: options.config.runtime_options.qwen_request_timeout_ms
+      })
+    : null;
 
   const orchestrationBoundary = new InMemoryOrchestrationBoundary({
     now: options.now,
@@ -885,38 +888,6 @@ export function startInstallationRuntime(input: {
     });
   }
 
-  const missingModules = REQUIRED_MODULES.filter((moduleKey) => !loaded.config.active_modules.includes(moduleKey));
-  if (missingModules.length > 0) {
-    for (const moduleKey of missingModules) {
-      createRuntimeEvidence(evidenceLedger, now, {
-        organization_id: loaded.config.organization.organization_id,
-        correlation_id: bootstrapCorrelationId,
-        record_type: 'module_missing',
-        subject: moduleKey,
-        data: {
-          module_key: moduleKey
-        }
-      });
-    }
-    createRuntimeEvidence(evidenceLedger, now, {
-      organization_id: loaded.config.organization.organization_id,
-      correlation_id: bootstrapCorrelationId,
-      record_type: 'installation_start_blocked',
-      subject: loaded.config.installation_id,
-      data: {
-        reason: 'required modules missing',
-        missing_modules: missingModules
-      }
-    });
-    return {
-      status: 'blocked',
-      reason: 'required modules missing',
-      evidenceLedger,
-      moduleRegistry,
-      runtime: null
-    };
-  }
-
   let secrets: ResolvedRuntimeSecrets;
   try {
     secrets = loaded.secrets;
@@ -952,35 +923,39 @@ export function startInstallationRuntime(input: {
     };
   }
 
-  const telegramTransport =
-    input.telegramTransport ??
-    createNodeFetchTelegramTransport({
-      baseUrl: 'https://api.telegram.org',
-      botToken: secrets.KERN_TELEGRAM_BOT_TOKEN,
-      timeoutMs: loaded.config.runtime_options.telegram_poll_timeout_ms
-    });
-  const qwenTransport =
-    input.qwenTransport ??
-    createQwenNodeFetchTransport({
-      baseUrl: secrets.KERN_MODEL_BASE_URL,
-      apiKey: secrets.KERN_MODEL_API_KEY,
-      timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
-    });
-  const holdedFetch =
-    input.holdedFetch ??
-    createNodeFetchHoldedTransport({
-      baseUrl: loaded.config.runtime_options.holded_base_url ?? 'https://api.holded.com',
-      apiKey: secrets.HOLDED_API_KEY,
-      timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
-    });
+  const telegramTransport = loaded.config.active_modules.includes('telegram-channel')
+    ? input.telegramTransport ??
+      createNodeFetchTelegramTransport({
+        baseUrl: 'https://api.telegram.org',
+        botToken: secrets.KERN_TELEGRAM_BOT_TOKEN as string,
+        timeoutMs: loaded.config.runtime_options.telegram_poll_timeout_ms
+      })
+    : null;
+  const qwenTransport = loaded.config.active_modules.includes('qwen-orchestrator')
+    ? input.qwenTransport ??
+      createQwenNodeFetchTransport({
+        baseUrl: secrets.KERN_MODEL_BASE_URL as string,
+        apiKey: secrets.KERN_MODEL_API_KEY,
+        timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
+      })
+    : null;
+  const holdedFetch = loaded.config.active_modules.includes('holded-read')
+    ? input.holdedFetch ??
+      createNodeFetchHoldedTransport({
+        baseUrl: loaded.config.runtime_options.holded_base_url ?? 'https://api.holded.com',
+        apiKey: secrets.HOLDED_API_KEY as string,
+        timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
+      })
+    : null;
   const nowFn = now;
-  const pacoPrintFetch =
-    input.pacoPrintFetch ??
-    createNodeFetchPacoPrintTransport({
-      baseUrl: 'https://pacoprint.com/api/v1',
-      apiToken: secrets.PACOPRINT_API_TOKEN,
-      timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
-    });
+  const pacoPrintFetch = loaded.config.active_modules.includes('pacoprint-catalog')
+    ? input.pacoPrintFetch ??
+      createNodeFetchPacoPrintTransport({
+        baseUrl: 'https://pacoprint.com/api/v1',
+        apiToken: secrets.PACOPRINT_API_TOKEN,
+        timeoutMs: loaded.config.runtime_options.qwen_request_timeout_ms
+      })
+    : null;
   let presenceReadPort = input.presenceReadPort ?? null;
   let hrReadPort = input.hrReadPort ?? null;
   if (loaded.config.active_modules.includes('numa-postgres-read')) {
@@ -1034,14 +1009,16 @@ export function startInstallationRuntime(input: {
       loaded.config.runtime_options.conversation_memory_file_path ?? `${process.cwd()}/conversation-memory.json`,
     now: nowFn
   });
-  const telegramAdapter = createTelegramChannelAdapter({
-    installation: buildTelegramInstallationConfig(loaded.config, secrets),
-    orchestrationBoundary,
-    transport: telegramTransport,
-    now: nowFn,
-    mode: loaded.config.runtime_options.telegram_mode,
-    conversationMemoryStore
-  });
+  const telegramAdapter = loaded.config.active_modules.includes('telegram-channel')
+    ? createTelegramChannelAdapter({
+        installation: buildTelegramInstallationConfig(loaded.config, secrets),
+        orchestrationBoundary,
+        transport: telegramTransport as TelegramTransport,
+        now: nowFn,
+        mode: loaded.config.runtime_options.telegram_mode,
+        conversationMemoryStore
+      })
+    : null;
   let openwebuiServer: OpenWebUIChannelServerHandle | null = null;
   if (loaded.config.active_modules.includes('openwebui-channel')) {
     try {
@@ -1115,9 +1092,9 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
   readonly moduleRegistry: RuntimeModuleRegistry;
   readonly workflowRuntime: InMemoryGovernedWorkflowRuntime;
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
-  readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+  readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
   readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
-  private readonly telegramTransport: TelegramTransport;
+  private readonly telegramTransport: TelegramTransport | null;
   private readonly now: () => Date;
   private lastOffset: number | null = null;
 
@@ -1128,9 +1105,9 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
     moduleRegistry: RuntimeModuleRegistry;
     workflowRuntime: InMemoryGovernedWorkflowRuntime;
     orchestrationBoundary: InMemoryOrchestrationBoundary;
-    telegramAdapter: ReturnType<typeof createTelegramChannelAdapter>;
+    telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
     openwebuiServer: OpenWebUIChannelServerHandle | null;
-    telegramTransport: TelegramTransport;
+    telegramTransport: TelegramTransport | null;
     now: () => Date;
   }) {
     this.config = input.config;
@@ -1146,6 +1123,9 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
   }
 
   pollOnce(limit: number | null = null): ChannelMessageResult[] {
+    if (!this.telegramTransport || !this.telegramAdapter) {
+      return [];
+    }
     const updates = this.telegramTransport.getUpdates({
       offset: this.lastOffset,
       limit: limit ?? this.config.runtime_options.telegram_poll_limit
