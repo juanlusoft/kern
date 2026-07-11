@@ -969,36 +969,60 @@ test('runtime slice fails closed for live-like installation changes without fall
   assert.equal(capabilityResult.result.orchestration_outcome?.response.response_source, 'workflow_blocked');
 });
 
-test('runtime slice fails closed when a required module is missing', () => {
-  const config = {
-    ...buildInstallationConfig(),
-    active_modules: ['telegram-channel', 'qwen-orchestrator'],
-    active_capabilities: ['mock.resource.read']
-  } satisfies RuntimeInstallationConfig;
+test('runtime slice fails closed when an active module secret is missing', () => {
+  const cases = [
+    {
+      module: 'holded-read' as const,
+      config: buildInstallationConfig(),
+      env: { ...buildEnv(), HOLDED_API_KEY: undefined },
+      missing: 'HOLDED_API_KEY'
+    },
+    {
+      module: 'telegram-channel' as const,
+      config: buildInstallationConfig(),
+      env: { ...buildEnv(), KERN_TELEGRAM_BOT_TOKEN: undefined },
+      missing: 'KERN_TELEGRAM_BOT_TOKEN'
+    },
+    {
+      module: 'pacoprint-catalog' as const,
+      config: {
+        ...buildInstallationConfig(),
+        active_modules: ['pacoprint-catalog'],
+        secret_refs: {
+          PACOPRINT_API_TOKEN: 'PACOPRINT_API_TOKEN'
+        }
+      } satisfies RuntimeInstallationConfig,
+      env: { ...buildEnv(), PACOPRINT_API_TOKEN: undefined },
+      missing: 'PACOPRINT_API_TOKEN'
+    },
+    {
+      module: 'qwen-orchestrator' as const,
+      config: {
+        ...buildInstallationConfig(),
+        active_modules: ['qwen-orchestrator'],
+        secret_refs: {
+          KERN_MODEL_BASE_URL: 'KERN_MODEL_BASE_URL',
+          KERN_MODEL_NAME: 'KERN_MODEL_NAME'
+        }
+      } satisfies RuntimeInstallationConfig,
+      env: { ...buildEnv(), KERN_MODEL_BASE_URL: undefined },
+      missing: 'KERN_MODEL_BASE_URL'
+    }
+  ];
 
-  const runtimeResult = startInstallationRuntime({
-    rawConfig: config,
-    env: buildEnv()
-  });
+  for (const testCase of cases) {
+    const runtimeResult = startInstallationRuntime({
+      rawConfig: testCase.config,
+      env: testCase.env
+    });
 
-  assert.equal(runtimeResult.status, 'blocked');
-  assert.equal(runtimeResult.reason, 'required modules missing');
-  assert.equal(runtimeResult.runtime, null);
-  assert.equal(
-    runtimeResult.evidenceLedger.listByCorrelation('runtime-bootstrap').some((record) =>
-      record.record_type === 'module_missing'
-    ),
-    true
-  );
-  assert.equal(
-    runtimeResult.evidenceLedger.listByCorrelation('runtime-bootstrap').some((record) =>
-      record.record_type === 'installation_start_blocked'
-    ),
-    true
-  );
+    assert.equal(runtimeResult.status, 'blocked', testCase.module);
+    assert.equal(runtimeResult.reason?.includes(testCase.missing), true, testCase.module);
+    assert.equal(runtimeResult.runtime, null, testCase.module);
+  }
 });
 
-test('runInstallation reads config from the environment and blocks safely when modules are missing', async () => {
+test('runInstallation starts safely when no channel module is active', async () => {
   const original = new Map<string, string | undefined>([
     ['KERN_RUNTIME_CONFIG_JSON', process.env.KERN_RUNTIME_CONFIG_JSON],
     ['KERN_RUNTIME_CONFIG_PATH', process.env.KERN_RUNTIME_CONFIG_PATH],
@@ -1011,7 +1035,8 @@ test('runInstallation reads config from the environment and blocks safely when m
 
   const config = {
     ...buildInstallationConfig(),
-    active_modules: ['telegram-channel']
+    active_modules: [],
+    secret_refs: {}
   };
 
   process.env.KERN_RUNTIME_CONFIG_JSON = JSON.stringify(config);
@@ -1027,7 +1052,7 @@ test('runInstallation reads config from the environment and blocks safely when m
   console.error = () => {};
   console.log = () => {};
   try {
-    assert.equal(runInstallation(), 1);
+    assert.equal(runInstallation(), 0);
   } finally {
     console.error = originalConsoleError;
     console.log = originalConsoleLog;

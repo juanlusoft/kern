@@ -341,22 +341,35 @@ test('M11 runtime slice fails closed when live-like organization, principal, sco
   }
 });
 
-test('M11 runtime slice blocks when a required module is missing', () => {
-  const runtimeResult = startInstallationRuntime({
+test('M11 runtime slice starts without inactive modules and blocks when an active module secret is missing', () => {
+  const withoutHolded = startInstallationRuntime({
     rawConfig: {
       ...buildInstallationConfig(),
       active_modules: ['telegram-channel', 'qwen-orchestrator']
     },
-    env: buildEnv()
+    env: {
+      ...buildEnv(),
+      HOLDED_API_KEY: undefined
+    },
+    telegramTransport: new InMemoryTelegramTransport(),
+    qwenTransport: buildQwenTransport()
+  });
+
+  assert.equal(withoutHolded.status, 'started');
+  assert.ok(withoutHolded.runtime);
+  assert.equal(withoutHolded.moduleRegistry.listActive().some((module) => module.module_key === 'holded-read'), false);
+
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: buildInstallationConfig(),
+    env: {
+      ...buildEnv(),
+      HOLDED_API_KEY: undefined
+    }
   });
 
   assert.equal(runtimeResult.status, 'blocked');
-  assert.equal(runtimeResult.reason, 'required modules missing');
+  assert.equal(runtimeResult.reason?.includes('HOLDED_API_KEY'), true);
   assert.equal(runtimeResult.runtime, null);
-  assert.equal(
-    runtimeResult.evidenceLedger.listByCorrelation('runtime-bootstrap').some((record) => record.record_type === 'module_missing'),
-    true
-  );
   assert.equal(
     runtimeResult.evidenceLedger.listByCorrelation('runtime-bootstrap').some((record) => record.record_type === 'installation_start_blocked'),
     true
