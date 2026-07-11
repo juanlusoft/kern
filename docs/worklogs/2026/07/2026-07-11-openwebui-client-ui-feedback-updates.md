@@ -37,7 +37,7 @@ PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
   - sugerencias Numa;
   - modelo por defecto `kern-numa`;
   - permisos cliente reducidos;
-  - usuario temporal de validación sin guardar contraseña;
+  - usuario temporal de validación `demo@demo.com` sin guardar contraseña;
   - `ui.enable_community_sharing=false`.
 - Se añadió checklist de validación manual para demo Numa/OpenWebUI.
 

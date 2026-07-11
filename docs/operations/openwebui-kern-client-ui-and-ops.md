@@ -285,7 +285,7 @@ Do not commit its password.
 Document only:
 
 ```text
-email = kern-validator@local.test
+email = demo@demo.com
 role = user
 purpose = client validation for Numa/OpenWebUI
 model grant = kern-numa read

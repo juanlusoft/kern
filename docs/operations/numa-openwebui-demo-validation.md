@@ -44,15 +44,15 @@ Días de vacaciones de BEATRIZ VERA en 2025
 ```
 
 ```text
-Qué fechas estuvo de vacaciones BEATRIZ VERA en 2025
+Qué fechas estuvo de vacaciones ALVARO GARCIA en 2025
 ```
 
 ```text
-Cuántos días de asuntos propios tuvo BEATRIZ VERA el año pasado
+Cuántos días de asuntos propios tuvo AMADOR MOLINA OCAÑA el año pasado
 ```
 
 ```text
-A qué hora ha fichado esta mañana BEATRIZ VERA
+A qué hora ha fichado esta mañana EUGENIO MOYA
 ```
 
 ```text
