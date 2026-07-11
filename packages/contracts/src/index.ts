@@ -214,7 +214,7 @@ export interface PresenceReadPort {
   listPunches(input: PresencePunchesListParams): PresencePunchesListResult;
   currentPresence(input: PresenceCurrentParams): PresenceCurrentResult;
 }
-export type NumaHrCapabilityKey = 'punch.day' | 'leave.days' | 'leave.balance' | 'worktime.summary' | 'report.month-by-group';
+export type NumaHrCapabilityKey = 'punch.day' | 'leave.days' | 'leave.balance' | 'leave.detail' | 'worktime.summary' | 'report.month-by-group';
 
 export interface NumaHrResultBase {
   organization_id: string;
@@ -311,6 +311,40 @@ export interface NumaHrLeaveBalanceResult extends NumaHrResultBase {
   records: [NumaHrLeaveBalanceRecord, ...NumaHrLeaveBalanceRecord[]] | NumaHrLeaveBalanceRecord[];
 }
 
+export interface NumaHrLeaveDetailParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  date_from: string;
+  date_to: string;
+  time_type_ids: number[];
+  include_pending?: boolean;
+  limit: number;
+}
+
+export interface NumaHrLeaveDetailRecord {
+  request_id: string;
+  time_type_id: number;
+  time_type_name: string | null;
+  start_date: string;
+  end_date: string;
+  day_count: number;
+  status: 'accepted' | 'pending' | 'rejected';
+}
+
+export interface NumaHrLeaveDetailResult extends NumaHrResultBase {
+  query_id: 'leave.detail';
+  employee_id: string | null;
+  employee_name: string | null;
+  date_from: string;
+  date_to: string;
+  time_type_ids: number[];
+  include_pending: boolean;
+  limit: number;
+  records: [NumaHrLeaveDetailRecord, ...NumaHrLeaveDetailRecord[]] | NumaHrLeaveDetailRecord[];
+}
+
 export interface NumaHrWorktimeSummaryParams {
   organization_id: string;
   correlation_id: string;
@@ -380,6 +414,7 @@ export interface NumaHrReadPort {
   punchDay(input: NumaHrPunchDayParams): NumaHrPunchDayResult;
   leaveDays(input: NumaHrLeaveDaysParams): NumaHrLeaveDaysResult;
   leaveBalance(input: NumaHrLeaveBalanceParams): NumaHrLeaveBalanceResult;
+  leaveDetail(input: NumaHrLeaveDetailParams): NumaHrLeaveDetailResult;
   worktimeSummary(input: NumaHrWorktimeSummaryParams): NumaHrWorktimeSummaryResult;
   reportMonthByGroup(input: NumaHrReportMonthByGroupParams): NumaHrReportMonthByGroupResult;
 }

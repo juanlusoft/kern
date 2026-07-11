@@ -4,6 +4,7 @@ import {
   type CapabilityOutput,
   type NumaHrLeaveBalanceParams,
   type NumaHrLeaveDaysParams,
+  type NumaHrLeaveDetailParams,
   type NumaHrPunchDayParams,
   type NumaHrReadPort,
   type NumaHrReportMonthByGroupParams,
@@ -172,6 +173,45 @@ function buildLeaveBalanceCapability(port: NumaHrReadPort, organization_id = 'or
   };
 }
 
+function buildLeaveDetailCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+  return {
+    capability_id: 'leave.detail',
+    organization_id,
+    title: 'Leave detail',
+    description: 'Read detailed leave requests by type and date range.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: null,
+    mock: {
+      invoke(input) {
+        const payload = input.input.payload as Record<string, unknown>;
+        const organization_id = normalizeString(payload.organization_id);
+        const correlation_id = normalizeString(payload.correlation_id);
+        const date_from = normalizeString(payload.date_from);
+        const date_to = normalizeString(payload.date_to);
+        const time_type_ids = normalizeNumberArray(payload.time_type_ids);
+        const limit = normalizePositiveInteger(payload.limit, 100);
+        if (!organization_id || !correlation_id || !date_from || !date_to || time_type_ids.length === 0) {
+          return { status: 'denied', output: null, error: 'leave.detail payload invalid' };
+        }
+        const result = port.leaveDetail({
+          organization_id,
+          correlation_id,
+          employee_id: normalizeString(payload.employee_id),
+          employee_name: normalizeString(payload.employee_name),
+          date_from,
+          date_to,
+          time_type_ids,
+          include_pending: Boolean(payload.include_pending),
+          limit
+        });
+        return buildMockResult('leave.detail', result);
+      }
+    }
+  };
+}
+
 function buildWorktimeSummaryCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
   return {
     capability_id: 'worktime.summary',
@@ -257,6 +297,10 @@ export function createNumaLeaveBalanceCapability(port: NumaHrReadPort, organizat
   return buildLeaveBalanceCapability(port, organization_id);
 }
 
+export function createNumaLeaveDetailCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+  return buildLeaveDetailCapability(port, organization_id);
+}
+
 export function createNumaWorktimeSummaryCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
   return buildWorktimeSummaryCapability(port, organization_id);
 }
@@ -270,6 +314,7 @@ export function createNumaHrCapabilitySet(port: NumaHrReadPort, organization_id 
     createNumaPunchDayCapability(port, organization_id),
     createNumaLeaveDaysCapability(port, organization_id),
     createNumaLeaveBalanceCapability(port, organization_id),
+    createNumaLeaveDetailCapability(port, organization_id),
     createNumaWorktimeSummaryCapability(port, organization_id),
     createNumaReportMonthByGroupCapability(port, organization_id)
   ];

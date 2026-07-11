@@ -86,6 +86,31 @@ test('renders one deterministic business message for every Numa HR query', () =>
   assert.equal(
     renderNumaHrResponseMessage({
       ...base,
+      query_id: 'leave.detail',
+      employee_id: 'employee-1',
+      employee_name: 'Ana',
+      date_from: '2026-01-01',
+      date_to: '2026-12-31',
+      time_type_ids: [5],
+      include_pending: false,
+      limit: 100,
+      records: [
+        {
+          request_id: 'request-1',
+          time_type_id: 5,
+          time_type_name: 'Vacaciones',
+          start_date: '2026-08-01',
+          end_date: '2026-08-05',
+          day_count: 5,
+          status: 'accepted'
+        }
+      ]
+    }),
+    'Detalle de ausencias de Ana entre 2026-01-01 y 2026-12-31:\n- Vacaciones: 2026-08-01 a 2026-08-05; 5 dias; aceptada.'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
       query_id: 'worktime.summary',
       employee_id: 'employee-1',
       employee_name: 'Ana',
@@ -272,6 +297,7 @@ test('uses the rendered message without changing response data and retains the f
     punchDay: () => punchResult,
     leaveDays: () => ({ ...base, query_id: 'leave.days', employee_id: null, employee_name: null, year: 2026, time_type_ids: [], include_pending: false, records: [] }),
     leaveBalance: () => ({ ...base, query_id: 'leave.balance', employee_id: null, employee_name: null, year: 2026, time_type_ids: [], include_pending: false, records: [] }),
+    leaveDetail: () => ({ ...base, query_id: 'leave.detail', employee_id: null, employee_name: null, date_from: '2026-01-01', date_to: '2026-12-31', time_type_ids: [], include_pending: false, limit: 100, records: [] }),
     worktimeSummary: () => ({ ...base, query_id: 'worktime.summary', employee_id: null, employee_name: null, date_from: '2026-07-01', date_to: '2026-07-01', theoretical_workday_minutes: null, records: [], total_worked_minutes: 0, total_overtime_minutes: null }),
     reportMonthByGroup: () => ({ ...base, query_id: 'report.month-by-group', group_id: null, group_name: null, year: 2026, month: 7, limit: 25, offset: 0, employee_count: 0, records: [] })
   };

@@ -152,6 +152,37 @@ function renderLeaveBalance(data: UnknownRecord, records: UnknownRecord[], trunc
   return appendTruncationNotice(`Saldo de ausencias de ${subject} en ${year}:\n${renderedRecords.join('\n')}`, truncated);
 }
 
+function renderLeaveDetail(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+  const name = employeeName(data.employee_name);
+  const dateFrom = asString(data.date_from);
+  const dateTo = asString(data.date_to);
+  if (name === undefined || dateFrom === null || dateTo === null) {
+    return null;
+  }
+  const renderedRecords = records.map((record) => {
+    const timeTypeName = asNullableString(record.time_type_name);
+    const startDate = asString(record.start_date);
+    const endDate = asString(record.end_date);
+    const dayCount = asNumber(record.day_count);
+    const status = record.status;
+    if (timeTypeName === undefined || startDate === null || endDate === null || dayCount === null || (status !== 'accepted' && status !== 'pending' && status !== 'rejected')) {
+      return null;
+    }
+    const label = timeTypeName ?? 'Tipo de ausencia';
+    const statusLabel = status === 'accepted' ? 'aceptada' : status === 'pending' ? 'pendiente' : 'rechazada';
+    const range = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
+    return `- ${label}: ${range}; ${dayCount} dias; ${statusLabel}.`;
+  });
+  if (renderedRecords.some((record) => record === null)) {
+    return null;
+  }
+  const subject = name ?? 'la persona consultada';
+  if (renderedRecords.length === 0) {
+    return appendTruncationNotice(`No hay detalle de ausencias para ${subject} entre ${dateFrom} y ${dateTo}.`, truncated);
+  }
+  return appendTruncationNotice(`Detalle de ausencias de ${subject} entre ${dateFrom} y ${dateTo}:\n${renderedRecords.join('\n')}`, truncated);
+}
+
 function renderWorktimeSummary(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
   const name = employeeName(data.employee_name);
   const dateFrom = asString(data.date_from);
@@ -251,6 +282,9 @@ export function renderNumaHrResponseMessage(data: unknown): string | null {
   }
   if (result.query_id === 'leave.balance') {
     return renderLeaveBalance(result, records, result.truncated);
+  }
+  if (result.query_id === 'leave.detail') {
+    return renderLeaveDetail(result, records, result.truncated);
   }
   if (result.query_id === 'worktime.summary') {
     return renderWorktimeSummary(result, records, result.truncated);

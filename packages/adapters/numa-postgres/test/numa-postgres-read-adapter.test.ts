@@ -9,6 +9,7 @@ import {
 import {
   buildNumaHrLeaveBalanceStatement,
   buildNumaHrLeaveDaysStatement,
+  buildNumaHrLeaveDetailStatement,
   buildNumaHrPunchDayStatement,
   buildNumaHrWorktimeSummaryStatement
 } from '../src/hr';
@@ -75,7 +76,7 @@ test('presence adapter search uses unaccent and closed query catalog', () => {
   assert.equal(calls[0].values[0], 'company-acme');
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.equal(calls[0].transactionRole, NUMA_POSTGRES_ROLE);
-  assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current', 'punch.day', 'leave.days', 'leave.balance', 'worktime.summary', 'report.month-by-group']);
+  assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current', 'punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group']);
 });
 
 test('presence adapter fails closed when company mapping is missing', () => {
@@ -394,6 +395,33 @@ test('HR builders keep name filters from short-circuiting when employee_id is nu
   assert.deepEqual(punchDayUnfiltered.values, ['org-acme', '2026-07-02', null, null, 25]);
 });
 
+test('leave.detail builder scopes by company, date range, time type and resolved employee filter', () => {
+  const statement = buildNumaHrLeaveDetailStatement({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-detail',
+    employee_id: null,
+    employee_name: 'Ana Garc\u00EDa',
+    date_from: '2026-01-01',
+    date_to: '2026-12-31',
+    time_type_ids: [5],
+    include_pending: true,
+    limit: 100
+  });
+
+  assert.match(statement.text, /e\.company_id = \$1/);
+  assert.match(statement.text, /r\.company_id = \$1/);
+  assert.match(statement.text, /r\.type = 4/);
+  assert.match(statement.text, /r\.arg_time_type_1 = ANY\(\$4::int\[\]\)/);
+  assert.match(statement.text, /\(\$6::text IS NULL AND \$7::text IS NULL\)/);
+  assert.match(statement.text, /OR e\.person_id::text = \$6/);
+  assert.match(statement.text, /OR e\.code::text = \$6/);
+  assert.match(statement.text, /LIKE unaccent\(lower\(\$7\)\)/);
+  assert.match(statement.text, /r\.val_accepted IS TRUE/);
+  assert.match(statement.text, /\(\$5::boolean IS TRUE AND r\.val_accepted IS NULL\)/);
+  assert.doesNotMatch(statement.text, /\$5::boolean IS TRUE\s+OR\s+r\.val_accepted IS TRUE/);
+  assert.deepEqual(statement.values, ['org-acme', '2026-01-01', '2026-12-31', [5], true, null, '%Ana Garc\u00EDa%', 100]);
+});
+
 test('HR adapter forwards variable employee and group names without tying behavior to a single fixture', () => {
   const { runner, calls } = createRunner({
     'employee.resolve': ({ values }) => {
@@ -432,6 +460,17 @@ test('HR adapter forwards variable employee and group names without tying behavi
         time_type_name: 'Vacaciones',
         days_disfrutados: '4',
         days_pendientes: '1'
+      }
+    ],
+    'leave.detail': [
+      {
+        request_id: 'request-ana-vacaciones',
+        time_type_id: 5,
+        time_type_name: 'Vacaciones',
+        start_date: '2026-08-01',
+        end_date: '2026-08-05',
+        day_count: '5',
+        status: 'accepted'
       }
     ],
     'worktime.summary': [
@@ -505,6 +544,16 @@ test('HR adapter forwards variable employee and group names without tying behavi
     date_to: '2026-07-31',
     theoretical_workday_minutes: 480
   });
+  const leaveDetail = adapter.leaveDetail({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-leave-detail-ana',
+    employee_name: 'Ana Garc\u00EDa',
+    date_from: '2026-01-01',
+    date_to: '2026-12-31',
+    time_type_ids: [5],
+    include_pending: false,
+    limit: 100
+  });
   const report = adapter.reportMonthByGroup({
     organization_id: 'org-acme',
     correlation_id: 'corr-report-martos',
@@ -520,6 +569,7 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(punchDayEmployeeName.toLowerCase(), 'ana garc\u00EDa');
   assert.equal(leaveDays.employee_name, 'Ana Garc\u00EDa');
   assert.equal(leaveBalance.employee_name, 'Juan Mag\u00E1n');
+  assert.equal(leaveDetail.employee_name, 'Ana Garc\u00EDa');
   assert.equal(worktime.employee_name, 'Ana Garc\u00EDa');
   assert.equal(report.group_name, 'Martos');
   assert.deepEqual(leaveDays.records[0], {
@@ -539,6 +589,16 @@ test('HR adapter forwards variable employee and group names without tying behavi
     balance: 18,
     message: null
   });
+  assert.deepEqual(leaveDetail.records[0], {
+    request_id: 'request-ana-vacaciones',
+    time_type_id: 5,
+    time_type_name: 'Vacaciones',
+    start_date: '2026-08-01',
+    end_date: '2026-08-05',
+    day_count: 5,
+    status: 'accepted'
+  });
+  assert.equal(typeof leaveDetail.records[0]?.day_count, 'number');
   assert.equal(typeof leaveBalance.records[0]?.days_disfrutados, 'number');
   assert.equal(typeof leaveBalance.records[0]?.days_pendientes, 'number');
   assert.deepEqual(report.records[0], {
@@ -556,15 +616,19 @@ test('HR adapter forwards variable employee and group names without tying behavi
   const punchCall = calls.find((call) => call.query_id === 'punch.day');
   const leaveDaysCall = calls.find((call) => call.query_id === 'leave.days');
   const leaveBalanceCall = calls.find((call) => call.query_id === 'leave.balance');
+  const leaveDetailCall = calls.find((call) => call.query_id === 'leave.detail');
   const reportCall = calls.find((call) => call.query_id === 'report.month-by-group');
   assert.ok(punchCall);
   assert.ok(leaveDaysCall);
   assert.ok(leaveBalanceCall);
+  assert.ok(leaveDetailCall);
   assert.ok(reportCall);
   assert.match(leaveDaysCall.statement, /company_id = \$1/);
   assert.match(leaveBalanceCall.statement, /company_id = \$1/);
+  assert.match(leaveDetailCall.statement, /company_id = \$1/);
   assert.doesNotMatch(leaveDaysCall.statement, /\be\.(?:active|organization_id)\b/);
   assert.doesNotMatch(leaveBalanceCall.statement, /\be\.(?:active|organization_id)\b/);
+  assert.doesNotMatch(leaveDetailCall.statement, /\be\.(?:active|organization_id)\b/);
   assert.match(reportCall.statement, /TRUE AS active/);
   assert.doesNotMatch(reportCall.statement, /\be\.(?:active|organization_id)\b/);
   assert.match(punchCall.statement, /cp\.person_id::text = \$3/);
@@ -580,6 +644,9 @@ test('HR adapter forwards variable employee and group names without tying behavi
   assert.equal(leaveBalanceCall.values[0], 'company-acme');
   assert.equal(leaveBalanceCall.values[4], 'emp-003');
   assert.equal(leaveBalanceCall.values[5], '%Juan Mag\u00E1n%');
+  assert.equal(leaveDetailCall.values[0], 'company-acme');
+  assert.equal(leaveDetailCall.values[5], 'emp-002');
+  assert.equal(leaveDetailCall.values[6], '%Ana Garc\u00EDa%');
   assert.equal(reportCall.values[0], 'company-acme');
   assert.equal(reportCall.values[1], 'group-martos');
   assert.equal(reportCall.values[2], '%Martos%');
@@ -643,6 +710,21 @@ test('HR adapter resolves employee names before data queries and fails closed on
   assert.equal(worktime.resolution_status, 'ambiguous');
   assert.equal(worktime.records.length, 0);
   assert.equal(calls.some((call) => call.query_id === 'worktime.summary'), false);
+
+  const leaveDetail = adapter.leaveDetail({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-ambiguous-leave-detail',
+    employee_name: 'Ana',
+    date_from: '2026-01-01',
+    date_to: '2026-12-31',
+    time_type_ids: [5],
+    include_pending: false,
+    limit: 100
+  });
+
+  assert.equal(leaveDetail.resolution_status, 'ambiguous');
+  assert.equal(leaveDetail.records.length, 0);
+  assert.equal(calls.some((call) => call.query_id === 'leave.detail'), false);
 });
 
 test('HR adapter resolves a unique partial employee name and executes by resolved employee id', () => {
@@ -654,6 +736,17 @@ test('HR adapter resolves a unique partial employee name and executes by resolve
         time_type_name: 'Vacaciones',
         days_disfrutados: '5',
         days_pendientes: '0'
+      }
+    ],
+    'leave.detail': [
+      {
+        request_id: 'request-1',
+        time_type_id: 5,
+        time_type_name: 'Vacaciones',
+        start_date: '2025-08-01',
+        end_date: '2025-08-05',
+        day_count: '5',
+        status: 'accepted'
       }
     ]
   });
@@ -680,14 +773,41 @@ test('HR adapter resolves a unique partial employee name and executes by resolve
     time_type_ids: [5],
     include_pending: false
   });
+  const detail = adapter.leaveDetail({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-unique-employee-detail',
+    employee_name: 'Mariola Navarro',
+    date_from: '2025-01-01',
+    date_to: '2025-12-31',
+    time_type_ids: [5],
+    include_pending: false,
+    limit: 100
+  });
 
   const leaveCall = calls.find((call) => call.query_id === 'leave.days');
+  const detailCall = calls.find((call) => call.query_id === 'leave.detail');
   assert.equal(result.resolution_status, undefined);
   assert.equal(result.employee_id, 'emp-mariola');
   assert.equal(result.employee_name, 'MARIOLA NAVARRO LEON');
+  assert.equal(detail.resolution_status, undefined);
+  assert.equal(detail.employee_id, 'emp-mariola');
+  assert.equal(detail.employee_name, 'MARIOLA NAVARRO LEON');
+  assert.deepEqual(detail.records[0], {
+    request_id: 'request-1',
+    time_type_id: 5,
+    time_type_name: 'Vacaciones',
+    start_date: '2025-08-01',
+    end_date: '2025-08-05',
+    day_count: 5,
+    status: 'accepted'
+  });
   assert.ok(leaveCall);
+  assert.ok(detailCall);
   assert.equal(leaveCall.values[4], 'emp-mariola');
   assert.equal(leaveCall.values[5], '%MARIOLA NAVARRO LEON%');
+  assert.equal(detailCall.values[0], 'company-acme');
+  assert.equal(detailCall.values[5], 'emp-mariola');
+  assert.equal(detailCall.values[6], '%MARIOLA NAVARRO LEON%');
 });
 
 test('HR adapter returns not_found for missing employee names without executing data queries', () => {

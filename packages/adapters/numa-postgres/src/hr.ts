@@ -3,6 +3,8 @@ import type {
   NumaHrLeaveBalanceResult,
   NumaHrLeaveDaysParams,
   NumaHrLeaveDaysResult,
+  NumaHrLeaveDetailParams,
+  NumaHrLeaveDetailResult,
   NumaHrPunchDayParams,
   NumaHrPunchDayResult,
   NumaHrReportMonthByGroupParams,
@@ -27,6 +29,16 @@ export interface PgHrLeaveDaysRow {
   time_type_name: string | null;
   days_disfrutados: number;
   days_pendientes: number;
+}
+
+export interface PgHrLeaveDetailRow {
+  request_id: string;
+  time_type_id: number;
+  time_type_name: string | null;
+  start_date: string;
+  end_date: string;
+  day_count: number;
+  status: 'accepted' | 'pending' | 'rejected';
 }
 
 export interface PgHrWorktimeSummaryPunchRow {
@@ -269,6 +281,33 @@ export function buildNumaHrLeaveBalanceResolutionResult(
   };
 }
 
+export function buildNumaHrLeaveDetailResolutionResult(
+  input: NumaHrLeaveDetailParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrLeaveDetailResult {
+  return {
+    query_id: 'leave.detail',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date_from: input.date_from,
+    date_to: input.date_to,
+    time_type_ids: [...input.time_type_ids],
+    include_pending: Boolean(input.include_pending),
+    limit: input.limit,
+    records: [],
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
 export function buildNumaHrWorktimeSummaryResolutionResult(
   input: NumaHrWorktimeSummaryParams,
   status: 'ambiguous' | 'not_found',
@@ -372,6 +411,65 @@ export function buildNumaHrLeaveDaysStatement(input: NumaHrLeaveDaysParams): PgS
 
 export function buildNumaHrLeaveBalanceStatement(input: NumaHrLeaveBalanceParams): PgSqlStatement {
   return buildLeaveStatement(input);
+}
+
+export function buildNumaHrLeaveDetailStatement(input: NumaHrLeaveDetailParams): PgSqlStatement {
+  return {
+    text: `
+      WITH employee_scope AS (
+        SELECT
+          e.person_id::text AS employee_id
+        FROM org_employees e
+        JOIN core_persons p ON p.id = e.person_id
+        WHERE e.company_id = $1
+          AND (
+            ($6::text IS NULL AND $7::text IS NULL)
+            OR e.person_id::text = $6
+            OR e.code::text = $6
+            OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($7))
+          )
+        ORDER BY e.person_id ASC
+        LIMIT 1
+      )
+      SELECT
+        r.id::text AS request_id,
+        r.arg_time_type_1 AS time_type_id,
+        tt.name AS time_type_name,
+        r.arg_date_1::text AS start_date,
+        COALESCE(r.arg_date_2, r.arg_date_1)::text AS end_date,
+        GREATEST((COALESCE(r.arg_date_2, r.arg_date_1) - r.arg_date_1) + 1, 1) AS day_count,
+        CASE
+          WHEN r.val_accepted IS TRUE THEN 'accepted'
+          WHEN r.val_accepted IS NULL THEN 'pending'
+          ELSE 'rejected'
+        END AS status
+      FROM ta_requests r
+      JOIN employee_scope es ON es.employee_id = r.employee_id::text
+      LEFT JOIN ta_time_types tt ON tt.id = r.arg_time_type_1 AND tt.company_id = $1
+      WHERE r.company_id = $1
+        AND r.type = 4
+        AND r.arg_time_type_1 = ANY($4::int[])
+        AND r.arg_date_1 IS NOT NULL
+        AND r.arg_date_1 <= $3::date
+        AND COALESCE(r.arg_date_2, r.arg_date_1) >= $2::date
+        AND (
+          r.val_accepted IS TRUE
+          OR ($5::boolean IS TRUE AND r.val_accepted IS NULL)
+        )
+      ORDER BY r.arg_date_1 ASC, COALESCE(r.arg_date_2, r.arg_date_1) ASC, r.id ASC
+      LIMIT $8 + 1
+    `.trim(),
+    values: [
+      input.organization_id,
+      input.date_from,
+      input.date_to,
+      input.time_type_ids,
+      Boolean(input.include_pending),
+      input.employee_id ?? null,
+      buildLikePattern(input.employee_name ?? null),
+      input.limit
+    ]
+  };
 }
 
 export function buildNumaHrWorktimeSummaryStatement(input: NumaHrWorktimeSummaryParams): PgSqlStatement {
@@ -621,6 +719,35 @@ export function mapNumaHrLeaveBalanceResult(rows: PgHrLeaveDaysRow[], input: Num
     row_count: summary.row_count,
     truncated: summary.truncated,
     citations: [{ tables: ['ta_requests', 'ta_time_types'], queryId: 'leave.balance', rowCount: summary.row_count, truncated: summary.truncated }]
+  };
+}
+
+export function mapNumaHrLeaveDetailResult(rows: PgHrLeaveDetailRow[], input: NumaHrLeaveDetailParams): NumaHrLeaveDetailResult {
+  const summary = mapHrResultRows(rows, input.limit);
+  const records = summary.records.map((row) => ({
+    request_id: row.request_id,
+    time_type_id: row.time_type_id,
+    time_type_name: row.time_type_name,
+    start_date: row.start_date,
+    end_date: row.end_date,
+    day_count: normalizePgNumeric(row.day_count),
+    status: row.status
+  })) as NumaHrLeaveDetailResult['records'];
+  return {
+    query_id: 'leave.detail',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date_from: input.date_from,
+    date_to: input.date_to,
+    time_type_ids: [...input.time_type_ids],
+    include_pending: Boolean(input.include_pending),
+    limit: input.limit,
+    records,
+    row_count: summary.row_count,
+    truncated: summary.truncated,
+    citations: [{ tables: ['ta_requests', 'ta_time_types', 'org_employees', 'core_persons'], queryId: 'leave.detail', rowCount: summary.row_count, truncated: summary.truncated }]
   };
 }
 
