@@ -459,9 +459,6 @@ function buildValidatedRequest(input: {
       mapping: OpenWebUIIdentityMapping;
     }
   | null {
-  if (input.request.stream === true) {
-    return null;
-  }
   const externalUserId = input.externalUserId ?? resolveOpenWebUIExternalUserId({
     installation: input.installation,
     request: input.request,
