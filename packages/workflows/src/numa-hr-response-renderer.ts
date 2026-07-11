@@ -1,4 +1,9 @@
 type UnknownRecord = Record<string, unknown>;
+type TimeTypeLabelById = Record<string, string>;
+
+export interface NumaHrResponseRenderOptions {
+  time_type_label_by_id?: TimeTypeLabelById | null;
+}
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as UnknownRecord) : null;
@@ -65,6 +70,18 @@ function employeeName(value: unknown): string | null | undefined {
   return asNullableString(value);
 }
 
+function businessTimeTypeLabel(record: UnknownRecord, options: NumaHrResponseRenderOptions): string | null {
+  const timeTypeId = asNumber(record.time_type_id);
+  if (timeTypeId === null) {
+    return null;
+  }
+  if (options.time_type_label_by_id === undefined) {
+    return asNullableString(record.time_type_name) ?? null;
+  }
+  const mapped = options.time_type_label_by_id?.[String(timeTypeId)];
+  return typeof mapped === 'string' && mapped.trim().length > 0 ? mapped.trim() : null;
+}
+
 function renderPunchDay(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
   const name = employeeName(data.employee_name);
   const date = asString(data.date);
@@ -93,7 +110,7 @@ function renderPunchDay(data: UnknownRecord, records: UnknownRecord[], truncated
   return appendTruncationNotice(`Fichajes de ${subject} el ${date}:\n${renderedRecords.join('\n')}${summary}`, truncated);
 }
 
-function renderLeaveDays(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+function renderLeaveDays(data: UnknownRecord, records: UnknownRecord[], truncated: boolean, options: NumaHrResponseRenderOptions): string | null {
   const name = employeeName(data.employee_name);
   const year = asNumber(data.year);
   const includePending = data.include_pending;
@@ -101,13 +118,12 @@ function renderLeaveDays(data: UnknownRecord, records: UnknownRecord[], truncate
     return null;
   }
   const renderedRecords = records.map((record) => {
-    const timeTypeName = asNullableString(record.time_type_name);
+    const label = businessTimeTypeLabel(record, options);
     const usedDays = asNumber(record.days_disfrutados);
     const pendingDays = asNullableNumber(record.days_pendientes);
-    if (timeTypeName === undefined || usedDays === null || pendingDays === undefined) {
+    if (label === null || usedDays === null || pendingDays === undefined) {
       return null;
     }
-    const label = timeTypeName ?? 'Tipo de ausencia';
     const pending = includePending && pendingDays !== null ? `; ${pendingDays} dias pendientes` : '';
     return `- ${label}: ${usedDays} dias disfrutados${pending}.`;
   });
@@ -121,24 +137,24 @@ function renderLeaveDays(data: UnknownRecord, records: UnknownRecord[], truncate
   return appendTruncationNotice(`Ausencias de ${subject} en ${year}:\n${renderedRecords.join('\n')}`, truncated);
 }
 
-function renderLeaveBalance(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+function renderLeaveBalance(data: UnknownRecord, records: UnknownRecord[], truncated: boolean, options: NumaHrResponseRenderOptions): string | null {
   const name = employeeName(data.employee_name);
   const year = asNumber(data.year);
   if (name === undefined || year === null) {
     return null;
   }
   const renderedRecords = records.map((record) => {
-    const timeTypeName = asNullableString(record.time_type_name);
+    const label = businessTimeTypeLabel(record, options);
     const quota = asNullableNumber(record.annual_quota);
     const usedDays = asNumber(record.days_disfrutados);
     const balance = asNullableNumber(record.balance);
     const message = asNullableString(record.message);
-    if (timeTypeName === undefined || quota === undefined || usedDays === null || balance === undefined || message === undefined) {
+    if (label === null || quota === undefined || usedDays === null || balance === undefined || message === undefined) {
       return null;
     }
-    const label = timeTypeName ?? 'Tipo de ausencia';
     if (quota === null || balance === null) {
-      return `- ${label}: ${message ?? 'cupo y saldo no disponibles.'}`;
+      const rawLabel = String(record.time_type_name ?? record.time_type_id);
+      return `- ${label}: ${message ? message.replace(rawLabel, label) : 'cupo y saldo no disponibles.'}`;
     }
     return `- ${label}: cuota ${quota} dias; ${usedDays} dias disfrutados; saldo ${balance} dias.`;
   });
@@ -152,7 +168,7 @@ function renderLeaveBalance(data: UnknownRecord, records: UnknownRecord[], trunc
   return appendTruncationNotice(`Saldo de ausencias de ${subject} en ${year}:\n${renderedRecords.join('\n')}`, truncated);
 }
 
-function renderLeaveDetail(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+function renderLeaveDetail(data: UnknownRecord, records: UnknownRecord[], truncated: boolean, options: NumaHrResponseRenderOptions): string | null {
   const name = employeeName(data.employee_name);
   const dateFrom = asString(data.date_from);
   const dateTo = asString(data.date_to);
@@ -160,15 +176,14 @@ function renderLeaveDetail(data: UnknownRecord, records: UnknownRecord[], trunca
     return null;
   }
   const renderedRecords = records.map((record) => {
-    const timeTypeName = asNullableString(record.time_type_name);
+    const label = businessTimeTypeLabel(record, options);
     const startDate = asString(record.start_date);
     const endDate = asString(record.end_date);
     const dayCount = asNumber(record.day_count);
     const status = record.status;
-    if (timeTypeName === undefined || startDate === null || endDate === null || dayCount === null || (status !== 'accepted' && status !== 'pending' && status !== 'rejected')) {
+    if (label === null || startDate === null || endDate === null || dayCount === null || (status !== 'accepted' && status !== 'pending' && status !== 'rejected')) {
       return null;
     }
-    const label = timeTypeName ?? 'Tipo de ausencia';
     const statusLabel = status === 'accepted' ? 'aceptada' : status === 'pending' ? 'pendiente' : 'rechazada';
     const range = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
     return `- ${label}: ${range}; ${dayCount} dias; ${statusLabel}.`;
@@ -261,7 +276,7 @@ function renderReportMonthByGroup(data: UnknownRecord, records: UnknownRecord[],
   return appendTruncationNotice(`Informe de ${group} para ${year}-${month}:\n${renderedRecords.join('\n')}`, truncated);
 }
 
-export function renderNumaHrResponseMessage(data: unknown): string | null {
+export function renderNumaHrResponseMessage(data: unknown, options: NumaHrResponseRenderOptions = {}): string | null {
   const result = asRecord(data);
   if (!result || typeof result.truncated !== 'boolean') {
     return null;
@@ -278,13 +293,13 @@ export function renderNumaHrResponseMessage(data: unknown): string | null {
     return renderPunchDay(result, records, result.truncated);
   }
   if (result.query_id === 'leave.days') {
-    return renderLeaveDays(result, records, result.truncated);
+    return renderLeaveDays(result, records, result.truncated, options);
   }
   if (result.query_id === 'leave.balance') {
-    return renderLeaveBalance(result, records, result.truncated);
+    return renderLeaveBalance(result, records, result.truncated, options);
   }
   if (result.query_id === 'leave.detail') {
-    return renderLeaveDetail(result, records, result.truncated);
+    return renderLeaveDetail(result, records, result.truncated, options);
   }
   if (result.query_id === 'worktime.summary') {
     return renderWorktimeSummary(result, records, result.truncated);

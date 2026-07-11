@@ -217,6 +217,100 @@ test('renders explicit empty, truncated, and missing balance messages', () => {
   );
 });
 
+test('renders configured business labels instead of raw Numa technical time type names', () => {
+  const options = { time_type_label_by_id: { '5': 'Vacaciones', '34': 'Asuntos propios' } };
+
+  assert.equal(
+    renderNumaHrResponseMessage(
+      {
+        ...base,
+        query_id: 'leave.days',
+        employee_id: 'employee-1',
+        employee_name: 'Ana',
+        year: 2026,
+        time_type_ids: [5],
+        include_pending: false,
+        records: [{ time_type_id: 5, time_type_name: '_(HOLIDAY)', days_disfrutados: 4, days_pendientes: 0 }]
+      },
+      options
+    ),
+    'Ausencias de Ana en 2026:\n- Vacaciones: 4 dias disfrutados.'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage(
+      {
+        ...base,
+        query_id: 'leave.detail',
+        employee_id: 'employee-1',
+        employee_name: 'Ana',
+        date_from: '2026-01-01',
+        date_to: '2026-12-31',
+        time_type_ids: [5],
+        include_pending: false,
+        limit: 100,
+        records: [
+          {
+            request_id: 'request-1',
+            time_type_id: 5,
+            time_type_name: '_(HOLIDAY)',
+            start_date: '2026-08-01',
+            end_date: '2026-08-05',
+            day_count: 5,
+            status: 'accepted'
+          }
+        ]
+      },
+      options
+    ),
+    'Detalle de ausencias de Ana entre 2026-01-01 y 2026-12-31:\n- Vacaciones: 2026-08-01 a 2026-08-05; 5 dias; aceptada.'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage(
+      {
+        ...base,
+        query_id: 'leave.balance',
+        employee_id: 'employee-1',
+        employee_name: 'Ana',
+        year: 2026,
+        time_type_ids: [34],
+        include_pending: false,
+        records: [
+          {
+            time_type_id: 34,
+            time_type_name: 'Asuntos propios',
+            annual_quota: null,
+            days_disfrutados: 1,
+            days_pendientes: null,
+            balance: null,
+            message: 'cupo anual no configurado para Asuntos propios'
+          }
+        ]
+      },
+      options
+    ),
+    'Saldo de ausencias de Ana en 2026:\n- Asuntos propios: cupo anual no configurado para Asuntos propios'
+  );
+});
+
+test('does not render leave labels when workflow mapping is missing', () => {
+  assert.equal(
+    renderNumaHrResponseMessage(
+      {
+        ...base,
+        query_id: 'leave.days',
+        employee_id: 'employee-1',
+        employee_name: 'Ana',
+        year: 2026,
+        time_type_ids: [5],
+        include_pending: false,
+        records: [{ time_type_id: 5, time_type_name: '_(HOLIDAY)', days_disfrutados: 4, days_pendientes: 0 }]
+      },
+      { time_type_label_by_id: null }
+    ),
+    null
+  );
+});
+
 test('renders HR resolution ambiguity and not-found messages before empty-data messages', () => {
   assert.equal(
     renderNumaHrResponseMessage({

@@ -89,6 +89,51 @@ export function resolveNumaHrTimeTypeIds(
   return ids.size > 0 ? [...ids] : null;
 }
 
+function formatBusinessLabel(label: string): string {
+  return label
+    .split(' ')
+    .map((word, index) => {
+      if (word.length === 0) {
+        return word;
+      }
+      return index === 0 ? `${word[0]?.toUpperCase() ?? ''}${word.slice(1)}` : word;
+    })
+    .join(' ');
+}
+
+export function buildNumaHrTimeTypeLabelById(
+  labels: string[] | null,
+  mapping: Record<string, number[]> | null | undefined
+): Record<string, string> | null {
+  if (!labels || !mapping) {
+    return null;
+  }
+  const labelById: Record<string, string> = {};
+  for (const label of labels) {
+    const normalizedLabel = normalizeBusinessLabel(label);
+    if (!normalizedLabel) {
+      return null;
+    }
+    const mappedIds = mapping[normalizedLabel];
+    if (!Array.isArray(mappedIds) || mappedIds.length === 0) {
+      return null;
+    }
+    for (const id of mappedIds) {
+      const normalizedId = normalizePositiveInteger(id);
+      if (normalizedId === null) {
+        return null;
+      }
+      const key = String(normalizedId);
+      const formattedLabel = formatBusinessLabel(normalizedLabel);
+      if (labelById[key] && labelById[key] !== formattedLabel) {
+        return null;
+      }
+      labelById[key] = formattedLabel;
+    }
+  }
+  return Object.keys(labelById).length > 0 ? labelById : null;
+}
+
 export function deriveNumaHrRoutingOverride(message: string, now: Date): NumaHrRoutingOverride | null {
   const normalized = normalizeMessage(message);
   if (!/\basuntos propios\b/.test(normalized)) {
