@@ -251,7 +251,7 @@ test('renders configured business labels instead of raw Numa technical time type
         records: [
           {
             request_id: 'request-1',
-            time_type_id: 5,
+            time_type_id: '5',
             time_type_name: '_(HOLIDAY)',
             start_date: '2026-08-01',
             end_date: '2026-08-05',

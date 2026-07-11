@@ -33,6 +33,16 @@ function asNullableNumber(value: unknown): number | null | undefined {
   return value === null ? null : asNumber(value) ?? undefined;
 }
 
+function asPositiveIntegerKey(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return String(value);
+  }
+  if (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim())) {
+    return value.trim();
+  }
+  return null;
+}
+
 function formatMinutes(minutes: number): string {
   const sign = minutes < 0 ? '-' : '';
   const absoluteMinutes = Math.abs(Math.trunc(minutes));
@@ -71,14 +81,14 @@ function employeeName(value: unknown): string | null | undefined {
 }
 
 function businessTimeTypeLabel(record: UnknownRecord, options: NumaHrResponseRenderOptions): string | null {
-  const timeTypeId = asNumber(record.time_type_id);
+  const timeTypeId = asPositiveIntegerKey(record.time_type_id);
   if (timeTypeId === null) {
     return null;
   }
   if (options.time_type_label_by_id === undefined) {
     return asNullableString(record.time_type_name) ?? null;
   }
-  const mapped = options.time_type_label_by_id?.[String(timeTypeId)];
+  const mapped = options.time_type_label_by_id?.[timeTypeId];
   return typeof mapped === 'string' && mapped.trim().length > 0 ? mapped.trim() : null;
 }
 
