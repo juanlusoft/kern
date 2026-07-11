@@ -124,6 +124,24 @@ It must not read:
 - `snapshot`.
 - User email/name unless a future explicit requirement needs it.
 
+Current feedback-related configuration:
+
+```text
+ui.enable_message_rating=true
+ui.enable_community_sharing=false
+```
+
+Reason:
+
+- Keep thumbs up/down available.
+- Disable public/community review UI for client-facing usage.
+- Count good/bad answers internally through the daily report.
+
+Known limitation:
+
+- OpenWebUI `0.10.2` still opens the detailed rating modal when a user clicks thumbs up/down.
+- A production-grade simple feedback flow is tracked below as pending hardening.
+
 Safe feedback aggregate query:
 
 ```sql
@@ -163,6 +181,142 @@ Operational note:
 
 - With update checks disabled, the panel should not notify clients about upstream updates.
 - Internal update awareness is handled by `/opt/openwebui/check-openwebui-update.sh`.
+
+## Numa client model configuration
+
+For the Numa validation user, OpenWebUI must expose only:
+
+```text
+kern-numa / Kern · Numa HR
+```
+
+Current required model state:
+
+```text
+model.id = kern-numa
+model.base_model_id = NULL
+model.is_active = 1
+```
+
+Reason:
+
+- In OpenWebUI `0.10.2`, a custom model with `id='kern-numa'` and `base_model_id='kern-numa'` is treated as a wrapper over itself.
+- That shape caused the non-admin user selector to show no models even when an `access_grant` existed.
+- Setting `base_model_id = NULL` makes the `kern-numa` model act as the ACL-controlled override of the provider/base model.
+
+Required access grant for a client validation user:
+
+```text
+resource_type = model
+resource_id = kern-numa
+principal_type = user
+principal_id = <OpenWebUI user id>
+permission = read
+```
+
+Current prompt suggestions are Numa-only and must not mention Pacoprint, Holded or other companies.
+
+Current suggestion themes:
+
+- Vacaciones.
+- Detalle de vacaciones.
+- Asuntos propios.
+- Fichajes.
+- Resumen de horas.
+- Informe de centro.
+
+Current default model settings:
+
+```text
+default_models = "kern-numa"
+ui.default_models = ["kern-numa"]
+```
+
+## Client permissions
+
+For client validation/demo users, OpenWebUI permissions should be minimized.
+
+Current intent:
+
+- Allow asking questions.
+- Allow copy.
+- Allow thumbs up/down.
+- Hide/disable internal controls such as edit, regenerate, voice, file upload and multi-model use.
+
+Current reduced chat permissions for the validation user resolve to:
+
+```text
+delete=true
+rate_response=true
+```
+
+All other non-essential chat controls should be disabled for client users, especially:
+
+```text
+edit
+regenerate_response
+continue_response
+stt
+tts
+call
+multiple_models
+file_upload
+web_upload
+system_prompt
+params
+valves
+temporary
+```
+
+CSS also hides UI controls that OpenWebUI still renders:
+
+```text
+edit/read-aloud/audio actions on responses
+regenerate response action
+composer voice/audio controls
+```
+
+## Temporary validation user
+
+A temporary OpenWebUI validation user was created to test the client experience.
+
+Do not commit its password.
+
+Document only:
+
+```text
+email = kern-validator@local.test
+role = user
+purpose = client validation for Numa/OpenWebUI
+model grant = kern-numa read
+```
+
+After validation, decide one of:
+
+- Delete the temporary user.
+- Keep it as a named validation account and rotate/store its credential through the chosen secret process.
+
+Do not leave undocumented test users in production.
+
+## Client validation checklist
+
+Use a non-admin client user.
+
+Expected UI:
+
+- The model selector shows exactly `Kern · Numa HR`.
+- No Pacoprint, Holded, MiPC or personal assistant models are visible.
+- Home suggestions are Numa HR only.
+- Composer voice/audio controls are hidden.
+- Response actions show copy, thumbs up and thumbs down.
+- Edit, regenerate and audio/read-aloud response actions are hidden.
+- Update notices are not visible.
+
+Expected behavior:
+
+- Asking Numa HR questions returns business data.
+- Missing/unmapped identity fails closed.
+- Feedback clicks increment the daily positive/negative report.
 
 ## Internal update check
 

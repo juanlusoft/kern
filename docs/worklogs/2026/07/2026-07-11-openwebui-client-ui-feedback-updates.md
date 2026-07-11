@@ -32,6 +32,14 @@ PR o ticket: ninguno; cambios operativos en `/opt/openwebui`
 - Se añadió script interno de comprobación de update.
 - Se añadió script de reporte diario de operaciones.
 - Se documentó el runbook en `docs/operations/openwebui-kern-client-ui-and-ops.md`.
+- Se documentó el estado operativo actual de Numa/OpenWebUI:
+  - `kern-numa.base_model_id = NULL`;
+  - sugerencias Numa;
+  - modelo por defecto `kern-numa`;
+  - permisos cliente reducidos;
+  - usuario temporal de validación sin guardar contraseña;
+  - `ui.enable_community_sharing=false`.
+- Se añadió checklist de validación manual para demo Numa/OpenWebUI.
 
 ## Cambios realizados
 - Proyecto: OpenWebUI Spark
@@ -135,9 +143,11 @@ sudo /opt/openwebui/kern-daily-ops-report.sh
 - `/opt/openwebui/data/webui.db`
 - `/opt/openwebui/reports/`
 - `docs/operations/openwebui-kern-client-ui-and-ops.md`
+- `docs/operations/numa-openwebui-demo-validation.md`
 
 ## Documentación actualizada
 - `docs/operations/openwebui-kern-client-ui-and-ops.md`
+- `docs/operations/numa-openwebui-demo-validation.md`
 - `docs/worklogs/2026/07/2026-07-11-openwebui-client-ui-feedback-updates.md`
 
 ## Cambios locales sin guardar
