@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createNodeFetchChatCompletionsTransport,
@@ -400,6 +400,9 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
   assert.equal(requests[0].messages[0].content?.includes('If a PacoPrint pricing request is incomplete, keep the proposal minimal and let the runtime clarify missing details.'), true);
   assert.equal(requests[0].messages[0].content?.includes('Cliente Ejemplo SL'), true);
   assert.equal(requests[0].messages[0].content?.includes('Cliente Demo SL'), true);
+  assert.equal(requests[0].messages[0].content?.includes('Current date: 2026-06-30.'), true);
+  assert.equal(requests[0].messages[0].content?.includes('For Numa HR leave questions, always call a Numa HR tool instead of answering freely.'), true);
+  assert.equal(requests[0].messages[0].content?.includes('BEATRIZ VERA tuvo asuntos propios el a\u00f1o pasado?'), true);
   assert.equal(requests[0].messages[0].content?.includes('Granapublic'), false);
   assert.equal(requests[0].messages[0].content?.includes('Petroprix'), false);
   assert.equal(outcome.status, 'proposal');
@@ -408,6 +411,98 @@ test('Qwen orchestrator proposes only active capabilities and parses tool calls'
   assert.equal(outcome.proposal?.params.customer_id, 'Granapublic');
   assert.equal(records.some((record) => record.record_type === 'model_orchestration_requested'), true);
   assert.equal(records.some((record) => record.record_type === 'model_tool_call_received'), true);
+});
+
+test('Qwen orchestrator forces HR relative-year params while preserving employee extracted by the model', () => {
+  const requests: QwenChatCompletionsRequest[] = [];
+  const numaLeaveDaysTool: QwenToolDefinition = {
+    capability_key: 'leave.days',
+    description: 'Read leave days.',
+    parameters_schema: {
+      type: 'object',
+      required: ['employee_name', 'year', 'time_type_labels'],
+      additionalProperties: false,
+      properties: {
+        employee_name: { type: 'string' },
+        year: { type: 'string', pattern: '^\\d{4}$' },
+        time_type_labels: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string' }
+        }
+      }
+    }
+  };
+  const orchestrator = createQwenOrchestrator({
+    model: 'kern-vl',
+    toolCatalog: [numaLeaveDaysTool],
+    chatCompletionsTransport: {
+      chatCompletions(request) {
+        requests.push(structuredClone(request));
+        return {
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'tool-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'leave.days',
+                      arguments: {
+                        employee_name: 'BEATRIZ VERA',
+                        year: '2024',
+                        time_type_labels: ['vacaciones']
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+    },
+    now: () => new Date('2026-07-11T12:00:00.000Z')
+  });
+
+  const outcome = orchestrator.propose({
+    request_id: 'request-numa-force-relative-year',
+    user_message: 'BEATRIZ VERA tuvo asuntos propios el a\u00f1o pasado?',
+    organization_id: 'numa',
+    principal_id: 'principal-numa',
+    actor: {
+      principal_id: 'principal-numa',
+      principal_type: 'human',
+      delegated_identity: null
+    },
+    correlation_id: 'corr-numa-force-relative-year',
+    installation_id: 'install-numa',
+    context: {
+      installation_id: 'install-numa',
+      active_capabilities: ['leave.days'],
+      metadata: {},
+      force_capability_key: 'leave.days',
+      force_params: {
+        year: '2025',
+        time_type_labels: ['asuntos propios']
+      }
+    }
+  });
+
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].tools.map((tool) => tool.function.name), ['leave.days']);
+  assert.deepEqual(requests[0].tool_choice, { type: 'function', function: { name: 'leave.days' } });
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'leave.days');
+  assert.deepEqual(outcome.proposal?.params, {
+    employee_name: 'BEATRIZ VERA',
+    year: '2025',
+    time_type_labels: ['asuntos propios']
+  });
 });
 
 test('Qwen orchestrator allows customer extraction as tool params without inventing estimate ids', () => {

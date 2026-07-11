@@ -12,6 +12,8 @@ For Kern work, use Sol as the main decision layer and delegate bounded tasks to 
 
 Do not rely on the user copying prompts manually when the local tools can execute the work directly.
 
+When a delegated agent finishes and its result has been checked or integrated, close that agent. Do not leave completed agents open without a current task.
+
 ## Constraints
 
 - One branch equals one concept.

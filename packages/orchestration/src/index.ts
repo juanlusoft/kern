@@ -23,7 +23,7 @@ import {
 } from '../../contracts/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
-import { normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds, type NumaHrToolMappingConfig } from './numa-hr';
+import { deriveNumaHrRoutingOverride, normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds, type NumaHrToolMappingConfig } from './numa-hr';
 
 export interface OrchestrationBoundaryOptions {
   orchestrator?: OrchestratorPort | null;
@@ -232,6 +232,49 @@ function normalizeYear(value: unknown): string | null {
   return candidate && /^\d{4}$/.test(candidate) ? candidate : null;
 }
 
+function normalizeForRelativeMatching(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function resolveRelativeCalendarYear(value: unknown, now: Date): string | null {
+  const candidate = normalizeOptionalString(value);
+  if (!candidate) {
+    return null;
+  }
+  const normalized = normalizeForRelativeMatching(candidate);
+  const currentYear = now.getUTCFullYear();
+  if (/\b(?:el\s+)?ano\s+pasado\b/.test(normalized)) {
+    return String(currentYear - 1);
+  }
+  if (/\b(?:este|actual)\s+ano\b/.test(normalized) || /\bano\s+actual\b/.test(normalized)) {
+    return String(currentYear);
+  }
+  return null;
+}
+
+function isRelativeCalendarYearExpression(value: unknown): boolean {
+  const candidate = normalizeOptionalString(value);
+  if (!candidate) {
+    return false;
+  }
+  const normalized = normalizeForRelativeMatching(candidate);
+  return /\b(?:el\s+)?ano\s+pasado\b/.test(normalized) || /\b(?:este|actual)\s+ano\b/.test(normalized) || /\bano\s+actual\b/.test(normalized);
+}
+
+function resolveCalendarYear(value: unknown, message: string, now: Date): string | null {
+  return resolveRelativeCalendarYear(message, now) ?? resolveRelativeCalendarYear(value, now) ?? normalizeYear(value);
+}
+
+function yearDateRange(year: string): { date_from: string; date_to: string } {
+  return {
+    date_from: `${year}-01-01`,
+    date_to: `${year}-12-31`
+  };
+}
+
 function normalizeLimit(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return value;
@@ -289,7 +332,7 @@ function isValidNumaHrProposal(capability_key: string, params: Record<string, un
     return Boolean(employee_name && normalizeOptionalString(params.date));
   }
   if (capability_key === 'leave.days' || capability_key === 'leave.balance') {
-    const year = normalizeYear(params.year);
+    const year = normalizeYear(params.year) ?? (isRelativeCalendarYearExpression(params.year) ? 'relative-year' : null);
     const time_type_labels = normalizeNumaHrTimeTypeLabels(params.time_type_labels);
     return Boolean(year && employee_name && time_type_labels && time_type_labels.length > 0);
   }
@@ -378,7 +421,8 @@ function isValidMockResourceReadProposal(params: Record<string, unknown>): boole
 function resolveWorkflowRequest(
   proposal: OrchestrationProposal,
   request: OrchestrationRequest,
-  numaHrConfig: NumaHrToolMappingConfig | null | undefined
+  numaHrConfig: NumaHrToolMappingConfig | null | undefined,
+  now: Date
 ):
   | MockReadEstimateWorkflowInput
   | MockEmailSendWorkflowInput
@@ -455,7 +499,7 @@ function resolveWorkflowRequest(
 
   if (proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance') {
     const employee_name = normalizeOptionalString(proposal.params.employee_name);
-    const year = normalizeYear(proposal.params.year);
+    const year = resolveCalendarYear(proposal.params.year, request.user_message, now);
     const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
     const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
     if (!employee_name || !year || !time_type_ids || time_type_ids.length === 0) {
@@ -490,8 +534,10 @@ function resolveWorkflowRequest(
 
   if (proposal.capability_key === 'leave.detail') {
     const employee_name = normalizeOptionalString(proposal.params.employee_name);
-    const date_from = normalizeOptionalString(proposal.params.date_from);
-    const date_to = normalizeOptionalString(proposal.params.date_to);
+    const relativeYear = resolveRelativeCalendarYear(request.user_message, now) ?? resolveRelativeCalendarYear(proposal.params.date_from, now) ?? resolveRelativeCalendarYear(proposal.params.date_to, now);
+    const relativeRange = relativeYear ? yearDateRange(relativeYear) : null;
+    const date_from = relativeRange?.date_from ?? normalizeOptionalString(proposal.params.date_from);
+    const date_to = relativeRange?.date_to ?? normalizeOptionalString(proposal.params.date_to);
     const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
     const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
     if (!employee_name || !date_from || !date_to || !time_type_ids || time_type_ids.length === 0) {
@@ -729,10 +775,28 @@ export class InMemoryOrchestrationBoundary {
       normalizedRequest,
       activeCapabilitiesForOrchestrator
     );
+    const routingOverride = deriveNumaHrRoutingOverride(orchestratorRequest.user_message, this.now());
+    const requestForOrchestrator =
+      routingOverride &&
+      activeCapabilitiesForOrchestrator.includes(routingOverride.force_capability_key) &&
+      !normalizeOptionalString(orchestratorRequest.context?.force_capability_key ?? null)
+        ? {
+            ...orchestratorRequest,
+            context: {
+              ...(orchestratorRequest.context ?? {
+                installation_id: normalizeOptionalString(orchestratorRequest.installation_id ?? null),
+                active_capabilities: activeCapabilitiesForOrchestrator,
+                metadata: {}
+              }),
+              force_capability_key: routingOverride.force_capability_key,
+              force_params: routingOverride.force_params
+            }
+          }
+        : orchestratorRequest;
 
     if (!this.orchestrator) {
       return this.finishBlockedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'orchestrator unavailable',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -740,11 +804,11 @@ export class InMemoryOrchestrationBoundary {
 
     let proposalOutcome: OrchestrationOutcome;
     try {
-      proposalOutcome = this.orchestrator.propose(orchestratorRequest);
+      proposalOutcome = this.orchestrator.propose(requestForOrchestrator);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'orchestrator unavailable';
       return this.finishErrorOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -777,7 +841,7 @@ export class InMemoryOrchestrationBoundary {
         }
       });
       return this.finishDeniedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -797,7 +861,7 @@ export class InMemoryOrchestrationBoundary {
         }
       });
       return this.finishBlockedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -806,7 +870,7 @@ export class InMemoryOrchestrationBoundary {
 
     if (proposalOutcome.status === 'error') {
       return this.finishErrorOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: proposalOutcome.reason,
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome
@@ -816,7 +880,7 @@ export class InMemoryOrchestrationBoundary {
     const proposal = proposalOutcome.proposal;
     if (!proposal) {
       return this.finishBlockedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'proposal missing',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id
       });
@@ -869,14 +933,14 @@ export class InMemoryOrchestrationBoundary {
       });
       return validation.status === 'denied'
         ? this.finishDeniedOutcome({
-            request: orchestratorRequest,
+            request: requestForOrchestrator,
             reason: validation.reason,
             orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
             proposalOutcome,
             validation
           })
         : this.finishBlockedOutcome({
-            request: orchestratorRequest,
+            request: requestForOrchestrator,
             reason: validation.reason,
             orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
             proposalOutcome,
@@ -899,7 +963,7 @@ export class InMemoryOrchestrationBoundary {
     const workflowKind = this.resolveWorkflowKind(proposal.capability_key);
     if (!workflowKind) {
       return this.finishDeniedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'capability unknown',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -913,10 +977,10 @@ export class InMemoryOrchestrationBoundary {
       });
     }
 
-    const workflowRequest = resolveWorkflowRequest(proposal, normalizedRequest, this.numaHrConfig);
+    const workflowRequest = resolveWorkflowRequest(proposal, normalizedRequest, this.numaHrConfig, this.now());
     if (!workflowRequest) {
       return this.finishBlockedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'proposal params invalid',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -932,7 +996,7 @@ export class InMemoryOrchestrationBoundary {
     const activeCapabilities = normalizeInstallationCapabilities(this.installationCapabilities, normalizedInstallationId);
     if (activeCapabilities.length === 0) {
       return this.finishDeniedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'capability not active in installation',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -947,7 +1011,7 @@ export class InMemoryOrchestrationBoundary {
     }
     if (!activeCapabilities.includes(proposal.capability_key)) {
       return this.finishDeniedOutcome({
-        request: orchestratorRequest,
+        request: requestForOrchestrator,
         reason: 'capability not active in installation',
         orchestrationRequestedEvidence: orchestrationRequestedEvidence.evidence_id,
         proposalOutcome,
@@ -978,7 +1042,7 @@ export class InMemoryOrchestrationBoundary {
     const workflow_result = this.workflowRuntime.executeWorkflow(workflowRequest);
     const finalResponse = cloneResponse(workflow_result.response);
     const finalOutcome = this.finishProposalOutcome({
-      request: orchestratorRequest,
+      request: requestForOrchestrator,
       proposal,
       validation,
       workflow_kind: workflowKind,
