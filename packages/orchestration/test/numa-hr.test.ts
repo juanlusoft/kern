@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deriveNumaHrRoutingOverride, normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds } from '../src/numa-hr';
+import { buildNumaHrTimeTypeLabelById, deriveNumaHrRoutingOverride, normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds } from '../src/numa-hr';
 
 test('Numa HR mapping normaliza etiquetas y resuelve ids deterministas', () => {
   const mapping = {
@@ -13,6 +13,10 @@ test('Numa HR mapping normaliza etiquetas y resuelve ids deterministas', () => {
   assert.deepEqual(resolveNumaHrTimeTypeIds(['vacaciones'], mapping), [5]);
   assert.deepEqual(resolveNumaHrTimeTypeIds(['asuntos propios'], mapping), [34]);
   assert.deepEqual(resolveNumaHrTimeTypeIds(['vacaciones', 'asuntos propios'], mapping), [5, 34]);
+  assert.deepEqual(buildNumaHrTimeTypeLabelById(['vacaciones', 'asuntos propios'], mapping), {
+    '5': 'Vacaciones',
+    '34': 'Asuntos propios'
+  });
 });
 
 test('Numa HR mapping falla cerrado con etiquetas vac?as o desconocidas', () => {
@@ -23,6 +27,7 @@ test('Numa HR mapping falla cerrado con etiquetas vac?as o desconocidas', () => 
   assert.equal(resolveNumaHrTimeTypeIds([], mapping), null);
   assert.equal(resolveNumaHrTimeTypeIds(['desconocido'], mapping), null);
   assert.equal(normalizeNumaHrTimeTypeLabels([' ', 'vacaciones']), null);
+  assert.equal(buildNumaHrTimeTypeLabelById(['vacaciones', 'festivo'], { vacaciones: [5], festivo: [5] }), null);
 });
 
 test('Numa HR routing deriva asuntos propios del a\u00f1o pasado de forma determinista', () => {

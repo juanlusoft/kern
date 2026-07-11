@@ -23,7 +23,13 @@ import {
 } from '../../contracts/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
-import { deriveNumaHrRoutingOverride, normalizeNumaHrTimeTypeLabels, resolveNumaHrTimeTypeIds, type NumaHrToolMappingConfig } from './numa-hr';
+import {
+  buildNumaHrTimeTypeLabelById,
+  deriveNumaHrRoutingOverride,
+  normalizeNumaHrTimeTypeLabels,
+  resolveNumaHrTimeTypeIds,
+  type NumaHrToolMappingConfig
+} from './numa-hr';
 
 export interface OrchestrationBoundaryOptions {
   orchestrator?: OrchestratorPort | null;
@@ -502,13 +508,15 @@ function resolveWorkflowRequest(
     const year = resolveCalendarYear(proposal.params.year, request.user_message, now);
     const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
     const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
-    if (!employee_name || !year || !time_type_ids || time_type_ids.length === 0) {
+    const time_type_label_by_id = buildNumaHrTimeTypeLabelById(time_type_labels, numaHrConfig?.time_type_by_label);
+    if (!employee_name || !year || !time_type_ids || time_type_ids.length === 0 || !time_type_label_by_id) {
       return null;
     }
     const params: Record<string, unknown> = {
       employee_name,
       year,
-      time_type_ids
+      time_type_ids,
+      time_type_label_by_id
     };
     if (proposal.capability_key === 'leave.balance') {
       if (!numaHrConfig) {
@@ -540,7 +548,8 @@ function resolveWorkflowRequest(
     const date_to = relativeRange?.date_to ?? normalizeOptionalString(proposal.params.date_to);
     const time_type_labels = normalizeNumaHrTimeTypeLabels(proposal.params.time_type_labels);
     const time_type_ids = resolveNumaHrTimeTypeIds(time_type_labels, numaHrConfig?.time_type_by_label);
-    if (!employee_name || !date_from || !date_to || !time_type_ids || time_type_ids.length === 0) {
+    const time_type_label_by_id = buildNumaHrTimeTypeLabelById(time_type_labels, numaHrConfig?.time_type_by_label);
+    if (!employee_name || !date_from || !date_to || !time_type_ids || time_type_ids.length === 0 || !time_type_label_by_id) {
       return null;
     }
     return {
@@ -555,6 +564,7 @@ function resolveWorkflowRequest(
         date_from,
         date_to,
         time_type_ids,
+        time_type_label_by_id,
         limit: 100
       }),
       claimed_result: request.claimed_result ?? null,

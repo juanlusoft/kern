@@ -243,7 +243,7 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
         records: [
           {
             time_type_id: input.time_type_ids[0] ?? 5,
-            time_type_name: 'Asuntos propios',
+            time_type_name: (input.time_type_ids[0] ?? 5) === 5 ? '_(HOLIDAY)' : 'Asuntos propios',
             days_disfrutados: 2,
             days_pendientes: 1
           }
@@ -268,7 +268,7 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
         records: [
           {
             time_type_id: input.time_type_ids[0] ?? 5,
-            time_type_name: 'Vacaciones',
+            time_type_name: (input.time_type_ids[0] ?? 5) === 5 ? '_(HOLIDAY)' : 'Asuntos propios',
             annual_quota: input.annual_quota_by_time_type[input.time_type_ids[0] ?? 5] ?? 22,
             days_disfrutados: 4,
             days_pendientes: 1,
@@ -299,7 +299,7 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
           {
             request_id: 'request-001',
             time_type_id: input.time_type_ids[0] ?? 5,
-            time_type_name: 'Vacaciones',
+            time_type_name: (input.time_type_ids[0] ?? 5) === 5 ? '_(HOLIDAY)' : 'Asuntos propios',
             start_date: '2026-08-01',
             end_date: '2026-08-05',
             day_count: 5,
@@ -621,6 +621,11 @@ for (const demoCase of demoCases) {
     assert.equal(channelResult.orchestration_outcome?.response.status, 'completed');
     assert.equal((channelResult.orchestration_outcome?.response.data as { query_id?: string } | null | undefined)?.query_id, demoCase.capabilityKey);
     assert.equal(channelResult.orchestration_outcome?.organization_id, 'org-numa-hr-tools-test');
+    const message = channelResult.orchestration_outcome?.response.message ?? '';
+    assert.equal(message.includes('_(HOLIDAY)'), false);
+    if (demoCase.capabilityKey === 'leave.balance' || demoCase.capabilityKey === 'leave.detail') {
+      assert.equal(message.includes('Vacaciones'), true);
+    }
   });
 }
 

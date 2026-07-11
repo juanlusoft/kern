@@ -17,6 +17,25 @@ function normalizeParams(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value as Record<string, unknown>) : {};
 }
 
+function normalizeTimeTypeLabelById(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const normalized: Record<string, string> = {};
+  for (const [id, label] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[1-9]\d*$/.test(id) || typeof label !== 'string' || label.trim().length === 0) {
+      return null;
+    }
+    normalized[id] = label.trim();
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function stripPresentationParams(params: Record<string, unknown>): Record<string, unknown> {
+  const { time_type_label_by_id: _timeTypeLabelById, ...capabilityParams } = params;
+  return capabilityParams;
+}
+
 function buildStatus(status: string): WorkflowExecutionStatus {
   if (status === 'executed') {
     return 'completed';
@@ -182,7 +201,7 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
       payload: {
         organization_id: organizationContext.organization_id,
         correlation_id,
-        ...normalizedParams
+        ...stripPresentationParams(normalizedParams)
       }
     },
     requested_at,
@@ -206,7 +225,10 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
   );
 
   const responseData = capability_result.status === 'executed' && capability_result.output ? (capability_result.output.result as Record<string, unknown>) : null;
-  const renderedMessage = capability_result.status === 'executed' ? renderNumaHrResponseMessage(responseData) : null;
+  const renderedMessage =
+    capability_result.status === 'executed'
+      ? renderNumaHrResponseMessage(responseData, { time_type_label_by_id: normalizeTimeTypeLabelById(params.time_type_label_by_id) })
+      : null;
   const response = createRuntimeResponse({
     kind: WORKFLOW_KIND,
     status: buildStatus(capability_result.status),
