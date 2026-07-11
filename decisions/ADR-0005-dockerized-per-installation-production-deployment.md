@@ -122,8 +122,7 @@ services:
       - /opt/kern/installations/proinsur/env.runtime
     environment:
       KERN_RUNTIME_CONFIG_PATH: /app/config/installation.json
-      KERN_EVIDENCE_LEDGER_PATH: /app/evidence/evidence.jsonl
-      KERN_CONVERSATION_MEMORY_PATH: /app/memory/conversations.jsonl
+      KERN_EVIDENCE_FILE_PATH: /app/evidence/evidence.jsonl
     volumes:
       - /opt/kern/installations/proinsur/installation.json:/app/config/installation.json:ro
       - /opt/kern/installations/proinsur/data:/app/data
@@ -146,7 +145,8 @@ networks:
 El ejemplo es normativo en estos puntos:
 
 - el runtime debe recibir `KERN_RUNTIME_CONFIG_PATH` o `KERN_RUNTIME_CONFIG_JSON`;
-- los paths de evidence ledger y conversation memory deben apuntar a volumenes de la instalacion, no al `cwd` implicito del contenedor;
+- el path de evidence ledger debe apuntar a un volumen de la instalacion mediante `runtime_options.evidence_ledger_file_path` o `KERN_EVIDENCE_FILE_PATH`;
+- el path de conversation memory debe apuntar a un volumen de la instalacion mediante `runtime_options.conversation_memory_file_path`;
 - el puerto no debe publicarse en todas las interfaces;
 - el contenedor no debe ejecutarse con privilegios innecesarios;
 - la imagen productiva debe quedar fijada por digest.
