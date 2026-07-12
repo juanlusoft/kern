@@ -86,6 +86,11 @@ Resumen de horas trabajadas de BEATRIZ VERA en julio de 2025
 Informe del mes de mayo de los trabajadores del centro Manindu
 ```
 
+For every functional question, confirm both:
+
+- The assistant bubble shows visible text in the browser.
+- The answer is not only present in backend metadata or `chat_message.output`.
+
 ## Variable Employee Tests
 
 Repeat some of the same questions with other real employees.

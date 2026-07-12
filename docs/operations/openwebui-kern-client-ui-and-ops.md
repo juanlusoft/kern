@@ -232,6 +232,68 @@ default_models = "kern-numa"
 ui.default_models = ["kern-numa"]
 ```
 
+## Assistant content rendering
+
+Observed issue on OpenWebUI `0.10.2`:
+
+- The Kern provider returned the correct answer.
+- OpenWebUI stored the answer in `chat_message.output` as structured `output_text`.
+- `chat_message.content` remained empty.
+- The browser chat bubble rendered blank messages.
+
+Operational fix:
+
+```text
+/opt/openwebui/branding/apply-kern-runtime-patches.py
+```
+
+Startup hook:
+
+```text
+/opt/openwebui/branding/start-kern.sh
+```
+
+The startup hook applies an idempotent runtime patch to:
+
+```text
+/app/backend/open_webui/utils/middleware.py
+```
+
+Effect:
+
+- If `choices[0].message.content` is empty but provider `output` contains `output_text`, OpenWebUI extracts that text.
+- The extracted text is saved into `chat_message.content`.
+- `chat_message.output` is preserved.
+
+Validation query:
+
+```sql
+SELECT
+  role,
+  model_id,
+  done,
+  length(content) AS content_len,
+  quote(substr(content, 1, 220)) AS content_prefix,
+  length(output) AS output_len
+FROM chat_message
+WHERE model_id = 'kern-numa'
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+Expected result for successful assistant messages:
+
+```text
+content_len > 2
+output_len > 2
+```
+
+Rollback:
+
+- Restore `/opt/openwebui/branding/start-kern.sh` from the latest `start-kern.sh.bak-*` backup.
+- Remove or disable `/opt/openwebui/branding/apply-kern-runtime-patches.py`.
+- Restart OpenWebUI.
+
 ## Client permissions
 
 For client validation/demo users, OpenWebUI permissions should be minimized.
