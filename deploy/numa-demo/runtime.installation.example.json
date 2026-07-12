@@ -1,0 +1,68 @@
+{
+  "installation_id": "install-numa-demo",
+  "organization": {
+    "organization_id": "numa",
+    "name": "Numa",
+    "active": true,
+    "isolation_boundary": "Numa demo"
+  },
+  "principals": [
+    {
+      "principal_id": "numa-hr-operator",
+      "name": "Numa HR Operator",
+      "principal_type": "human",
+      "active": true,
+      "scopes": ["request:governed", "read:knowledge"]
+    }
+  ],
+  "identity_mappings": [],
+  "active_modules": ["qwen-orchestrator", "numa-postgres-read", "openwebui-channel"],
+  "active_capabilities": [],
+  "secret_refs": {
+    "KERN_MODEL_BASE_URL": "KERN_MODEL_BASE_URL",
+    "KERN_MODEL_NAME": "KERN_MODEL_NAME",
+    "KERN_MODEL_API_KEY": "KERN_MODEL_API_KEY"
+  },
+  "runtime_options": {
+    "telegram_mode": "long_polling",
+    "telegram_poll_timeout_ms": 30000,
+    "telegram_poll_limit": 100,
+    "qwen_temperature": 0.1,
+    "qwen_request_timeout_ms": 30000,
+    "holded_base_url": null,
+    "conversation_memory_file_path": "/app/memory/conversation-memory.json",
+    "evidence_ledger_file_path": "/app/evidence/evidence.jsonl",
+    "polling_iterations": 1,
+    "numa_hr": {
+      "time_type_by_label": {
+        "vacaciones": [5],
+        "asuntos propios": [34]
+      },
+      "annual_quota_by_time_type": {
+        "5": 22
+      },
+      "company_id_by_organization_id": {
+        "numa": "1"
+      }
+    },
+    "openwebui_channel": {
+      "host": "0.0.0.0",
+      "port": 8787,
+      "request_body_limit_bytes": 1000000,
+      "network_boundary": "trusted_network",
+      "allowed_remote_addresses": ["172.22.0.0/16"],
+      "identity": {
+        "source": "header",
+        "header": "x-openwebui-user-id"
+      },
+      "users": {
+        "REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL": {
+          "principal_id": "numa-hr-operator",
+          "organization_id": "numa",
+          "active": true,
+          "display_name": "Numa HR Operator"
+        }
+      }
+    }
+  }
+}
