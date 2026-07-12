@@ -124,6 +124,24 @@ It must not read:
 - `snapshot`.
 - User email/name unless a future explicit requirement needs it.
 
+Current feedback-related configuration:
+
+```text
+ui.enable_message_rating=true
+ui.enable_community_sharing=false
+```
+
+Reason:
+
+- Keep thumbs up/down available.
+- Disable public/community review UI for client-facing usage.
+- Count good/bad answers internally through the daily report.
+
+Known limitation:
+
+- OpenWebUI `0.10.2` still opens the detailed rating modal when a user clicks thumbs up/down.
+- A production-grade simple feedback flow is tracked below as pending hardening.
+
 Safe feedback aggregate query:
 
 ```sql
@@ -163,6 +181,204 @@ Operational note:
 
 - With update checks disabled, the panel should not notify clients about upstream updates.
 - Internal update awareness is handled by `/opt/openwebui/check-openwebui-update.sh`.
+
+## Numa client model configuration
+
+For the Numa validation user, OpenWebUI must expose only:
+
+```text
+kern-numa / Kern · Numa HR
+```
+
+Current required model state:
+
+```text
+model.id = kern-numa
+model.base_model_id = NULL
+model.is_active = 1
+```
+
+Reason:
+
+- In OpenWebUI `0.10.2`, a custom model with `id='kern-numa'` and `base_model_id='kern-numa'` is treated as a wrapper over itself.
+- That shape caused the non-admin user selector to show no models even when an `access_grant` existed.
+- Setting `base_model_id = NULL` makes the `kern-numa` model act as the ACL-controlled override of the provider/base model.
+
+Required access grant for a client validation user:
+
+```text
+resource_type = model
+resource_id = kern-numa
+principal_type = user
+principal_id = <OpenWebUI user id>
+permission = read
+```
+
+Current prompt suggestions are Numa-only and must not mention Pacoprint, Holded or other companies.
+
+Current suggestion themes:
+
+- Vacaciones.
+- Detalle de vacaciones.
+- Asuntos propios.
+- Fichajes.
+- Resumen de horas.
+- Informe de centro.
+
+Current default model settings:
+
+```text
+default_models = "kern-numa"
+ui.default_models = ["kern-numa"]
+```
+
+## Assistant content rendering
+
+Observed issue on OpenWebUI `0.10.2`:
+
+- The Kern provider returned the correct answer.
+- OpenWebUI stored the answer in `chat_message.output` as structured `output_text`.
+- `chat_message.content` remained empty.
+- The browser chat bubble rendered blank messages.
+
+Operational fix:
+
+```text
+/opt/openwebui/branding/apply-kern-runtime-patches.py
+```
+
+Startup hook:
+
+```text
+/opt/openwebui/branding/start-kern.sh
+```
+
+The startup hook applies an idempotent runtime patch to:
+
+```text
+/app/backend/open_webui/utils/middleware.py
+```
+
+Effect:
+
+- If `choices[0].message.content` is empty but provider `output` contains `output_text`, OpenWebUI extracts that text.
+- The extracted text is saved into `chat_message.content`.
+- `chat_message.output` is preserved.
+
+Validation query:
+
+```sql
+SELECT
+  role,
+  model_id,
+  done,
+  length(content) AS content_len,
+  quote(substr(content, 1, 220)) AS content_prefix,
+  length(output) AS output_len
+FROM chat_message
+WHERE model_id = 'kern-numa'
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+Expected result for successful assistant messages:
+
+```text
+content_len > 2
+output_len > 2
+```
+
+Rollback:
+
+- Restore `/opt/openwebui/branding/start-kern.sh` from the latest `start-kern.sh.bak-*` backup.
+- Remove or disable `/opt/openwebui/branding/apply-kern-runtime-patches.py`.
+- Restart OpenWebUI.
+
+## Client permissions
+
+For client validation/demo users, OpenWebUI permissions should be minimized.
+
+Current intent:
+
+- Allow asking questions.
+- Allow copy.
+- Allow thumbs up/down.
+- Hide/disable internal controls such as edit, regenerate, voice, file upload and multi-model use.
+
+Current reduced chat permissions for the validation user resolve to:
+
+```text
+delete=true
+rate_response=true
+```
+
+All other non-essential chat controls should be disabled for client users, especially:
+
+```text
+edit
+regenerate_response
+continue_response
+stt
+tts
+call
+multiple_models
+file_upload
+web_upload
+system_prompt
+params
+valves
+temporary
+```
+
+CSS also hides UI controls that OpenWebUI still renders:
+
+```text
+edit/read-aloud/audio actions on responses
+regenerate response action
+composer voice/audio controls
+```
+
+## Temporary validation user
+
+A temporary OpenWebUI validation user was created to test the client experience.
+
+Do not commit its password.
+
+Document only:
+
+```text
+email = demo@demo.com
+role = user
+purpose = client validation for Numa/OpenWebUI
+model grant = kern-numa read
+```
+
+After validation, decide one of:
+
+- Delete the temporary user.
+- Keep it as a named validation account and rotate/store its credential through the chosen secret process.
+
+Do not leave undocumented test users in production.
+
+## Client validation checklist
+
+Use a non-admin client user.
+
+Expected UI:
+
+- The model selector shows exactly `Kern · Numa HR`.
+- No Pacoprint, Holded, MiPC or personal assistant models are visible.
+- Home suggestions are Numa HR only.
+- Composer voice/audio controls are hidden.
+- Response actions show copy, thumbs up and thumbs down.
+- Edit, regenerate and audio/read-aloud response actions are hidden.
+- Update notices are not visible.
+
+Expected behavior:
+
+- Asking Numa HR questions returns business data.
+- Missing/unmapped identity fails closed.
+- Feedback clicks increment the daily positive/negative report.
 
 ## Internal update check
 
@@ -293,3 +509,107 @@ Ctrl+F5
 - This customization hides UI actions; it does not remove backend capabilities.
 - If OpenWebUI changes `ResponseMessage.svelte`, regenerate hiding may need an updated selector.
 - `ENABLE_VERSION_UPDATE_CHECK=false` disables client-visible update checks; internal update checks must be run from the operations script.
+
+## Pending production hardening
+
+### Simple feedback flow
+
+Status: pending.
+
+OpenWebUI `0.10.2` does not provide a configuration option to keep thumbs up/down while disabling only the detailed rating form.
+
+Current behavior:
+
+- Clicking thumbs up/down may open a detailed rating panel.
+- The panel can include:
+  - score from 1 to 10;
+  - generic reason tags;
+  - free-text comments;
+  - optional public/community review UI when community sharing is enabled.
+
+Current mitigation:
+
+- `ui.enable_community_sharing=false` disables public review/community sharing.
+- `ui.enable_message_rating=true` keeps thumbs up/down enabled.
+
+Required production behavior:
+
+- Clicking thumbs up/down stores the feedback immediately.
+- No detailed rating modal is shown to clients.
+- No free-text feedback field is shown to clients.
+- No public/community review path is shown to clients.
+- Feedback storage must not include a full chat `snapshot`.
+- The daily report keeps counting positive/negative votes by day and model.
+
+Recommended implementation:
+
+- Build and pin a Kern-owned OpenWebUI image based on the chosen upstream version.
+- Patch `src/lib/components/chat/Messages/ResponseMessage.svelte`.
+- In `feedbackHandler`, keep the `POST /api/v1/evaluations/feedback` call with `data.rating`.
+- Do not set `showRateComment` after thumbs up/down.
+- Remove `snapshot: { chat }` from the feedback payload if strict minimization is required.
+- Keep only technical metadata required for reporting, for example:
+  - `rating`;
+  - `model_id`;
+  - `message_id`;
+  - opaque `user_id`;
+  - timestamps.
+
+Acceptance criteria:
+
+- A non-admin client user clicks thumbs up and sees no modal.
+- A non-admin client user clicks thumbs down and sees no modal.
+- `feedback` receives one row per click.
+- The row contains rating and model metadata.
+- The row does not contain a chat snapshot.
+- The daily report includes the new positive/negative count.
+- Copy button still works.
+- Regenerate, edit and audio controls remain hidden.
+- OpenWebUI update notices remain hidden from clients.
+
+Do not solve this with CSS except as an emergency demo workaround. CSS can hide the panel visually, but it does not provide a robust product behavior or data-minimization guarantee across OpenWebUI upgrades.
+
+### Client demo tunnel
+
+Status: pending.
+
+Goal:
+
+- Allow Juanlu to run the demo from the client's own PC without installing Kern or exposing internal services directly.
+
+Required behavior:
+
+- The client PC can open a temporary URL and reach only the OpenWebUI demo surface.
+- Kern, PostgreSQL and internal service ports remain inaccessible from the public internet.
+- The tunnel is time-bounded and can be revoked immediately after the demo.
+- The tunnel target is OpenWebUI, not the Kern runtime port or PostgreSQL.
+- Authentication remains required in OpenWebUI.
+- The demo user is non-admin and can only access `Kern · Numa HR`.
+
+Recommended approach:
+
+- Use a temporary tunnel to OpenWebUI, for example Cloudflare Tunnel, Tailscale Funnel, SSH reverse tunnel through a trusted host, or another approved secure tunnel.
+- Prefer a tunnel with:
+  - HTTPS;
+  - access control or allowlist where possible;
+  - short lifetime;
+  - audit/log visibility;
+  - easy teardown.
+
+Not allowed:
+
+- Publishing PostgreSQL.
+- Publishing Kern runtime directly.
+- Binding internal Kern ports to a public interface.
+- Using an unauthenticated tunnel.
+- Leaving the tunnel running after the demo without an explicit operations decision.
+
+Acceptance criteria:
+
+- From an external network, the client PC opens the tunnel URL and sees OpenWebUI login.
+- Login with the demo/client user succeeds.
+- The user sees only `Kern · Numa HR`.
+- Numa demo questions work.
+- Feedback can be submitted and counted.
+- No OpenWebUI update notice is visible.
+- After teardown, the tunnel URL no longer works.
