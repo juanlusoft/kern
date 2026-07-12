@@ -362,6 +362,20 @@ test('Open WebUI server accepts stream flag and returns JSON completion', async 
   }
 });
 
+test('Open WebUI server refuses non-loopback hosts', () => {
+  assert.throws(
+    () =>
+      createOpenWebUIChannelServer({
+        installation: {
+          ...buildInstallation(0),
+          host: '0.0.0.0'
+        },
+        orchestrationBoundary: buildBoundary([])
+      }),
+    /host must be loopback/
+  );
+});
+
 test('Open WebUI adapter fails closed when forwarded header is missing or unmapped', () => {
   const missingHeaderCalls: Array<unknown> = [];
   const missingHeaderAdapter = createOpenWebUIChannelAdapter({

@@ -401,6 +401,11 @@ function normalizeOpenWebUIUserConfig(value: unknown, field: string): RuntimeOpe
   };
 }
 
+function isLoopbackOpenWebUIHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+}
+
 function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null {
   if (value === undefined || value === null) {
     return null;
@@ -409,6 +414,9 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
     fail('runtime_options.openwebui_channel', 'openwebui_channel must be an object');
   }
   const host = normalizeString(value.host) ?? '127.0.0.1';
+  if (!isLoopbackOpenWebUIHost(host)) {
+    fail('runtime_options.openwebui_channel.host', 'host must be loopback; do not expose Kern directly');
+  }
   const port = normalizePortNumber(value.port);
   const request_body_limit_bytes = normalizePositiveInteger(value.request_body_limit_bytes) ?? 1_000_000;
   const identity = normalizeOpenWebUIIdentityConfig(value.identity ?? null);

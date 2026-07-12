@@ -138,6 +138,39 @@ test('runtime config accepts openwebui channel settings', () => {
   assert.equal(loaded.config.runtime_options.openwebui_channel?.users['openwebui-user-1'].principal_id, 'principal-openwebui-runtime-test');
 });
 
+test('runtime config rejects Open WebUI channel hosts outside loopback', () => {
+  assert.throws(
+    () =>
+      loadInstallationConfig(
+        {
+          ...buildBaseConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read']),
+          runtime_options: {
+            ...buildBaseConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read']).runtime_options,
+            openwebui_channel: {
+              host: '0.0.0.0',
+              port: 8787,
+              request_body_limit_bytes: 10_000,
+              identity: {
+                source: 'header',
+                header: 'X-OpenWebUI-User-Id'
+              },
+              users: {
+                'openwebui-user-1': {
+                  principal_id: 'principal-openwebui-runtime-test',
+                  organization_id: 'org-openwebui-runtime-test',
+                  active: true,
+                  display_name: 'Open WebUI Demo User'
+                }
+              }
+            }
+          }
+        },
+        buildEnv()
+      ),
+    /host must be loopback/
+  );
+});
+
 test('runtime slice starts the Open WebUI server only when the module is active', async () => {
   const telegramTransport = new InMemoryTelegramTransport();
   const runtimeResult = startInstallationRuntime({

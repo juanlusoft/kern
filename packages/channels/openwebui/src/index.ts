@@ -137,6 +137,17 @@ export interface OpenWebUIRequestContext {
   headers?: OpenWebUIRequestHeaders | null;
 }
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+}
+
+function assertLoopbackHost(host: string): void {
+  if (!isLoopbackHost(host)) {
+    throw new Error('openwebui channel host must be loopback; do not expose Kern directly');
+  }
+}
+
 function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
@@ -790,6 +801,7 @@ export function createOpenWebUIChannelServer(options: {
   orchestrationBoundary: InMemoryOrchestrationBoundary;
   now?: () => Date;
 }): OpenWebUIChannelServerHandle {
+  assertLoopbackHost(options.installation.host);
   const adapter = createOpenWebUIChannelAdapter({
     installation: options.installation,
     orchestrationBoundary: options.orchestrationBoundary,
