@@ -23,6 +23,7 @@ services:
       - /tmp
     networks:
       - openwebui_default
+      - numa_db
     extra_hosts:
       - "host.docker.internal:host-gateway"
     security_opt:
@@ -32,4 +33,6 @@ services:
 
 networks:
   openwebui_default:
+    external: true
+  numa_db:
     external: true

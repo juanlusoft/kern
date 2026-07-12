@@ -6,6 +6,7 @@ This runbook installs Kern Numa as a Docker container for the demo.
 
 - Runs one read-only Kern container for Numa.
 - Joins the existing `openwebui_default` Docker network.
+- Joins a dedicated external `numa_db` Docker network shared with the Numa PostgreSQL container.
 - Does not publish Kern port `8787` to the host.
 - OpenWebUI reaches Kern through Docker DNS: `http://kern-numa:8787/v1`.
 - Secrets stay in `deploy/numa-demo/env.runtime`, which must not be committed.
@@ -23,12 +24,23 @@ deploy/numa-demo/
 Create local runtime files:
 
 ```bash
+docker network create numa_db
+docker network connect numa_db numa-dev-pg
 cp deploy/numa-demo/runtime.installation.example.json deploy/numa-demo/runtime.installation.json
 cp deploy/numa-demo/env.runtime.example deploy/numa-demo/env.runtime
 mkdir -p deploy/numa-demo/data deploy/numa-demo/evidence deploy/numa-demo/memory deploy/numa-demo/logs
 ```
 
 Fill `deploy/numa-demo/env.runtime` with real secrets outside Git.
+
+For the Spark demo, PostgreSQL should be reached inside Docker as:
+
+```text
+NUMA_PGHOST=numa-dev-pg
+NUMA_PGPORT=5432
+```
+
+Do not depend on the host-only publish `127.0.0.1:15432`; containers cannot use that loopback bind.
 
 Fill `deploy/numa-demo/runtime.installation.json`:
 
