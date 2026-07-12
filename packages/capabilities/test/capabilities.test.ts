@@ -324,7 +324,8 @@ test('capability invocation ignores caller claimed results and uses the register
 test('generic resource read capability uses the external read adapter and rejects invalid found results', () => {
   const { runtime } = buildRuntime();
   const adapter = createMockExternalReadAdapter();
-  runtime.registerCapability(createMockResourceReadCapability(adapter));
+  assert.throws(() => createMockResourceReadCapability(adapter), /requires explicit organization_id/);
+  runtime.registerCapability(createMockResourceReadCapability(adapter, {}, 'org-acme'));
 
   const result = runtime.invokeCapability(createResourceInvocation());
   const resourceResult = result.output?.result as ResourceResult | undefined;

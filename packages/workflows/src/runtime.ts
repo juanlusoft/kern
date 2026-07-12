@@ -97,10 +97,10 @@ export class InMemoryGovernedWorkflowRuntime {
       const capabilityOrganizationId = normalizeOptionalOrganizationId(options.organization_id);
       if (capabilityOrganizationId) {
         this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter, {}, capabilityOrganizationId));
+        this.registerCapability(createMockEstimateReadCapability(capabilityOrganizationId));
+        this.registerCapability(createMockEmailPreviewCapability(capabilityOrganizationId));
+        this.registerCapability(createMockEmailSendCapability(capabilityOrganizationId));
       }
-      this.registerCapability(createMockEstimateReadCapability());
-      this.registerCapability(createMockEmailPreviewCapability());
-      this.registerCapability(createMockEmailSendCapability());
       if (options.presenceReadPort) {
         if (!capabilityOrganizationId) {
           throw new Error('presenceReadPort requires explicit organization_id');

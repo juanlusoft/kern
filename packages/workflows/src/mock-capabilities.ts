@@ -65,15 +65,22 @@ import { InMemoryTurnRuntime } from '../../turns/src/index';
 import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
 import { type PacoPrintCatalogAdapterPort } from '../../contracts/src/index';
 
+function requireOrganizationId(value: string, context: string): string {
+  const organization_id = typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  if (!organization_id) {
+    throw new Error(`${context} requires explicit organization_id`);
+  }
+  return organization_id;
+}
 
-
-export function createMockEstimateReadCapability(overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+export function createMockEstimateReadCapability(organization_id: string, overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+  const requiredOrganizationId = requireOrganizationId(organization_id, 'createMockEstimateReadCapability');
 
   return {
 
     capability_id: 'mock.estimate.read',
 
-    organization_id: 'org-acme',
+    organization_id: requiredOrganizationId,
 
     title: 'Mock estimate read',
 
@@ -169,13 +176,14 @@ export function createMockEstimateReadCapability(overrides: Partial<CapabilityDe
 
 
 
-export function createMockEmailPreviewCapability(overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+export function createMockEmailPreviewCapability(organization_id: string, overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+  const requiredOrganizationId = requireOrganizationId(organization_id, 'createMockEmailPreviewCapability');
 
   return {
 
     capability_id: 'mock.email.preview',
 
-    organization_id: 'org-acme',
+    organization_id: requiredOrganizationId,
 
     title: 'Mock email preview',
 
@@ -247,13 +255,14 @@ export function createMockEmailPreviewCapability(overrides: Partial<CapabilityDe
 
 
 
-export function createMockEmailSendCapability(overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+export function createMockEmailSendCapability(organization_id: string, overrides: Partial<CapabilityDefinition> = {}): CapabilityDefinition {
+  const requiredOrganizationId = requireOrganizationId(organization_id, 'createMockEmailSendCapability');
 
   return {
 
     capability_id: 'mock.email.send',
 
-    organization_id: 'org-acme',
+    organization_id: requiredOrganizationId,
 
     title: 'Mock email send',
 
