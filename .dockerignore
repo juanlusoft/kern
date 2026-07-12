@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+.env.*
+*.log
+evidence*.jsonl
+conversation-memory*.json
+docs/worklogs

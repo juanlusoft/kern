@@ -62,3 +62,9 @@ site/
 .next/
 conversation-memory.json
 evidence.jsonl
+deploy/numa-demo/env.runtime
+deploy/numa-demo/runtime.installation.json
+deploy/numa-demo/data/
+deploy/numa-demo/evidence/
+deploy/numa-demo/memory/
+deploy/numa-demo/logs/

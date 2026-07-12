@@ -413,6 +413,27 @@ test('Open WebUI server allows trusted network hosts only for allowed peers', as
   );
 });
 
+test('Open WebUI server allows trusted network CIDR peers', async () => {
+  const calls: Array<unknown> = [];
+  const server = createOpenWebUIChannelServer({
+    installation: {
+      ...buildInstallation(0),
+      host: '127.0.0.1',
+      network_boundary: 'trusted_network',
+      allowed_remote_addresses: ['127.0.0.0/8']
+    },
+    orchestrationBoundary: buildBoundary(calls)
+  });
+
+  const port = await server.ready;
+  try {
+    const response = await fetch('http://127.0.0.1:' + port + '/v1/models');
+    assert.equal(response.status, 200);
+  } finally {
+    await server.close();
+  }
+});
+
 test('Open WebUI adapter fails closed when forwarded header is missing or unmapped', () => {
   const missingHeaderCalls: Array<unknown> = [];
   const missingHeaderAdapter = createOpenWebUIChannelAdapter({

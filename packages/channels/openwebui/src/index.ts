@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
 import {
@@ -158,8 +159,47 @@ function getRemoteAddress(request: IncomingMessage): string {
   return request.socket.remoteAddress ?? '';
 }
 
+function normalizeRemoteAddress(remoteAddress: string): string {
+  return remoteAddress.startsWith('::ffff:') ? remoteAddress.slice('::ffff:'.length) : remoteAddress;
+}
+
+function ipv4ToNumber(address: string): number | null {
+  if (isIP(address) !== 4) {
+    return null;
+  }
+  const parts = address.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return null;
+  }
+  return (((parts[0] * 256 + parts[1]) * 256 + parts[2]) * 256 + parts[3]) >>> 0;
+}
+
+function isAllowedIpv4Cidr(remoteAddress: string, rule: string): boolean {
+  const [network, prefixRaw] = rule.split('/');
+  if (!network || prefixRaw === undefined) {
+    return false;
+  }
+  const prefix = Number(prefixRaw);
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
+    return false;
+  }
+  const remote = ipv4ToNumber(remoteAddress);
+  const networkNumber = ipv4ToNumber(network);
+  if (remote === null || networkNumber === null) {
+    return false;
+  }
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return (remote & mask) === (networkNumber & mask);
+}
+
 function isAllowedRemoteAddress(remoteAddress: string, allowed: string[]): boolean {
-  return allowed.includes(remoteAddress);
+  const normalizedRemoteAddress = normalizeRemoteAddress(remoteAddress);
+  return allowed.some((entry) => {
+    const normalizedEntry = normalizeRemoteAddress(entry);
+    return normalizedEntry.includes('/')
+      ? isAllowedIpv4Cidr(normalizedRemoteAddress, normalizedEntry)
+      : normalizedEntry === normalizedRemoteAddress;
+  });
 }
 
 function normalizeOptionalString(value: unknown): string | null {
