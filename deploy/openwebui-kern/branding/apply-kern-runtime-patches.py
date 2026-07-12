@@ -6,6 +6,7 @@ MIDDLEWARE = Path('/app/backend/open_webui/utils/middleware.py')
 INDEX_HTML = Path('/app/build/index.html')
 CONTENT_MARKER = 'KERN_CONTENT_FROM_OUTPUT_FIX'
 DEFAULT_MODEL_MARKER = 'KERN_DEFAULT_MODEL_BOOTSTRAP'
+CHAT_DEFAULT_MODEL_MARKER = 'KERN_CHAT_DEFAULT_MODEL_PATCH'
 
 
 def patch_content_from_output() -> None:
@@ -84,7 +85,25 @@ def patch_content_from_output() -> None:
 
 def patch_default_model_bootstrap() -> None:
     text = INDEX_HTML.read_text(encoding='utf-8')
+    if DEFAULT_MODEL_MARKER in text and "url.searchParams.set('models', defaultModel)" in text:
+        return
     if DEFAULT_MODEL_MARKER in text:
+        old = '''					sessionStorage.setItem('selectedModels', selected);
+
+					const settings = JSON.parse(localStorage.getItem('settings') || '{}');
+'''
+        new = '''					sessionStorage.setItem('selectedModels', selected);
+					const url = new URL(window.location.href);
+					if (url.pathname === '/' && !url.searchParams.has('model') && !url.searchParams.has('models')) {
+						url.searchParams.set('models', defaultModel);
+						window.history.replaceState(window.history.state, '', url.toString());
+					}
+
+					const settings = JSON.parse(localStorage.getItem('settings') || '{}');
+'''
+        if old not in text:
+            raise SystemExit('index.html existing default model bootstrap anchor not found')
+        INDEX_HTML.write_text(text.replace(old, new, 1), encoding='utf-8')
         return
 
     anchor = '''		<script>
@@ -101,6 +120,11 @@ def patch_default_model_bootstrap() -> None:
 					const defaultModel = 'kern-numa';
 					const selected = JSON.stringify([defaultModel]);
 					sessionStorage.setItem('selectedModels', selected);
+					const url = new URL(window.location.href);
+					if (url.pathname === '/' && !url.searchParams.has('model') && !url.searchParams.has('models')) {{
+						url.searchParams.set('models', defaultModel);
+						window.history.replaceState(window.history.state, '', url.toString());
+					}}
 
 					const settings = JSON.parse(localStorage.getItem('settings') || '{{}}');
 					const models = Array.isArray(settings.models) ? settings.models : [];
@@ -122,9 +146,31 @@ def patch_default_model_bootstrap() -> None:
     INDEX_HTML.write_text(text.replace(anchor, anchor + script, 1), encoding='utf-8')
 
 
+def patch_chat_default_model() -> None:
+    for path in Path('/app/build/_app/immutable').rglob('*.js'):
+        text = path.read_text(encoding='utf-8')
+        if CHAT_DEFAULT_MODEL_MARKER in text:
+            return
+        if 'default_models' not in text or 'sessionStorage.selectedModels' not in text:
+            continue
+        anchor = 'h(ee,r(ee).filter(ot=>re.includes(ot)));'
+        if anchor not in text:
+            continue
+        replacement = (
+            anchor
+            + f'/* {CHAT_DEFAULT_MODEL_MARKER} */'
+            + 're.includes("kern-numa")&&h(ee,["kern-numa"]);'
+        )
+        path.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+        return
+
+    raise SystemExit('chat default model patch anchor not found')
+
+
 def main() -> None:
     patch_content_from_output()
     patch_default_model_bootstrap()
+    patch_chat_default_model()
 
 
 if __name__ == '__main__':
