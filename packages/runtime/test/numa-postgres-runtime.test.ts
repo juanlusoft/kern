@@ -305,6 +305,8 @@ test('runtime starts the Numa and OpenWebUI installation without Telegram or Hol
         host: '127.0.0.1',
         port: 0,
         request_body_limit_bytes: 10_000,
+        network_boundary: 'loopback',
+        allowed_remote_addresses: [],
         identity: {
           source: 'body_user',
           header: null
@@ -378,4 +380,3 @@ test('runtime slice does not require Numa PostgreSQL env when the module is inac
   assert.equal(runtimeResult.status, 'started');
   assert.equal(runtimeResult.moduleRegistry.listActive().some((module) => module.module_key === 'numa-postgres-read'), false);
 });
-

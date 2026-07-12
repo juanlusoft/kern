@@ -734,6 +734,8 @@ function buildOpenWebUIInstallationConfig(config: RuntimeInstallationConfig) {
     host: openwebui.host,
     port: openwebui.port,
     request_body_limit_bytes: openwebui.request_body_limit_bytes,
+    network_boundary: openwebui.network_boundary,
+    allowed_remote_addresses: openwebui.allowed_remote_addresses,
     identity: openwebui.identity,
     identity_mappings: Object.entries(openwebui.users).map(([openwebui_user_id, mapping]) => ({
       openwebui_user_id,

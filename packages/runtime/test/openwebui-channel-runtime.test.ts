@@ -134,6 +134,8 @@ test('runtime config accepts openwebui channel settings', () => {
 
   assert.equal(loaded.config.runtime_options.openwebui_channel?.identity.source, 'header');
   assert.equal(loaded.config.runtime_options.openwebui_channel?.identity.header, 'x-openwebui-user-id');
+  assert.equal(loaded.config.runtime_options.openwebui_channel?.network_boundary, 'loopback');
+  assert.deepEqual(loaded.config.runtime_options.openwebui_channel?.allowed_remote_addresses, []);
   assert.equal(loaded.config.runtime_options.openwebui_channel?.users['openwebui-user-1'].organization_id, 'org-openwebui-runtime-test');
   assert.equal(loaded.config.runtime_options.openwebui_channel?.users['openwebui-user-1'].principal_id, 'principal-openwebui-runtime-test');
 });
@@ -168,6 +170,56 @@ test('runtime config rejects Open WebUI channel hosts outside loopback', () => {
         buildEnv()
       ),
     /host must be loopback/
+  );
+});
+
+test('runtime config accepts trusted Open WebUI network only with allowed peers', () => {
+  const rawConfig = {
+    ...buildBaseConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read']),
+    runtime_options: {
+      ...buildBaseConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read']).runtime_options,
+      openwebui_channel: {
+        host: '172.22.0.10',
+        port: 8787,
+        request_body_limit_bytes: 10_000,
+        network_boundary: 'trusted_network',
+        allowed_remote_addresses: ['172.22.0.2'],
+        identity: {
+          source: 'header',
+          header: 'X-OpenWebUI-User-Id'
+        },
+        users: {
+          'openwebui-user-1': {
+            principal_id: 'principal-openwebui-runtime-test',
+            organization_id: 'org-openwebui-runtime-test',
+            active: true,
+            display_name: 'Open WebUI Demo User'
+          }
+        }
+      }
+    }
+  };
+
+  const loaded = loadInstallationConfig(rawConfig, buildEnv());
+  assert.equal(loaded.config.runtime_options.openwebui_channel?.network_boundary, 'trusted_network');
+  assert.deepEqual(loaded.config.runtime_options.openwebui_channel?.allowed_remote_addresses, ['172.22.0.2']);
+
+  assert.throws(
+    () =>
+      loadInstallationConfig(
+        {
+          ...rawConfig,
+          runtime_options: {
+            ...rawConfig.runtime_options,
+            openwebui_channel: {
+              ...rawConfig.runtime_options.openwebui_channel,
+              allowed_remote_addresses: []
+            }
+          }
+        },
+        buildEnv()
+      ),
+    /trusted_network requires allowed_remote_addresses/
   );
 });
 
