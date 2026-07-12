@@ -10,6 +10,7 @@ import { createMockExternalReadAdapter } from '../../external-read-adapters/src/
 
 function buildRuntime(): InMemoryGovernedWorkflowRuntime {
   return new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z')
   });
 }
@@ -105,6 +106,7 @@ test('mock estimate read denies unknown and foreign organizations without invoki
 
 test('mock estimate read can route through the generic external read adapter port', () => {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createMockExternalReadAdapter({
       now: () => new Date('2026-06-29T00:00:00.000Z')

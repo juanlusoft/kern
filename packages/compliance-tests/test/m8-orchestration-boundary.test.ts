@@ -26,6 +26,7 @@ function buildHoldedFetch(status: number, body: unknown) {
 
 function buildBoundary(status: number, body: unknown, options: { unsafe_claimed_result?: unknown } = {}) {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createHoldedReadAdapter({
       apiKey: 'token',
@@ -123,6 +124,7 @@ test('M8 capability inactive in the installation fails closed', () => {
   const boundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-29T00:00:00.000Z'),
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',

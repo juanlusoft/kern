@@ -5,12 +5,14 @@ import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import {
   InMemoryCapabilityRegistry,
   InMemoryCapabilityRuntime,
-  createMockResourceReadCapability
+  createMockResourceReadCapability,
+  createNumaHrCapabilitySet,
+  createPresenceCapabilitySet
 } from '../src/index';
 import { createMockExternalReadAdapter } from '../../external-read-adapters/src/index';
 import { evaluatePolicy } from '../../policy/src/index';
 import { resolveIdentityContext, resolveOrganizationContext } from '../../identity/src/index';
-import type { CapabilityDefinition, CapabilityInvocationRequest, CoreRequest, ResourceResult } from '../../contracts/src/index';
+import type { CapabilityDefinition, CapabilityInvocationRequest, CoreRequest, NumaHrReadPort, PresenceReadPort, ResourceResult } from '../../contracts/src/index';
 
 function createRequest(overrides: Partial<CoreRequest> = {}): CoreRequest {
   return {
@@ -358,6 +360,17 @@ test('generic resource read capability uses the external read adapter and reject
   assert.equal(denied.status, 'error');
   assert.equal(denied.output, null);
   assert.equal(denied.error, 'found result requires source evidence and data');
+});
+
+test('presence and Numa HR capability sets require explicit organization ids', () => {
+  const presencePort = {} as PresenceReadPort;
+  const hrPort = {} as NumaHrReadPort;
+
+  assert.throws(() => createPresenceCapabilitySet(presencePort, ''), /requires explicit organization_id/);
+  assert.throws(() => createNumaHrCapabilitySet(hrPort, ''), /requires explicit organization_id/);
+
+  assert.equal(createPresenceCapabilitySet(presencePort, 'org-presence').every((capability) => capability.organization_id === 'org-presence'), true);
+  assert.equal(createNumaHrCapabilitySet(hrPort, 'numa').every((capability) => capability.organization_id === 'numa'), true);
 });
 
 test('unknown capability is denied without calling any mock', () => {

@@ -64,6 +64,7 @@ function buildBoundary(options: Partial<OrchestrationBoundaryOptions> = {}) {
   const runtime =
     options.workflowRuntime ??
     new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-29T00:00:00.000Z'),
       externalReadAdapter:
         options.orchestrator === null
@@ -107,6 +108,7 @@ test('M8 executes a validated proposal through the governed read runtime and pre
     currency: 'EUR'
   });
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createHoldedReadAdapter({
       apiKey: 'token',
@@ -200,6 +202,7 @@ test('M8 forwards invoice payment status through the orchestration boundary into
     }
   ]);
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createHoldedReadAdapter({
       apiKey: 'token',
@@ -317,6 +320,7 @@ test('M8 accepts invoice payment-status proposals without a customer', () => {
     }
   ]);
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createHoldedReadAdapter({
       apiKey: 'token',
@@ -488,6 +492,7 @@ test('M8 accepts latest N invoice proposals with a customer and forwards the lim
     }
   ]);
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createHoldedReadAdapter({
       apiKey: 'token',
@@ -754,6 +759,7 @@ test('M8 surfaces runtime error unavailable and error without inventing data', (
   const notFoundBoundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-29T00:00:00.000Z'),
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',
@@ -771,6 +777,7 @@ test('M8 surfaces runtime error unavailable and error without inventing data', (
   const unavailableBoundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-29T00:00:00.000Z'),
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',
@@ -788,6 +795,7 @@ test('M8 surfaces runtime error unavailable and error without inventing data', (
   const errorBoundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-29T00:00:00.000Z'),
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',

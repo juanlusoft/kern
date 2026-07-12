@@ -5,6 +5,7 @@ import { createMockExternalReadAdapter, InMemoryExternalReadAdapter } from '../.
 
 function buildRuntime(externalReadAdapter = createMockExternalReadAdapter()) {
   return new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter
   });

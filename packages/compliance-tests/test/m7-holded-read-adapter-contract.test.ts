@@ -65,6 +65,7 @@ function buildRuntime(externalReadAdapter = buildHoldedAdapter(200, [
   }
 ])) {
   return new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter
   });
@@ -101,6 +102,7 @@ test('M7 holded adapter works through the M6 port with SourceEvidence and ignore
 
 test('M7 holded adapter returns error, unavailable, error and denied as distinct outcomes', () => {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: buildHoldedAdapter(404, '')
   });
@@ -118,6 +120,7 @@ test('M7 holded adapter returns error, unavailable, error and denied as distinct
   assert.equal(runtime.getEvidenceLedger().listByCorrelation(notFound.correlation_id).some((record) => record.record_type === 'external_read_error'), true);
 
   const inactiveRuntime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: resolveHoldedReadAdapterForInstallation({
       registry: (() => {
@@ -158,6 +161,7 @@ test('M7 holded adapter returns error, unavailable, error and denied as distinct
   assert.equal(inactiveRuntime.getEvidenceLedger().listByCorrelation(denied.correlation_id).some((record) => record.record_type === 'external_read_denied'), true);
 
   const errorRuntime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: buildHoldedAdapter(500, 'boom')
   });

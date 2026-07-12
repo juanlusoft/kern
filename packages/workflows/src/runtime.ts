@@ -63,6 +63,10 @@ export interface GovernedWorkflowRuntimeOptions {
   now?: () => Date;
 }
 
+function normalizeOptionalOrganizationId(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
 export class InMemoryGovernedWorkflowRuntime {
   private readonly evidenceLedger: InMemoryEvidenceLedger;
   private readonly bindingStore: InMemoryDecisionBindingStore;
@@ -90,17 +94,25 @@ export class InMemoryGovernedWorkflowRuntime {
     this.hrReadPort = options.hrReadPort ?? null;
 
     if (!options.capabilityRuntime) {
-      const capabilityOrganizationId = options.organization_id ?? 'org-acme';
-      this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter));
+      const capabilityOrganizationId = normalizeOptionalOrganizationId(options.organization_id);
+      if (capabilityOrganizationId) {
+        this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter, {}, capabilityOrganizationId));
+      }
       this.registerCapability(createMockEstimateReadCapability());
       this.registerCapability(createMockEmailPreviewCapability());
       this.registerCapability(createMockEmailSendCapability());
       if (options.presenceReadPort) {
+        if (!capabilityOrganizationId) {
+          throw new Error('presenceReadPort requires explicit organization_id');
+        }
         for (const capability of createPresenceCapabilitySet(options.presenceReadPort, capabilityOrganizationId)) {
           this.registerCapability(capability);
         }
       }
       if (options.hrReadPort) {
+        if (!capabilityOrganizationId) {
+          throw new Error('hrReadPort requires explicit organization_id');
+        }
         for (const capability of createNumaHrCapabilitySet(options.hrReadPort, capabilityOrganizationId)) {
           this.registerCapability(capability);
         }

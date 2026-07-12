@@ -132,9 +132,11 @@ function buildBoundary(overrides: {
   const runtime =
     overrides.fetchStatus === undefined
       ? new InMemoryGovernedWorkflowRuntime({
+          organization_id: 'org-acme',
           now: () => new Date('2026-06-30T00:00:00.000Z')
         })
       : new InMemoryGovernedWorkflowRuntime({
+          organization_id: 'org-acme',
           now: () => new Date('2026-06-30T00:00:00.000Z'),
           externalReadAdapter: createHoldedReadAdapter({
             apiKey: 'token',
@@ -284,6 +286,7 @@ test('M10 ignores claimed model content and records the override', () => {
   const boundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-30T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-30T00:00:00.000Z'),
       externalReadAdapter: createHoldedReadAdapter({
         apiKey: 'token',

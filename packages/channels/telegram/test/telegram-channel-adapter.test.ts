@@ -37,6 +37,7 @@ function buildUpdate(overrides: Partial<TelegramChannelUpdate> = {}): TelegramCh
 
 function buildAdapter(options: Partial<TelegramChannelAdapterOptions> = {}) {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-30T00:00:00.000Z')
   });
   const boundary = new InMemoryOrchestrationBoundary({
@@ -201,6 +202,7 @@ test('Telegram adapter denies unknown identities and blocks inactive installatio
   const blockedBoundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-30T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-30T00:00:00.000Z')
     }),
     orchestrator: createMockOrchestrator({
@@ -1461,6 +1463,7 @@ test('Telegram adapter surfaces transport failures as error without leaking the 
   const boundary = new InMemoryOrchestrationBoundary({
     now: () => new Date('2026-06-30T00:00:00.000Z'),
     workflowRuntime: new InMemoryGovernedWorkflowRuntime({
+      organization_id: 'org-acme',
       now: () => new Date('2026-06-30T00:00:00.000Z')
     }),
     orchestrator: createMockOrchestrator({
