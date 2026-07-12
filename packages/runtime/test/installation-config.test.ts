@@ -83,3 +83,63 @@ test('runtime config accepts numa-postgres-read module key', () => {
 
   assert.equal(loaded.config.active_modules.includes('numa-postgres-read'), true);
 });
+
+test('runtime config rejects numa-postgres-read without company scope mapping for the installation organization', () => {
+  const sample = createSampleInstallationConfig();
+
+  assert.throws(
+    () =>
+      validateInstallationConfig({
+        ...sample,
+        active_modules: [...sample.active_modules, 'numa-postgres-read'],
+        runtime_options: {
+          ...sample.runtime_options,
+          numa_hr: {
+            ...sample.runtime_options.numa_hr!,
+            company_id_by_organization_id: {}
+          }
+        }
+      }),
+    (error) =>
+      error instanceof RuntimeConfigError &&
+      error.field === 'runtime_options.numa_hr.company_id_by_organization_id.org-pacoprint'
+  );
+});
+
+test('runtime config rejects numa-postgres-read when the company scope mapping targets another organization', () => {
+  const sample = createSampleInstallationConfig();
+
+  assert.throws(
+    () =>
+      validateInstallationConfig({
+        ...sample,
+        active_modules: [...sample.active_modules, 'numa-postgres-read'],
+        runtime_options: {
+          ...sample.runtime_options,
+          numa_hr: {
+            ...sample.runtime_options.numa_hr!,
+            company_id_by_organization_id: {
+              'org-other': 'company-other'
+            }
+          }
+        }
+      }),
+    (error) =>
+      error instanceof RuntimeConfigError &&
+      error.field === 'runtime_options.numa_hr.company_id_by_organization_id.org-pacoprint'
+  );
+});
+
+test('runtime config does not require company scope mapping when numa-postgres-read is inactive', () => {
+  const sample = createSampleInstallationConfig();
+  const config = validateInstallationConfig({
+    ...sample,
+    runtime_options: {
+      ...sample.runtime_options,
+      numa_hr: null
+    }
+  });
+
+  assert.equal(config.active_modules.includes('numa-postgres-read'), false);
+  assert.equal(config.runtime_options.numa_hr, null);
+});

@@ -658,6 +658,24 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
   };
 }
 
+function validateModuleSpecificConfig(input: {
+  organization: RuntimeOrganizationConfig;
+  active_modules: RuntimeModuleKey[];
+  runtime_options: RuntimeOptions;
+}): void {
+  if (input.active_modules.includes('numa-postgres-read')) {
+    const mapping = input.runtime_options.numa_hr?.company_id_by_organization_id;
+    const organizationId = input.organization.organization_id;
+    const companyId = mapping?.[organizationId];
+    if (!normalizeString(companyId)) {
+      fail(
+        'runtime_options.numa_hr.company_id_by_organization_id.' + organizationId,
+        'numa-postgres-read requires company_id_by_organization_id for the installation organization'
+      );
+    }
+  }
+}
+
 export function validateInstallationConfig(raw: unknown): RuntimeInstallationConfig {
   if (!isPlainObject(raw)) {
     fail('root', 'installation config must be an object');
@@ -691,6 +709,11 @@ export function validateInstallationConfig(raw: unknown): RuntimeInstallationCon
   const active_capabilities = active_capabilities_raw;
   const secret_refs = normalizeSecretRefs(raw.secret_refs);
   const runtime_options = normalizeRuntimeOptions(raw.runtime_options);
+  validateModuleSpecificConfig({
+    organization,
+    active_modules,
+    runtime_options
+  });
   return {
     installation_id,
     organization,

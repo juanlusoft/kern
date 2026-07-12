@@ -68,3 +68,9 @@ deploy/numa-demo/data/
 deploy/numa-demo/evidence/
 deploy/numa-demo/memory/
 deploy/numa-demo/logs/
+deploy/openwebui-kern/.env
+deploy/openwebui-kern/data/
+deploy/openwebui-kern/backups/
+deploy/openwebui-kern/reports/
+deploy/openwebui-kern/**/*.db
+deploy/openwebui-kern/**/*.db-*
