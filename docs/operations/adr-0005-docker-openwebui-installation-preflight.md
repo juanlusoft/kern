@@ -95,7 +95,9 @@ Required controls:
 - Do not publish Kern ports on all interfaces.
 - Prefer Docker service DNS on a controlled Docker network.
 - If a host port is needed, bind it to loopback, for example `127.0.0.1:8790:8787`.
-- The `openwebui-channel` runtime config must use a loopback `host` (`127.0.0.1`, `localhost`, or `::1`). Configs such as `0.0.0.0` or a LAN address must fail closed.
+- The `openwebui-channel` runtime config defaults to `network_boundary: "loopback"` and must use a loopback `host` (`127.0.0.1`, `localhost`, or `::1`) in that mode.
+- Docker-internal deployments may use `network_boundary: "trusted_network"` only when Kern is not published to the host and `allowed_remote_addresses` contains the OpenWebUI/proxy container IPs allowed to call Kern.
+- Configs such as `0.0.0.0` or a LAN address without `network_boundary: "trusted_network"` and an explicit allowlist must fail closed.
 - Do not use one public Kern endpoint for multiple companies during early production.
 - Do not mount Docker socket into Kern containers.
 - Do not mount another company's installation folder.

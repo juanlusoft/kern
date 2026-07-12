@@ -31,6 +31,8 @@ export interface OpenWebUIInstallationConfig {
   host: string;
   port: number;
   request_body_limit_bytes: number;
+  network_boundary?: 'loopback' | 'trusted_network' | null;
+  allowed_remote_addresses?: string[] | null;
   identity?: OpenWebUIIdentityConfig | null;
   identity_mappings: OpenWebUIIdentityMapping[];
 }
@@ -146,6 +148,18 @@ function assertLoopbackHost(host: string): void {
   if (!isLoopbackHost(host)) {
     throw new Error('openwebui channel host must be loopback; do not expose Kern directly');
   }
+}
+
+function normalizeNetworkBoundary(value: OpenWebUIInstallationConfig['network_boundary']): 'loopback' | 'trusted_network' {
+  return value === 'trusted_network' ? 'trusted_network' : 'loopback';
+}
+
+function getRemoteAddress(request: IncomingMessage): string {
+  return request.socket.remoteAddress ?? '';
+}
+
+function isAllowedRemoteAddress(remoteAddress: string, allowed: string[]): boolean {
+  return allowed.includes(remoteAddress);
 }
 
 function normalizeOptionalString(value: unknown): string | null {
@@ -801,7 +815,14 @@ export function createOpenWebUIChannelServer(options: {
   orchestrationBoundary: InMemoryOrchestrationBoundary;
   now?: () => Date;
 }): OpenWebUIChannelServerHandle {
-  assertLoopbackHost(options.installation.host);
+  const networkBoundary = normalizeNetworkBoundary(options.installation.network_boundary);
+  const allowedRemoteAddresses = options.installation.allowed_remote_addresses ?? [];
+  if (networkBoundary === 'loopback') {
+    assertLoopbackHost(options.installation.host);
+  }
+  if (networkBoundary === 'trusted_network' && allowedRemoteAddresses.length === 0) {
+    throw new Error('openwebui channel trusted_network requires allowed_remote_addresses');
+  }
   const adapter = createOpenWebUIChannelAdapter({
     installation: options.installation,
     orchestrationBoundary: options.orchestrationBoundary,
@@ -809,6 +830,20 @@ export function createOpenWebUIChannelServer(options: {
   });
   let listeningPort: number | null = null;
   const server = createServer(async (request, response) => {
+    if (networkBoundary === 'trusted_network' && !isAllowedRemoteAddress(getRemoteAddress(request), allowedRemoteAddresses)) {
+      response.statusCode = 403;
+      response.setHeader('content-type', 'application/json; charset=utf-8');
+      response.end(
+        JSON.stringify({
+          error: {
+            message: 'request denied: untrusted OpenWebUI channel peer',
+            type: 'authentication_error',
+            code: 'permission_denied'
+          }
+        })
+      );
+      return;
+    }
     const method = request.method?.toUpperCase() ?? 'GET';
     const url = request.url ? new URL(request.url, 'http://127.0.0.1') : null;
     if (!url) {

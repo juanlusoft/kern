@@ -19,6 +19,8 @@ function buildInstallation(port = 0): OpenWebUIInstallationConfig {
     host: '127.0.0.1',
     port,
     request_body_limit_bytes: 100_000,
+    network_boundary: 'loopback',
+    allowed_remote_addresses: [],
     identity: {
       source: 'body_user',
       header: null
@@ -373,6 +375,41 @@ test('Open WebUI server refuses non-loopback hosts', () => {
         orchestrationBoundary: buildBoundary([])
       }),
     /host must be loopback/
+  );
+});
+
+test('Open WebUI server allows trusted network hosts only for allowed peers', async () => {
+  const calls: Array<unknown> = [];
+  const server = createOpenWebUIChannelServer({
+    installation: {
+      ...buildInstallation(0),
+      host: '127.0.0.1',
+      network_boundary: 'trusted_network',
+      allowed_remote_addresses: ['127.0.0.1', '::ffff:127.0.0.1']
+    },
+    orchestrationBoundary: buildBoundary(calls)
+  });
+
+  const port = await server.ready;
+  try {
+    const response = await fetch('http://127.0.0.1:' + port + '/v1/models');
+    assert.equal(response.status, 200);
+  } finally {
+    await server.close();
+  }
+
+  assert.throws(
+    () =>
+      createOpenWebUIChannelServer({
+        installation: {
+          ...buildInstallation(0),
+          host: '127.0.0.1',
+          network_boundary: 'trusted_network',
+          allowed_remote_addresses: []
+        },
+        orchestrationBoundary: buildBoundary([])
+      }),
+    /trusted_network requires allowed_remote_addresses/
   );
 });
 

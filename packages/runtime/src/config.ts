@@ -30,6 +30,8 @@ export interface RuntimeOpenWebUIConfig {
   host: string;
   port: number;
   request_body_limit_bytes: number;
+  network_boundary: 'loopback' | 'trusted_network';
+  allowed_remote_addresses: string[];
   identity: RuntimeOpenWebUIIdentityConfig;
   users: Record<string, RuntimeOpenWebUIUserConfig>;
 }
@@ -406,6 +408,28 @@ function isLoopbackOpenWebUIHost(host: string): boolean {
   return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
 }
 
+function normalizeOpenWebUINetworkBoundary(value: unknown): 'loopback' | 'trusted_network' {
+  const boundary = normalizeString(value) ?? 'loopback';
+  if (boundary !== 'loopback' && boundary !== 'trusted_network') {
+    fail('runtime_options.openwebui_channel.network_boundary', 'network_boundary must be loopback or trusted_network');
+  }
+  return boundary;
+}
+
+function normalizeOpenWebUIAllowedRemoteAddresses(value: unknown): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    fail('runtime_options.openwebui_channel.allowed_remote_addresses', 'allowed_remote_addresses must be an array');
+  }
+  const addresses = value.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry));
+  if (addresses.length !== value.length) {
+    fail('runtime_options.openwebui_channel.allowed_remote_addresses', 'allowed remote addresses must be non-empty strings');
+  }
+  return addresses;
+}
+
 function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null {
   if (value === undefined || value === null) {
     return null;
@@ -414,12 +438,17 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
     fail('runtime_options.openwebui_channel', 'openwebui_channel must be an object');
   }
   const host = normalizeString(value.host) ?? '127.0.0.1';
-  if (!isLoopbackOpenWebUIHost(host)) {
-    fail('runtime_options.openwebui_channel.host', 'host must be loopback; do not expose Kern directly');
-  }
+  const network_boundary = normalizeOpenWebUINetworkBoundary(value.network_boundary);
+  const allowed_remote_addresses = normalizeOpenWebUIAllowedRemoteAddresses(value.allowed_remote_addresses);
   const port = normalizePortNumber(value.port);
   const request_body_limit_bytes = normalizePositiveInteger(value.request_body_limit_bytes) ?? 1_000_000;
   const identity = normalizeOpenWebUIIdentityConfig(value.identity ?? null);
+  if (network_boundary === 'loopback' && !isLoopbackOpenWebUIHost(host)) {
+    fail('runtime_options.openwebui_channel.host', 'host must be loopback unless network_boundary is trusted_network');
+  }
+  if (network_boundary === 'trusted_network' && allowed_remote_addresses.length === 0) {
+    fail('runtime_options.openwebui_channel.allowed_remote_addresses', 'trusted_network requires allowed_remote_addresses');
+  }
   const usersRaw = value.users;
   if (!isPlainObject(usersRaw)) {
     fail('runtime_options.openwebui_channel.users', 'users must be an object');
@@ -445,6 +474,8 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
     host,
     port,
     request_body_limit_bytes,
+    network_boundary,
+    allowed_remote_addresses,
     identity,
     users
   };
