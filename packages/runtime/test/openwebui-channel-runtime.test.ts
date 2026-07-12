@@ -264,6 +264,76 @@ test('runtime slice starts the Open WebUI server only when the module is active'
   await runtimeResult.runtime!.openwebuiServer!.close();
 });
 
+test('runtime resolves OpenWebUI identity without requiring Telegram mappings', async () => {
+  const config = {
+    ...buildBaseConfig(['qwen-orchestrator', 'openwebui-channel']),
+    identity_mappings: [
+      {
+        channel: 'openwebui',
+        openwebui_user_id: 'openwebui-user-1',
+        organization_id: 'org-openwebui-runtime-test',
+        principal_id: 'principal-openwebui-runtime-test',
+        installation_id: 'install-openwebui-runtime-test',
+        principal_type: 'human',
+        active: true,
+        display_name: 'Open WebUI Demo User'
+      }
+    ],
+    runtime_options: {
+      ...buildBaseConfig(['qwen-orchestrator', 'openwebui-channel']).runtime_options,
+      openwebui_channel: {
+        host: '127.0.0.1',
+        port: 0,
+        request_body_limit_bytes: 10_000,
+        network_boundary: 'loopback',
+        allowed_remote_addresses: [],
+        identity: {
+          source: 'header',
+          header: 'x-openwebui-user-id'
+        },
+        users: {
+          'openwebui-user-1': {
+            principal_id: 'principal-openwebui-runtime-test',
+            organization_id: 'org-openwebui-runtime-test',
+            active: true,
+            display_name: 'Open WebUI Demo User'
+          }
+        }
+      }
+    }
+  } satisfies RuntimeInstallationConfig;
+  const runtimeResult = startInstallationRuntime({
+    rawConfig: config,
+    env: buildEnv(),
+    qwenTransport: buildQwenTransport(),
+    holdedFetch: buildHoldedFetch()
+  });
+
+  assert.equal(runtimeResult.status, 'started');
+  assert.ok(runtimeResult.runtime?.openwebuiServer);
+  const port = await runtimeResult.runtime.openwebuiServer.ready;
+  try {
+    const response = await fetch('http://127.0.0.1:' + port + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openwebui-user-id': 'openwebui-user-1'
+      },
+      body: JSON.stringify({
+        model: 'kern-numa',
+        messages: [{ role: 'user', content: 'Días de vacaciones de BEATRIZ VERA en 2025' }]
+      })
+    });
+    const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; kern?: { principal_id?: string | null } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.kern?.principal_id, 'principal-openwebui-runtime-test');
+    assert.notEqual(body.choices?.[0]?.message?.content, 'identity mapping could not be resolved from installation config');
+  } finally {
+    await runtimeResult.runtime.openwebuiServer.close();
+  }
+});
+
 test('runtime slice does not start Open WebUI when the module is inactive', () => {
   const runtimeResult = startInstallationRuntime({
     rawConfig: buildBaseConfig(['telegram-channel', 'qwen-orchestrator', 'holded-read']),

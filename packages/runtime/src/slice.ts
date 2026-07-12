@@ -575,7 +575,9 @@ function buildTelegramInstallationConfig(config: RuntimeInstallationConfig, secr
     installation_id: config.installation_id,
     active: config.active_modules.includes('telegram-channel') && config.organization.active,
     bot_token: secrets.KERN_TELEGRAM_BOT_TOKEN,
-    identity_mappings: config.identity_mappings.map((mapping) => ({ ...mapping }))
+    identity_mappings: config.identity_mappings
+      .filter((mapping) => mapping.channel === 'telegram')
+      .map((mapping) => ({ ...mapping }))
   };
 }
 

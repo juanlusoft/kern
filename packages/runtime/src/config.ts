@@ -543,20 +543,24 @@ function normalizeIdentityMapping(value: unknown, index: number): ChannelIdentit
   const channel = normalizeString(value.channel);
   const telegram_user_id = normalizeString(value.telegram_user_id);
   const telegram_chat_id = normalizeString(value.telegram_chat_id);
+  const openwebui_user_id = normalizeString(value.openwebui_user_id);
   const organization_id = normalizeString(value.organization_id);
   const principal_id = normalizeString(value.principal_id);
   const installation_id = normalizeString(value.installation_id);
   const principal_type = value.principal_type === undefined || value.principal_type === null ? null : assertPrincipalType(value.principal_type, `identity_mappings[${index}].principal_type`);
   const active = normalizeBoolean(value.active);
   const display_name = normalizeString(value.display_name ?? null);
-  if (channel !== 'telegram') {
-    fail(`identity_mappings[${index}].channel`, 'identity mapping channel must be telegram');
+  if (channel !== 'telegram' && channel !== 'openwebui') {
+    fail(`identity_mappings[${index}].channel`, 'identity mapping channel must be telegram or openwebui');
   }
-  if (!telegram_user_id) {
+  if (channel === 'telegram' && !telegram_user_id) {
     fail(`identity_mappings[${index}].telegram_user_id`, 'telegram_user_id is required');
   }
-  if (!telegram_chat_id) {
+  if (channel === 'telegram' && !telegram_chat_id) {
     fail(`identity_mappings[${index}].telegram_chat_id`, 'telegram_chat_id is required');
+  }
+  if (channel === 'openwebui' && !openwebui_user_id) {
+    fail(`identity_mappings[${index}].openwebui_user_id`, 'openwebui_user_id is required');
   }
   if (!organization_id) {
     fail(`identity_mappings[${index}].organization_id`, 'organization_id is required');
@@ -570,15 +574,37 @@ function normalizeIdentityMapping(value: unknown, index: number): ChannelIdentit
   if (active === null) {
     fail(`identity_mappings[${index}].active`, 'identity mapping active must be boolean');
   }
+  const requiredOrganizationId = organization_id;
+  const requiredPrincipalId = principal_id;
+  const requiredInstallationId = installation_id;
+  const requiredActive = active;
+  if (channel === 'openwebui') {
+    const requiredOpenWebUIUserId =
+      openwebui_user_id ?? fail(`identity_mappings[${index}].openwebui_user_id`, 'openwebui_user_id is required');
+    return {
+      channel: 'openwebui',
+      openwebui_user_id: requiredOpenWebUIUserId,
+      organization_id: requiredOrganizationId,
+      principal_id: requiredPrincipalId,
+      installation_id: requiredInstallationId,
+      principal_type,
+      active: requiredActive,
+      display_name
+    };
+  }
+  const requiredTelegramUserId =
+    telegram_user_id ?? fail(`identity_mappings[${index}].telegram_user_id`, 'telegram_user_id is required');
+  const requiredTelegramChatId =
+    telegram_chat_id ?? fail(`identity_mappings[${index}].telegram_chat_id`, 'telegram_chat_id is required');
   return {
-    channel,
-    telegram_user_id,
-    telegram_chat_id,
-    organization_id,
-    principal_id,
-    installation_id,
+    channel: 'telegram',
+    telegram_user_id: requiredTelegramUserId,
+    telegram_chat_id: requiredTelegramChatId,
+    organization_id: requiredOrganizationId,
+    principal_id: requiredPrincipalId,
+    installation_id: requiredInstallationId,
     principal_type,
-    active,
+    active: requiredActive,
     display_name
   };
 }

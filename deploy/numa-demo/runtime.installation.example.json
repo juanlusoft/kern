@@ -15,7 +15,18 @@
       "scopes": ["request:governed", "read:knowledge"]
     }
   ],
-  "identity_mappings": [],
+  "identity_mappings": [
+    {
+      "channel": "openwebui",
+      "openwebui_user_id": "REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL",
+      "organization_id": "numa",
+      "principal_id": "numa-hr-operator",
+      "installation_id": "install-numa-demo",
+      "principal_type": "human",
+      "active": true,
+      "display_name": "Numa HR Operator"
+    }
+  ],
   "active_modules": ["qwen-orchestrator", "numa-postgres-read", "openwebui-channel"],
   "active_capabilities": [],
   "secret_refs": {
