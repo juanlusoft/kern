@@ -1,0 +1,37 @@
+/* Kern UI: keep message copy and rating actions, hide noisy assistant-message actions exposed semantically. */
+button[aria-label*="edit" i],
+button[title*="edit" i],
+button[data-tooltip*="edit" i],
+button[aria-label*="editar" i],
+button[title*="editar" i],
+button[data-tooltip*="editar" i],
+button[aria-label*="read aloud" i],
+button[title*="read aloud" i],
+button[data-tooltip*="read aloud" i],
+button[aria-label*="leer en voz" i],
+button[title*="leer en voz" i],
+button[data-tooltip*="leer en voz" i],
+button[aria-label*="speak" i],
+button[title*="speak" i],
+button[data-tooltip*="speak" i],
+button[aria-label*="audio" i],
+button[title*="audio" i],
+button[data-tooltip*="audio" i] {
+  display: none !important;
+}
+
+/* Kern UI: OpenWebUI 0.10.2 ResponseMessage.svelte.
+   Hide regenerate direct button and the visible dropdown trigger that follows it.
+   Keeps: copy-response-button, Good Response, and Bad Response. */
+.buttons > button.regenerate-response-button,
+.buttons > button.regenerate-response-button + span[role="button"] {
+  display: none !important;
+}
+
+/* Kern UI: hide composer voice/audio controls for client demo. */
+form button#voice-input-button,
+form button[aria-label="Voice Input" i],
+form button[aria-label*="Voice mode" i],
+form button[aria-label*="Modo de voz" i] {
+  display: none !important;
+}

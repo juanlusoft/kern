@@ -22,7 +22,7 @@ services:
     tmpfs:
       - /tmp
     networks:
-      - openwebui_default
+      - kern_numa_internal
       - numa_db
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -32,7 +32,8 @@ services:
       - ALL
 
 networks:
-  openwebui_default:
+  kern_numa_internal:
     external: true
+    name: ${KERN_DOCKER_NETWORK:-kern_numa_internal}
   numa_db:
     external: true

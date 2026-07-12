@@ -1,0 +1,35 @@
+services:
+  openwebui:
+    image: kern-openwebui:0.10.2-kern.1
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${OPENWEBUI_CONTAINER_NAME:-openwebui-numa}
+    restart: unless-stopped
+    ports:
+      - "${OPENWEBUI_HOST_BIND:-127.0.0.1}:${OPENWEBUI_HOST_PORT:-3001}:8080"
+    environment:
+      OPENAI_API_BASE_URLS: "${OPENAI_API_BASE_URLS:-http://kern-numa:8787/v1}"
+      OPENAI_API_KEYS: "${OPENAI_API_KEYS:-dummy}"
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_NAME: "${WEBUI_NAME:-Kern}"
+      ENABLE_VERSION_UPDATE_CHECK: "false"
+      DEFAULT_LOCALE: "es"
+      ENABLE_SIGNUP: "${ENABLE_SIGNUP:-false}"
+      WEBUI_AUTH: "true"
+      ENABLE_FORWARD_USER_INFO_HEADERS: "true"
+      FORWARD_USER_INFO_HEADER_USER_ID: "X-OpenWebUI-User-Id"
+      ENABLE_API_KEY: "true"
+      ENABLE_API_KEY_ENDPOINT_RESTRICTIONS: "true"
+      BYPASS_ADMIN_ACCESS_CONTROL: "false"
+      RAG_FULL_CONTEXT: "true"
+      WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:?set WEBUI_SECRET_KEY in the untracked environment file}"
+    volumes:
+      - "${OPENWEBUI_DATA_DIR:?set OPENWEBUI_DATA_DIR}:/app/backend/data"
+    networks:
+      - kern_internal
+
+networks:
+  kern_internal:
+    external: true
+    name: "${KERN_DOCKER_NETWORK:-kern_numa_internal}"

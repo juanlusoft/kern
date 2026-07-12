@@ -350,7 +350,7 @@ test('runtime slice fails closed when the Numa company mapping is missing', () =
   });
 
   assert.equal(runtimeResult.status, 'blocked');
-  assert.equal(runtimeResult.reason?.includes('organization_id'), true);
+  assert.equal(runtimeResult.reason?.includes('company_id_by_organization_id'), true);
   assert.equal(runtimeResult.runtime, null);
 });
 test('runtime slice fails closed when the Numa PostgreSQL env is incomplete', () => {

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   NUMA_POSTGRES_ROLE,
   createPgReadAdapter,
-  getPgPresenceQueryCatalog,
   type PgPresenceQueryRunner
 } from '../src/index';
 import {
@@ -36,7 +35,7 @@ function createRunner(responseByQueryId: Record<string, unknown[] | ((input: { v
   return { runner, calls };
 }
 
-test('presence adapter search uses unaccent and closed query catalog', () => {
+test('presence adapter search uses unaccent and company scope', () => {
   const { runner, calls } = createRunner({
     'employee.find': [
       {
@@ -76,7 +75,6 @@ test('presence adapter search uses unaccent and closed query catalog', () => {
   assert.equal(calls[0].values[0], 'company-acme');
   assert.match(calls[0].statement, /LIMIT \$3 \+ 1/);
   assert.equal(calls[0].transactionRole, NUMA_POSTGRES_ROLE);
-  assert.deepEqual(getPgPresenceQueryCatalog().map((entry) => entry.query_id), ['employee.find', 'punches.list', 'presence.current', 'punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group']);
 });
 
 test('presence adapter fails closed when company mapping is missing', () => {

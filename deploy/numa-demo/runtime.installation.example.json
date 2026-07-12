@@ -61,7 +61,7 @@
       "port": 8787,
       "request_body_limit_bytes": 1000000,
       "network_boundary": "trusted_network",
-      "allowed_remote_addresses": ["172.22.0.0/16"],
+      "allowed_remote_addresses": ["REPLACE_WITH_OPENWEBUI_CONTAINER_IP_OR_CIDR"],
       "identity": {
         "source": "header",
         "header": "x-openwebui-user-id"

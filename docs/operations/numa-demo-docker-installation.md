@@ -5,7 +5,7 @@ This runbook installs Kern Numa as a Docker container for the demo.
 ## Scope
 
 - Runs one read-only Kern container for Numa.
-- Joins the existing `openwebui_default` Docker network.
+- Joins the Numa-specific `kern_numa_internal` Docker network shared only with Numa OpenWebUI.
 - Joins a dedicated external `numa_db` Docker network shared with the Numa PostgreSQL container.
 - Does not publish Kern port `8787` to the host.
 - OpenWebUI reaches Kern through Docker DNS: `http://kern-numa:8787/v1`.
@@ -25,6 +25,7 @@ Create local runtime files:
 
 ```bash
 docker network create numa_db
+docker network create kern_numa_internal
 docker network connect numa_db numa-dev-pg
 cp deploy/numa-demo/runtime.installation.example.json deploy/numa-demo/runtime.installation.json
 cp deploy/numa-demo/env.runtime.example deploy/numa-demo/env.runtime
@@ -48,11 +49,10 @@ Fill `deploy/numa-demo/runtime.installation.json`:
 
 - Replace `REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL`.
 - Confirm `company_id_by_organization_id.numa`.
-- Confirm `allowed_remote_addresses` matches the OpenWebUI Docker network subnet or exact container IP:
+- Confirm `allowed_remote_addresses` matches the Numa OpenWebUI container IP:
 
 ```bash
-docker network inspect openwebui_default --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
-docker inspect openwebui --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+docker inspect openwebui-numa --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
 ```
 
 Use the narrowest practical value. Do not publish Kern port `8787` to the host.
@@ -96,7 +96,7 @@ runtime_options.openwebui_channel.users
 From inside OpenWebUI container:
 
 ```bash
-docker exec openwebui sh -lc 'python - <<PY
+docker exec openwebui-numa sh -lc 'python - <<PY
 import urllib.request
 print(urllib.request.urlopen("http://kern-numa:8787/v1/models", timeout=5).read().decode())
 PY'
@@ -107,7 +107,7 @@ Expected: model list containing `kern-numa`.
 Fail-closed checks:
 
 ```bash
-docker exec openwebui sh -lc 'python - <<PY
+docker exec openwebui-numa sh -lc 'python - <<PY
 import urllib.request
 req = urllib.request.Request(
   "http://kern-numa:8787/v1/chat/completions",

@@ -382,21 +382,5 @@ export class InMemoryExternalReadAdapter implements ExternalReadAdapter {
 }
 
 export function createMockExternalReadAdapter(options: InMemoryExternalReadAdapterOptions = {}): InMemoryExternalReadAdapter {
-  const adapter = new InMemoryExternalReadAdapter(options);
-  adapter.seedResource({
-    organization_id: 'org-acme',
-    resource_type: 'estimate',
-    resource_id: 'estimate-123',
-    data: {
-      estimate_id: 'estimate-123',
-      customer_name: 'Acme Customer',
-      description: 'Quarterly estimate mock',
-      base_amount: 1000,
-      tax_amount: 210,
-      total_amount: 1210,
-      currency: 'EUR',
-      source: 'mock_runtime'
-    }
-  });
-  return adapter;
+  return new InMemoryExternalReadAdapter(options);
 }
