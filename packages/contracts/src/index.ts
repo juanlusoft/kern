@@ -1166,7 +1166,7 @@ export interface TelegramOutboundMessage extends OutboundMessage {
   data?: Record<string, unknown> | null;
 }
 
-export interface ChannelIdentityMapping {
+export interface TelegramIdentityMapping {
   channel: 'telegram';
   telegram_user_id: string;
   telegram_chat_id: string;
@@ -1178,12 +1178,25 @@ export interface ChannelIdentityMapping {
   display_name?: string | null;
 }
 
+export interface OpenWebUIIdentityMapping {
+  channel: 'openwebui';
+  openwebui_user_id: string;
+  organization_id: string;
+  principal_id: string;
+  installation_id: string;
+  principal_type?: PrincipalType | null;
+  active: boolean;
+  display_name?: string | null;
+}
+
+export type ChannelIdentityMapping = TelegramIdentityMapping | OpenWebUIIdentityMapping;
+
 export interface ChannelInstallationConfig {
   channel: 'telegram';
   installation_id: string;
   active: boolean;
   bot_token: string | null;
-  identity_mappings: ChannelIdentityMapping[];
+  identity_mappings: TelegramIdentityMapping[];
 }
 
 export interface ChannelMessageResult {
