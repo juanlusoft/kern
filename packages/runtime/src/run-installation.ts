@@ -3,16 +3,14 @@ import { resolve } from 'node:path';
 import { loadInstallationConfig } from './config';
 import { startInstallationRuntime } from './slice';
 
-export function ensureDefaultEvidenceLedgerFilePath(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): string {
+export function resolveConfiguredEvidenceLedgerFilePath(env: NodeJS.ProcessEnv = process.env): string | null {
   const existing = typeof env.KERN_EVIDENCE_FILE_PATH === 'string' && env.KERN_EVIDENCE_FILE_PATH.trim().length > 0
     ? env.KERN_EVIDENCE_FILE_PATH.trim()
     : null;
   if (existing) {
     return existing;
   }
-  const defaultPath = cwd + '/evidence.jsonl';
-  env.KERN_EVIDENCE_FILE_PATH = defaultPath;
-  return defaultPath;
+  return null;
 }
 
 function loadConfigFromProcess(): unknown {
@@ -28,7 +26,7 @@ function loadConfigFromProcess(): unknown {
 }
 
 export function runInstallation(): number {
-  ensureDefaultEvidenceLedgerFilePath(process.env, process.cwd());
+  resolveConfiguredEvidenceLedgerFilePath(process.env);
   const rawConfig = loadConfigFromProcess();
   const loaded = loadInstallationConfig(rawConfig);
   const start = startInstallationRuntime({

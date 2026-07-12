@@ -10,13 +10,24 @@ import { createMockExternalReadAdapter } from '../../external-read-adapters/src/
 
 function buildRuntime(): InMemoryGovernedWorkflowRuntime {
   return new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z')
   });
 }
 
+test('mock workflow capabilities require explicit organization ids', () => {
+  assert.throws(() => createMockEstimateReadCapability(''), /requires explicit organization_id/);
+  assert.throws(() => createMockEmailPreviewCapability(''), /requires explicit organization_id/);
+  assert.throws(() => createMockEmailSendCapability(''), /requires explicit organization_id/);
+
+  assert.equal(createMockEstimateReadCapability('org-acme').organization_id, 'org-acme');
+  assert.equal(createMockEmailPreviewCapability('org-acme').organization_id, 'org-acme');
+  assert.equal(createMockEmailSendCapability('org-acme').organization_id, 'org-acme');
+});
+
 test('mock estimate read completes from runtime output and ignores caller claims', () => {
   const runtime = buildRuntime();
-  runtime.registerCapability(createMockEstimateReadCapability());
+  runtime.registerCapability(createMockEstimateReadCapability('org-acme'));
 
   const result = runtime.executeWorkflow({
     kind: 'mock.estimate.read',
@@ -105,6 +116,7 @@ test('mock estimate read denies unknown and foreign organizations without invoki
 
 test('mock estimate read can route through the generic external read adapter port', () => {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z'),
     externalReadAdapter: createMockExternalReadAdapter({
       now: () => new Date('2026-06-29T00:00:00.000Z')
@@ -132,8 +144,8 @@ test('mock estimate read can route through the generic external read adapter por
 
 test('mock email send completes with preview, binding and runtime result only', () => {
   const runtime = buildRuntime();
-  runtime.registerCapability(createMockEmailPreviewCapability());
-  runtime.registerCapability(createMockEmailSendCapability());
+  runtime.registerCapability(createMockEmailPreviewCapability('org-acme'));
+  runtime.registerCapability(createMockEmailSendCapability('org-acme'));
 
   const result = runtime.executeWorkflow({
     kind: 'mock.email.send',

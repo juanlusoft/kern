@@ -35,6 +35,14 @@ function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function requireOrganizationId(value: string, context: string): string {
+  const organization_id = normalizeString(value);
+  if (!organization_id) {
+    throw new Error(`${context} requires explicit organization_id`);
+  }
+  return organization_id;
+}
+
 function normalizePositiveInteger(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -115,7 +123,7 @@ function normalizeCurrentParams(input: PresenceCurrentParams): PresenceCurrentPa
   };
 }
 
-function createEmployeeFindCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function createEmployeeFindCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'employee.find',
     organization_id,
@@ -141,7 +149,7 @@ function createEmployeeFindCapability(port: PresenceReadPort, organization_id = 
   };
 }
 
-function createPunchesListCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function createPunchesListCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'punches.list',
     organization_id,
@@ -174,7 +182,7 @@ function createPunchesListCapability(port: PresenceReadPort, organization_id = '
   };
 }
 
-function createCurrentPresenceCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function createCurrentPresenceCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'presence.current',
     organization_id,
@@ -209,22 +217,23 @@ function createCurrentPresenceCapability(port: PresenceReadPort, organization_id
   };
 }
 
-export function createPresenceEmployeeFindCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return createEmployeeFindCapability(port, organization_id);
+export function createPresenceEmployeeFindCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
+  return createEmployeeFindCapability(port, requireOrganizationId(organization_id, 'createPresenceEmployeeFindCapability'));
 }
 
-export function createPresencePunchesListCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return createPunchesListCapability(port, organization_id);
+export function createPresencePunchesListCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
+  return createPunchesListCapability(port, requireOrganizationId(organization_id, 'createPresencePunchesListCapability'));
 }
 
-export function createPresenceCurrentCapability(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return createCurrentPresenceCapability(port, organization_id);
+export function createPresenceCurrentCapability(port: PresenceReadPort, organization_id: string): CapabilityDefinition {
+  return createCurrentPresenceCapability(port, requireOrganizationId(organization_id, 'createPresenceCurrentCapability'));
 }
 
-export function createPresenceCapabilitySet(port: PresenceReadPort, organization_id = 'org-acme'): CapabilityDefinition[] {
+export function createPresenceCapabilitySet(port: PresenceReadPort, organization_id: string): CapabilityDefinition[] {
+  const requiredOrganizationId = requireOrganizationId(organization_id, 'createPresenceCapabilitySet');
   return [
-    createPresenceEmployeeFindCapability(port, organization_id),
-    createPresencePunchesListCapability(port, organization_id),
-    createPresenceCurrentCapability(port, organization_id)
+    createPresenceEmployeeFindCapability(port, requiredOrganizationId),
+    createPresencePunchesListCapability(port, requiredOrganizationId),
+    createPresenceCurrentCapability(port, requiredOrganizationId)
   ];
 }

@@ -34,14 +34,17 @@ function readJsonlRecords(filePath: string): Array<Record<string, unknown>> {
 
 test('runtime slice stays in-memory when no evidence path is configured', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'kern-runtime-evidence-'));
-  const config = buildConfig({ conversationMemoryFilePath: join(tempDir, 'conversation-memory.json') });
+  const config = buildConfig();
   const env = buildEnv();
   delete env.KERN_EVIDENCE_FILE_PATH;
+  const originalCwd = process.cwd();
 
   try {
+    process.chdir(tempDir);
     const runtimeResult = startInstallationRuntime({ rawConfig: config, env });
     assert.equal(runtimeResult.status, 'started');
     assert.equal(existsSync(join(tempDir, 'evidence.jsonl')), false);
+    assert.equal(existsSync(join(tempDir, 'conversation-memory.json')), false);
 
     const appended = runtimeResult.evidenceLedger.append(
       createEvidenceRecord({
@@ -55,7 +58,9 @@ test('runtime slice stays in-memory when no evidence path is configured', () => 
 
     assert.equal(appended.sequence > 0, true);
     assert.equal(existsSync(join(tempDir, 'evidence.jsonl')), false);
+    assert.equal(existsSync(join(tempDir, 'conversation-memory.json')), false);
   } finally {
+    process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
   }
 });

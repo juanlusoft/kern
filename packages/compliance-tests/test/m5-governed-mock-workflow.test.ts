@@ -4,6 +4,7 @@ import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
 
 function buildRuntime(): InMemoryGovernedWorkflowRuntime {
   return new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-29T00:00:00.000Z')
   });
 }

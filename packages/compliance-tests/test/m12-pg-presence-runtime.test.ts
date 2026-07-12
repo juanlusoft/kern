@@ -81,7 +81,7 @@ function createRuntime() {
       role: 'kern_ro'
     }
   });
-  const runtime = new InMemoryGovernedWorkflowRuntime({ presenceReadPort: adapter });
+  const runtime = new InMemoryGovernedWorkflowRuntime({ presenceReadPort: adapter, organization_id: 'org-acme' });
   return { runtime, calls };
 }
 

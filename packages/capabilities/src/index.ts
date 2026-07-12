@@ -851,11 +851,15 @@ function buildResourceCapabilityResult(
 export function createMockResourceReadCapability(
   adapter: ExternalReadAdapter,
   overrides: Partial<CapabilityDefinition> = {},
-  organization_id = 'org-acme'
+  organization_id?: string
 ): CapabilityDefinition {
+  const requiredOrganizationId = typeof organization_id === 'string' && organization_id.trim().length > 0 ? organization_id.trim() : null;
+  if (!requiredOrganizationId) {
+    throw new Error('createMockResourceReadCapability requires explicit organization_id');
+  }
   return {
     capability_id: 'mock.resource.read',
-    organization_id,
+    organization_id: requiredOrganizationId,
     title: 'Mock resource read',
     description: 'Read a governed resource through the generic external read adapter port.',
     kind: 'read_only',

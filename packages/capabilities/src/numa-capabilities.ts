@@ -36,6 +36,14 @@ function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function requireOrganizationId(value: string, context: string): string {
+  const organization_id = normalizeString(value);
+  if (!organization_id) {
+    throw new Error(`${context} requires explicit organization_id`);
+  }
+  return organization_id;
+}
+
 function normalizePositiveInteger(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -65,7 +73,7 @@ function normalizeNumberArray(value: unknown): number[] {
     .filter((entry): entry is number => entry !== null);
 }
 
-function buildPunchDayCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildPunchDayCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'punch.day',
     organization_id,
@@ -97,7 +105,7 @@ function buildPunchDayCapability(port: NumaHrReadPort, organization_id = 'org-ac
   };
 }
 
-function buildLeaveDaysCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildLeaveDaysCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'leave.days',
     organization_id,
@@ -132,7 +140,7 @@ function buildLeaveDaysCapability(port: NumaHrReadPort, organization_id = 'org-a
   };
 }
 
-function buildLeaveBalanceCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildLeaveBalanceCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'leave.balance',
     organization_id,
@@ -173,7 +181,7 @@ function buildLeaveBalanceCapability(port: NumaHrReadPort, organization_id = 'or
   };
 }
 
-function buildLeaveDetailCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildLeaveDetailCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'leave.detail',
     organization_id,
@@ -212,7 +220,7 @@ function buildLeaveDetailCapability(port: NumaHrReadPort, organization_id = 'org
   };
 }
 
-function buildWorktimeSummaryCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildWorktimeSummaryCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'worktime.summary',
     organization_id,
@@ -247,7 +255,7 @@ function buildWorktimeSummaryCapability(port: NumaHrReadPort, organization_id = 
   };
 }
 
-function buildReportMonthByGroupCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
+function buildReportMonthByGroupCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return {
     capability_id: 'report.month-by-group',
     organization_id,
@@ -285,37 +293,38 @@ function buildReportMonthByGroupCapability(port: NumaHrReadPort, organization_id
   };
 }
 
-export function createNumaPunchDayCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildPunchDayCapability(port, organization_id);
+export function createNumaPunchDayCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildPunchDayCapability(port, requireOrganizationId(organization_id, 'createNumaPunchDayCapability'));
 }
 
-export function createNumaLeaveDaysCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildLeaveDaysCapability(port, organization_id);
+export function createNumaLeaveDaysCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildLeaveDaysCapability(port, requireOrganizationId(organization_id, 'createNumaLeaveDaysCapability'));
 }
 
-export function createNumaLeaveBalanceCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildLeaveBalanceCapability(port, organization_id);
+export function createNumaLeaveBalanceCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildLeaveBalanceCapability(port, requireOrganizationId(organization_id, 'createNumaLeaveBalanceCapability'));
 }
 
-export function createNumaLeaveDetailCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildLeaveDetailCapability(port, organization_id);
+export function createNumaLeaveDetailCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildLeaveDetailCapability(port, requireOrganizationId(organization_id, 'createNumaLeaveDetailCapability'));
 }
 
-export function createNumaWorktimeSummaryCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildWorktimeSummaryCapability(port, organization_id);
+export function createNumaWorktimeSummaryCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildWorktimeSummaryCapability(port, requireOrganizationId(organization_id, 'createNumaWorktimeSummaryCapability'));
 }
 
-export function createNumaReportMonthByGroupCapability(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition {
-  return buildReportMonthByGroupCapability(port, organization_id);
+export function createNumaReportMonthByGroupCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildReportMonthByGroupCapability(port, requireOrganizationId(organization_id, 'createNumaReportMonthByGroupCapability'));
 }
 
-export function createNumaHrCapabilitySet(port: NumaHrReadPort, organization_id = 'org-acme'): CapabilityDefinition[] {
+export function createNumaHrCapabilitySet(port: NumaHrReadPort, organization_id: string): CapabilityDefinition[] {
+  const requiredOrganizationId = requireOrganizationId(organization_id, 'createNumaHrCapabilitySet');
   return [
-    createNumaPunchDayCapability(port, organization_id),
-    createNumaLeaveDaysCapability(port, organization_id),
-    createNumaLeaveBalanceCapability(port, organization_id),
-    createNumaLeaveDetailCapability(port, organization_id),
-    createNumaWorktimeSummaryCapability(port, organization_id),
-    createNumaReportMonthByGroupCapability(port, organization_id)
+    createNumaPunchDayCapability(port, requiredOrganizationId),
+    createNumaLeaveDaysCapability(port, requiredOrganizationId),
+    createNumaLeaveBalanceCapability(port, requiredOrganizationId),
+    createNumaLeaveDetailCapability(port, requiredOrganizationId),
+    createNumaWorktimeSummaryCapability(port, requiredOrganizationId),
+    createNumaReportMonthByGroupCapability(port, requiredOrganizationId)
   ];
 }

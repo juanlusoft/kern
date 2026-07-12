@@ -8,6 +8,7 @@ import { createTelegramChannelAdapter, InMemoryTelegramTransport } from '../../c
 
 function buildAdapter() {
   const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
     now: () => new Date('2026-06-30T00:00:00.000Z')
   });
   const boundary = new InMemoryOrchestrationBoundary({

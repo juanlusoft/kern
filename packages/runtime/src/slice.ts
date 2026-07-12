@@ -1034,11 +1034,7 @@ export function startInstallationRuntime(input: {
     now: nowFn
   });
   const conversationMemoryStore = createConversationMemoryStore({
-    // El daemon corre un proceso NUEVO por cada sondeo, así que la memoria en RAM
-    // se perdería entre mensajes: por defecto se respalda en disco (cwd) para que
-    // el multi-turno funcione de fábrica. Se puede fijar otra ruta en el config.
-    filePath:
-      loaded.config.runtime_options.conversation_memory_file_path ?? `${process.cwd()}/conversation-memory.json`,
+    filePath: loaded.config.runtime_options.conversation_memory_file_path,
     now: nowFn
   });
   const telegramAdapter = loaded.config.active_modules.includes('telegram-channel')
