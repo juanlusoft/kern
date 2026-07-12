@@ -42,6 +42,8 @@ NUMA_PGPORT=5432
 
 Do not depend on the host-only publish `127.0.0.1:15432`; containers cannot use that loopback bind.
 
+For the local Spark PostgreSQL container, use `NUMA_PGSSLMODE=disable` because `numa-dev-pg` does not advertise SSL on the internal Docker network. For production PostgreSQL, prefer `verify-full` with proper CA/hostname validation.
+
 Fill `deploy/numa-demo/runtime.installation.json`:
 
 - Replace `REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL`.
