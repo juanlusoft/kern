@@ -334,8 +334,20 @@ function isValidNumaHrProposal(capability_key: string, params: Record<string, un
     return false;
   }
   const employee_name = normalizeOptionalString(params.employee_name);
+  if (isCollectiveEmployeePhrase(employee_name)) {
+    return false;
+  }
+  if (capability_key === 'presence.current-workers') {
+    return true;
+  }
   if (capability_key === 'punch.day') {
     return Boolean(employee_name && normalizeOptionalString(params.date));
+  }
+  if (capability_key === 'punch.day-workers') {
+    return Boolean(normalizeOptionalString(params.date));
+  }
+  if (capability_key === 'punch.range') {
+    return Boolean(employee_name && normalizeOptionalString(params.date_from) && normalizeOptionalString(params.date_to));
   }
   if (capability_key === 'leave.days' || capability_key === 'leave.balance') {
     const year = normalizeYear(params.year) ?? (isRelativeCalendarYearExpression(params.year) ? 'relative-year' : null);
@@ -371,6 +383,43 @@ function normalizeDraftLine(value: unknown): PricingQuoteDraftLineInput | null {
     ancho: record.ancho === undefined || record.ancho === null ? null : normalizeOptionalNumber(record.ancho),
     options: record.options === undefined || record.options === null ? null : normalizeOptions(record.options)
   };
+}
+
+function isCollectiveEmployeePhrase(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [
+    'todos los trabajadores',
+    'todos trabajadores',
+    'todos los empleados',
+    'todos empleados',
+    'todas las personas',
+    'todo el personal',
+    'all workers',
+    'all employees',
+    'everyone'
+  ].includes(normalized);
+}
+
+function isNumaHrCapabilityKey(capability_key: string): boolean {
+  return (
+    capability_key === 'presence.current-workers' ||
+    capability_key === 'punch.day' ||
+    capability_key === 'punch.day-workers' ||
+    capability_key === 'punch.range' ||
+    capability_key === 'leave.days' ||
+    capability_key === 'leave.balance' ||
+    capability_key === 'leave.detail' ||
+    capability_key === 'worktime.summary' ||
+    capability_key === 'report.month-by-group'
+  );
 }
 
 function normalizeDraftLines(value: unknown): PricingQuoteDraftLineInput[] | null {
@@ -478,6 +527,25 @@ function resolveWorkflowRequest(
     };
   }
 
+  if (proposal.capability_key === 'presence.current-workers') {
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        limit: 100
+      }),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
   if (proposal.capability_key === 'punch.day') {
     const employee_name = normalizeOptionalString(proposal.params.employee_name);
     const date = normalizeOptionalString(proposal.params.date);
@@ -494,6 +562,58 @@ function resolveWorkflowRequest(
       params: normalizeCapabilityParams({
         employee_name,
         date
+      }),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'punch.day-workers') {
+    const date = normalizeOptionalString(proposal.params.date);
+    if (!date) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        date,
+        limit: 100
+      }),
+      claimed_result: request.claimed_result ?? null,
+      claimed_output: request.claimed_output ?? null,
+      caller_result: request.caller_result ?? null,
+      assistant_result: request.assistant_result ?? null,
+      model_claimed_result: request.model_claimed_result ?? null
+    };
+  }
+
+  if (proposal.capability_key === 'punch.range') {
+    const employee_name = normalizeOptionalString(proposal.params.employee_name);
+    const date_from = normalizeOptionalString(proposal.params.date_from);
+    const date_to = normalizeOptionalString(proposal.params.date_to);
+    if (!employee_name || !date_from || !date_to) {
+      return null;
+    }
+    return {
+      kind: 'numa.hr.read',
+      workflow_id: request.request_id,
+      organization_hint: request.organization_id,
+      principal_hint: request.principal_id ?? request.actor?.principal_id ?? null,
+      correlation_id: request.correlation_id,
+      capability_id: proposal.capability_key as NumaHrReadWorkflowInput['capability_id'],
+      params: normalizeCapabilityParams({
+        employee_name,
+        date_from,
+        date_to,
+        limit: 250
       }),
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
@@ -1207,7 +1327,7 @@ export class InMemoryOrchestrationBoundary {
       };
     }
 
-    if (proposal.capability_key === 'punch.day' || proposal.capability_key === 'leave.days' || proposal.capability_key === 'leave.balance' || proposal.capability_key === 'leave.detail' || proposal.capability_key === 'worktime.summary' || proposal.capability_key === 'report.month-by-group') {
+    if (isNumaHrCapabilityKey(proposal.capability_key)) {
       if (!isValidNumaHrProposal(proposal.capability_key, proposal.params)) {
         return {
           valid: false,
@@ -1338,7 +1458,7 @@ export class InMemoryOrchestrationBoundary {
     if (capability_key === 'pricing.quote_draft') {
       return 'pricing.quote_draft';
     }
-    if (capability_key === 'punch.day' || capability_key === 'leave.days' || capability_key === 'leave.balance' || capability_key === 'leave.detail' || capability_key === 'worktime.summary' || capability_key === 'report.month-by-group') {
+    if (isNumaHrCapabilityKey(capability_key)) {
       return 'numa.hr.read';
     }
     return null;

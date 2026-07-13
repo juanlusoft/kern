@@ -6,9 +6,12 @@ import {
   type NumaHrLeaveDaysParams,
   type NumaHrLeaveDetailParams,
   type NumaHrPunchDayParams,
+  type NumaHrPunchDayWorkersParams,
+  type NumaHrPunchRangeParams,
   type NumaHrReadPort,
   type NumaHrReportMonthByGroupParams,
-  type NumaHrWorktimeSummaryParams
+  type NumaHrWorktimeSummaryParams,
+  type NumaHrCurrentWorkersParams
 } from '../../contracts/src/index';
 
 function cloneResult<T>(value: T): T {
@@ -100,6 +103,104 @@ function buildPunchDayCapability(port: NumaHrReadPort, organization_id: string):
           date
         });
         return buildMockResult('punch.day', result);
+      }
+    }
+  };
+}
+
+function buildCurrentWorkersCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return {
+    capability_id: 'presence.current-workers',
+    organization_id,
+    title: 'Current workers',
+    description: 'List workers currently inside according to their latest punch.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: null,
+    mock: {
+      invoke(input) {
+        const payload = input.input.payload as Record<string, unknown>;
+        const organization_id = normalizeString(payload.organization_id);
+        const correlation_id = normalizeString(payload.correlation_id);
+        const limit = normalizePositiveInteger(payload.limit, 100);
+        if (!organization_id || !correlation_id) {
+          return { status: 'denied', output: null, error: 'presence.current-workers payload invalid' };
+        }
+        const result = port.currentWorkers({
+          organization_id,
+          correlation_id,
+          limit
+        });
+        return buildMockResult('presence.current-workers', result);
+      }
+    }
+  };
+}
+
+function buildPunchDayWorkersCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return {
+    capability_id: 'punch.day-workers',
+    organization_id,
+    title: 'Punch day workers',
+    description: 'List workers with punches on a specific day.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: null,
+    mock: {
+      invoke(input) {
+        const payload = input.input.payload as Record<string, unknown>;
+        const organization_id = normalizeString(payload.organization_id);
+        const correlation_id = normalizeString(payload.correlation_id);
+        const date = normalizeString(payload.date);
+        const limit = normalizePositiveInteger(payload.limit, 100);
+        if (!organization_id || !correlation_id || !date) {
+          return { status: 'denied', output: null, error: 'punch.day-workers payload invalid' };
+        }
+        const result = port.punchDayWorkers({
+          organization_id,
+          correlation_id,
+          date,
+          limit
+        });
+        return buildMockResult('punch.day-workers', result);
+      }
+    }
+  };
+}
+
+function buildPunchRangeCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return {
+    capability_id: 'punch.range',
+    organization_id,
+    title: 'Punch range',
+    description: 'Read one employee punch timeline for a date range.',
+    kind: 'read_only',
+    version: '1.0.0',
+    enabled: true,
+    approval_requirement: null,
+    mock: {
+      invoke(input) {
+        const payload = input.input.payload as Record<string, unknown>;
+        const organization_id = normalizeString(payload.organization_id);
+        const correlation_id = normalizeString(payload.correlation_id);
+        const date_from = normalizeString(payload.date_from);
+        const date_to = normalizeString(payload.date_to);
+        const limit = normalizePositiveInteger(payload.limit, 250);
+        if (!organization_id || !correlation_id || !date_from || !date_to) {
+          return { status: 'denied', output: null, error: 'punch.range payload invalid' };
+        }
+        const result = port.punchRange({
+          organization_id,
+          correlation_id,
+          employee_id: normalizeString(payload.employee_id),
+          employee_name: normalizeString(payload.employee_name),
+          date_from,
+          date_to,
+          limit
+        });
+        return buildMockResult('punch.range', result);
       }
     }
   };
@@ -297,6 +398,18 @@ export function createNumaPunchDayCapability(port: NumaHrReadPort, organization_
   return buildPunchDayCapability(port, requireOrganizationId(organization_id, 'createNumaPunchDayCapability'));
 }
 
+export function createNumaCurrentWorkersCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildCurrentWorkersCapability(port, requireOrganizationId(organization_id, 'createNumaCurrentWorkersCapability'));
+}
+
+export function createNumaPunchDayWorkersCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildPunchDayWorkersCapability(port, requireOrganizationId(organization_id, 'createNumaPunchDayWorkersCapability'));
+}
+
+export function createNumaPunchRangeCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
+  return buildPunchRangeCapability(port, requireOrganizationId(organization_id, 'createNumaPunchRangeCapability'));
+}
+
 export function createNumaLeaveDaysCapability(port: NumaHrReadPort, organization_id: string): CapabilityDefinition {
   return buildLeaveDaysCapability(port, requireOrganizationId(organization_id, 'createNumaLeaveDaysCapability'));
 }
@@ -320,7 +433,10 @@ export function createNumaReportMonthByGroupCapability(port: NumaHrReadPort, org
 export function createNumaHrCapabilitySet(port: NumaHrReadPort, organization_id: string): CapabilityDefinition[] {
   const requiredOrganizationId = requireOrganizationId(organization_id, 'createNumaHrCapabilitySet');
   return [
+    createNumaCurrentWorkersCapability(port, requiredOrganizationId),
     createNumaPunchDayCapability(port, requiredOrganizationId),
+    createNumaPunchDayWorkersCapability(port, requiredOrganizationId),
+    createNumaPunchRangeCapability(port, requiredOrganizationId),
     createNumaLeaveDaysCapability(port, requiredOrganizationId),
     createNumaLeaveBalanceCapability(port, requiredOrganizationId),
     createNumaLeaveDetailCapability(port, requiredOrganizationId),

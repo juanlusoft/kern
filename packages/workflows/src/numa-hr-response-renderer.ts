@@ -120,6 +120,86 @@ function renderPunchDay(data: UnknownRecord, records: UnknownRecord[], truncated
   return appendTruncationNotice(`Fichajes de ${subject} el ${date}:\n${renderedRecords.join('\n')}${summary}`, truncated);
 }
 
+function renderCurrentWorkers(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+  const asOf = asString(data.as_of);
+  const workerCount = asNumber(data.worker_count);
+  if (asOf === null || workerCount === null) {
+    return null;
+  }
+  const renderedRecords = records.map((record) => {
+    const name = asString(record.employee_name);
+    const lastEntryAt = asString(record.last_entry_at);
+    const pointName = asNullableString(record.point_name);
+    if (name === null || lastEntryAt === null || pointName === undefined) {
+      return null;
+    }
+    return `- ${name}: entrada ${lastEntryAt}${pointName === null ? '' : ` (${pointName})`}`;
+  });
+  if (renderedRecords.some((record) => record === null)) {
+    return null;
+  }
+  if (renderedRecords.length === 0) {
+    return appendTruncationNotice(`Ahora mismo no hay trabajadores con entrada abierta. Observado en ${asOf}.`, truncated);
+  }
+  return appendTruncationNotice(`Ahora mismo hay ${workerCount} trabajadores con entrada abierta:\n${renderedRecords.join('\n')}\nObservado en ${asOf}.`, truncated);
+}
+
+function renderPunchDayWorkers(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+  const date = asString(data.date);
+  const workerCount = asNumber(data.worker_count);
+  if (date === null || workerCount === null) {
+    return null;
+  }
+  const renderedRecords = records.map((record) => {
+    const name = asString(record.employee_name);
+    const firstEntryAt = asNullableString(record.first_entry_at);
+    const lastExitAt = asNullableString(record.last_exit_at);
+    const punchCount = asNumber(record.punch_count);
+    const workedMinutes = asNullableNumber(record.worked_minutes);
+    if (name === null || firstEntryAt === undefined || lastExitAt === undefined || punchCount === null || workedMinutes === undefined) {
+      return null;
+    }
+    const entry = firstEntryAt === null ? 'sin entrada detectada' : `entrada ${firstEntryAt}`;
+    const exit = lastExitAt === null ? 'sin salida detectada' : `salida ${lastExitAt}`;
+    const worked = workedMinutes === null ? 'horas no calculables' : formatMinutes(workedMinutes);
+    return `- ${name}: ${entry}; ${exit}; ${punchCount} fichajes; ${worked}`;
+  });
+  if (renderedRecords.some((record) => record === null)) {
+    return null;
+  }
+  if (renderedRecords.length === 0) {
+    return appendTruncationNotice(`No hay trabajadores con fichajes el ${date}.`, truncated);
+  }
+  return appendTruncationNotice(`Trabajadores con fichajes el ${date} (${workerCount}):\n${renderedRecords.join('\n')}`, truncated);
+}
+
+function renderPunchRange(data: UnknownRecord, records: UnknownRecord[], truncated: boolean): string | null {
+  const name = employeeName(data.employee_name);
+  const dateFrom = asString(data.date_from);
+  const dateTo = asString(data.date_to);
+  if (name === undefined || dateFrom === null || dateTo === null) {
+    return null;
+  }
+  const renderedRecords = records.map((record) => {
+    const punchedAt = asString(record.punched_at);
+    const pointName = asNullableString(record.point_name);
+    const direction = record.direction;
+    if (punchedAt === null || pointName === undefined || (direction !== 'in' && direction !== 'out' && direction !== 'neutral')) {
+      return null;
+    }
+    const action = direction === 'in' ? 'Entrada' : direction === 'out' ? 'Salida' : 'Fichaje';
+    return `- ${action}: ${punchedAt}${pointName === null ? '' : ` (${pointName})`}`;
+  });
+  if (renderedRecords.some((record) => record === null)) {
+    return null;
+  }
+  const subject = name ?? 'la persona consultada';
+  if (renderedRecords.length === 0) {
+    return appendTruncationNotice(`No hay fichajes para ${subject} entre ${dateFrom} y ${dateTo}.`, truncated);
+  }
+  return appendTruncationNotice(`Fichajes de ${subject} entre ${dateFrom} y ${dateTo}:\n${renderedRecords.join('\n')}`, truncated);
+}
+
 function renderLeaveDays(data: UnknownRecord, records: UnknownRecord[], truncated: boolean, options: NumaHrResponseRenderOptions): string | null {
   const name = employeeName(data.employee_name);
   const year = asNumber(data.year);
@@ -299,8 +379,17 @@ export function renderNumaHrResponseMessage(data: unknown, options: NumaHrRespon
   if (!records) {
     return null;
   }
+  if (result.query_id === 'presence.current-workers') {
+    return renderCurrentWorkers(result, records, result.truncated);
+  }
   if (result.query_id === 'punch.day') {
     return renderPunchDay(result, records, result.truncated);
+  }
+  if (result.query_id === 'punch.day-workers') {
+    return renderPunchDayWorkers(result, records, result.truncated);
+  }
+  if (result.query_id === 'punch.range') {
+    return renderPunchRange(result, records, result.truncated);
   }
   if (result.query_id === 'leave.days') {
     return renderLeaveDays(result, records, result.truncated, options);

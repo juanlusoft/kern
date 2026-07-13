@@ -6,10 +6,13 @@ import {
   type PgPresenceQueryRunner
 } from '../src/index';
 import {
+  buildNumaHrCurrentWorkersStatement,
   buildNumaHrLeaveBalanceStatement,
   buildNumaHrLeaveDaysStatement,
   buildNumaHrLeaveDetailStatement,
+  buildNumaHrPunchDayWorkersStatement,
   buildNumaHrPunchDayStatement,
+  buildNumaHrPunchRangeStatement,
   buildNumaHrWorktimeSummaryStatement
 } from '../src/hr';
 
@@ -418,6 +421,52 @@ test('leave.detail builder scopes by company, date range, time type and resolved
   assert.match(statement.text, /\(\$5::boolean IS TRUE AND r\.val_accepted IS NULL\)/);
   assert.doesNotMatch(statement.text, /\$5::boolean IS TRUE\s+OR\s+r\.val_accepted IS TRUE/);
   assert.deepEqual(statement.values, ['org-acme', '2026-01-01', '2026-12-31', [5], true, null, '%Ana Garc\u00EDa%', 100]);
+});
+
+test('Numa HR attendance builders scope by company and bind dates without dynamic SQL', () => {
+  const currentWorkers = buildNumaHrCurrentWorkersStatement({
+    organization_id: 'company-acme',
+    correlation_id: 'corr-current-workers',
+    limit: 100
+  });
+  assert.match(currentWorkers.text, /e\.company_id = \$1/);
+  assert.match(currentWorkers.text, /DISTINCT ON \(cp\.person_id\)/);
+  assert.doesNotMatch(currentWorkers.text, /organization_id/);
+  assert.deepEqual(currentWorkers.values, ['company-acme', 100]);
+
+  const dayWorkers = buildNumaHrPunchDayWorkersStatement({
+    organization_id: 'company-acme',
+    correlation_id: 'corr-day-workers',
+    date: '2026-01-07',
+    limit: 100
+  });
+  assert.match(dayWorkers.text, /e\.company_id = \$1/);
+  assert.match(dayWorkers.text, /cp\.stamp::date = \$2::date/);
+  assert.deepEqual(dayWorkers.values, ['company-acme', '2026-01-07', 100]);
+
+  const punchRange = buildNumaHrPunchRangeStatement({
+    organization_id: 'company-acme',
+    correlation_id: 'corr-punch-range',
+    employee_name: 'Ana Garc\u00EDa',
+    date_from: '2026-01-01',
+    date_to: '2026-01-07',
+    limit: 250
+  });
+  assert.match(punchRange.text, /e\.company_id = \$1/);
+  assert.match(punchRange.text, /cp\.stamp::date >= \$2::date/);
+  assert.match(punchRange.text, /cp\.stamp::date <= \$3::date/);
+  assert.match(punchRange.text, /LIKE unaccent\(lower\(\$5\)\)/);
+  assert.deepEqual(punchRange.values, ['company-acme', '2026-01-01', '2026-01-07', null, '%Ana Garc\u00EDa%', 250]);
+
+  const worktime = buildNumaHrWorktimeSummaryStatement({
+    organization_id: 'company-acme',
+    correlation_id: 'corr-worktime',
+    employee_name: 'Ana Garc\u00EDa',
+    date_from: '2026-01-01',
+    date_to: '2026-01-07'
+  });
+  assert.match(worktime.text, /cp\.stamp::date <= \$3::date/);
+  assert.doesNotMatch(worktime.text, /cp\.stamp::date < \$3::date/);
 });
 
 test('HR adapter forwards variable employee and group names without tying behavior to a single fixture', () => {

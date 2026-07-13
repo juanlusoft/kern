@@ -131,6 +131,34 @@ Cuántos días de vacaciones tuvo BEATRIZ VERA en 2025?
 Qué fichajes tiene BEATRIZ VERA hoy?
 ```
 
+## Prevention / Attendance Questions
+
+Validate the client-requested prevention and attendance questions:
+
+```text
+Cuánta gente hay ahora mismo trabajando?
+```
+
+```text
+El día 2026-01-07 qué trabajadores trabajaron?
+```
+
+```text
+Dame los fichajes del trabajador BEATRIZ VERA desde 2026-01-01 al 2026-01-07
+```
+
+```text
+Cuántas horas ha trabajado BEATRIZ VERA desde 2026-01-01 al 2026-01-07?
+```
+
+Expected:
+
+- Current-presence answer includes a count and a list of names.
+- Workers-by-day answer includes workers with punches for that day.
+- Punch-range answer includes individual punch entries for the worker and range.
+- Worked-hours answer includes day rows and a total worked time.
+- If the result is truncated, the assistant explicitly says so.
+
 ## Feedback Test
 
 1. Click thumbs up on one answer.

@@ -1,4 +1,6 @@
 import type {
+  NumaHrCurrentWorkersParams,
+  NumaHrCurrentWorkersResult,
   NumaHrLeaveBalanceParams,
   NumaHrLeaveBalanceResult,
   NumaHrLeaveDaysParams,
@@ -7,6 +9,10 @@ import type {
   NumaHrLeaveDetailResult,
   NumaHrPunchDayParams,
   NumaHrPunchDayResult,
+  NumaHrPunchDayWorkersParams,
+  NumaHrPunchDayWorkersResult,
+  NumaHrPunchRangeParams,
+  NumaHrPunchRangeResult,
   NumaHrReportMonthByGroupParams,
   NumaHrReportMonthByGroupResult,
   NumaHrWorktimeSummaryParams,
@@ -22,6 +28,23 @@ export interface PgHrPunchDayRow {
   punching_point_id: number | null;
   point_name: string | null;
   direction: PresenceDirection | 'neutral';
+}
+
+export interface PgHrCurrentWorkerRow {
+  employee_id: string;
+  employee_name: string;
+  last_entry_at: string;
+  punching_point_id: number | null;
+  point_name: string | null;
+}
+
+export interface PgHrPunchDayWorkerRow {
+  employee_id: string;
+  employee_name: string;
+  punches: PgHrWorktimeSummaryPunchRow[];
+  first_entry_at?: string | null;
+  last_exit_at?: string | null;
+  punch_count?: number;
 }
 
 export interface PgHrLeaveDaysRow {
@@ -117,6 +140,9 @@ function normalizePgNumeric(value: number | string): number {
 
 
 type NumaHrPunchDayQueryInput = NumaHrPunchDayParams & { limit: number };
+type NumaHrCurrentWorkersQueryInput = NumaHrCurrentWorkersParams;
+type NumaHrPunchDayWorkersQueryInput = NumaHrPunchDayWorkersParams;
+type NumaHrPunchRangeQueryInput = NumaHrPunchRangeParams;
 
 export function buildNumaHrEmployeeResolveStatement(input: Pick<NumaHrPunchDayParams, 'organization_id' | 'employee_name'> & { limit: number }): PgSqlStatement {
   return {
@@ -188,6 +214,115 @@ export function buildNumaHrPunchDayStatement(input: NumaHrPunchDayQueryInput): P
   };
 }
 
+export function buildNumaHrCurrentWorkersStatement(input: NumaHrCurrentWorkersQueryInput): PgSqlStatement {
+  return {
+    text: `
+      WITH latest_punch AS (
+        SELECT DISTINCT ON (cp.person_id)
+          cp.person_id::text AS employee_id,
+          concat_ws(' ', p.name, p.surname) AS employee_name,
+          cp.stamp::text AS punched_at,
+          cp.punching_point_id,
+          pp.name AS point_name,
+          CASE
+            WHEN pp.name ILIKE '%ENTRADA%' THEN 'in'
+            WHEN pp.name ILIKE '%SALIDA%' THEN 'out'
+            ELSE 'neutral'
+          END AS direction
+        FROM core_punches cp
+        JOIN org_employees e ON e.person_id = cp.person_id
+        JOIN core_persons p ON p.id = e.person_id
+        LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
+        WHERE cp.type = 1
+          AND e.company_id = $1
+        ORDER BY cp.person_id, cp.stamp DESC, cp.id DESC
+      )
+      SELECT
+        employee_id,
+        employee_name,
+        punched_at AS last_entry_at,
+        punching_point_id,
+        point_name
+      FROM latest_punch
+      WHERE direction = 'in'
+      ORDER BY employee_name ASC, employee_id ASC
+      LIMIT $2 + 1
+    `.trim(),
+    values: [input.organization_id, input.limit]
+  };
+}
+
+export function buildNumaHrPunchDayWorkersStatement(input: NumaHrPunchDayWorkersQueryInput): PgSqlStatement {
+  return {
+    text: `
+      SELECT
+        cp.person_id::text AS employee_id,
+        concat_ws(' ', p.name, p.surname) AS employee_name,
+        jsonb_agg(
+          jsonb_build_object(
+            'punched_at', cp.stamp::text,
+            'direction', CASE
+              WHEN pp.name ILIKE '%ENTRADA%' THEN 'in'
+              WHEN pp.name ILIKE '%SALIDA%' THEN 'out'
+              ELSE 'neutral'
+            END
+          )
+          ORDER BY cp.stamp ASC, cp.id ASC
+        ) AS punches,
+        (MIN(cp.stamp) FILTER (WHERE pp.name ILIKE '%ENTRADA%'))::text AS first_entry_at,
+        (MAX(cp.stamp) FILTER (WHERE pp.name ILIKE '%SALIDA%'))::text AS last_exit_at,
+        COUNT(*) AS punch_count
+      FROM core_punches cp
+      JOIN org_employees e ON e.person_id = cp.person_id
+      JOIN core_persons p ON p.id = e.person_id
+      LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
+      WHERE cp.type = 1
+        AND e.company_id = $1
+        AND cp.stamp::date = $2::date
+      GROUP BY cp.person_id, p.name, p.surname
+      ORDER BY employee_name ASC, employee_id ASC
+      LIMIT $3 + 1
+    `.trim(),
+    values: [input.organization_id, input.date, input.limit]
+  };
+}
+
+export function buildNumaHrPunchRangeStatement(input: NumaHrPunchRangeQueryInput): PgSqlStatement {
+  return {
+    text: `
+      SELECT
+        cp.id AS punch_id,
+        cp.person_id::text AS employee_id,
+        concat_ws(' ', p.name, p.surname) AS employee_name,
+        cp.stamp::text AS punched_at,
+        cp.punching_point_id,
+        pp.name AS point_name,
+        CASE
+          WHEN pp.name ILIKE '%ENTRADA%' THEN 'in'
+          WHEN pp.name ILIKE '%SALIDA%' THEN 'out'
+          ELSE 'neutral'
+        END AS direction
+      FROM core_punches cp
+      JOIN org_employees e ON e.person_id = cp.person_id
+      JOIN core_persons p ON p.id = e.person_id
+      LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
+      WHERE cp.type = 1
+        AND e.company_id = $1
+        AND cp.stamp::date >= $2::date
+        AND cp.stamp::date <= $3::date
+        AND (
+          ($4::text IS NULL AND $5::text IS NULL)
+          OR cp.person_id::text = $4
+          OR e.code::text = $4
+          OR unaccent(lower(concat_ws(' ', p.name, p.surname))) LIKE unaccent(lower($5))
+        )
+      ORDER BY cp.stamp ASC, cp.id ASC
+      LIMIT $6 + 1
+    `.trim(),
+    values: [input.organization_id, input.date_from, input.date_to, input.employee_id ?? null, buildLikePattern(input.employee_name ?? null), input.limit]
+  };
+}
+
 function buildResolutionCandidates(rows: Array<{ employee_name?: string; group_name?: string }>, limit: number): Array<{ name: string }> {
   return rows
     .slice(0, limit)
@@ -222,6 +357,31 @@ export function buildNumaHrPunchDayResolutionResult(
     first_entry_at: null,
     last_exit_at: null,
     worked_minutes: null,
+    row_count: candidates.length,
+    truncated: candidates.length > limit,
+    citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
+    resolution_status: status,
+    resolution_candidates: buildResolutionCandidates(candidates, limit),
+    resolution_message: buildResolutionMessage('employee', input.employee_name, candidates.length)
+  };
+}
+
+export function buildNumaHrPunchRangeResolutionResult(
+  input: NumaHrPunchRangeParams,
+  status: 'ambiguous' | 'not_found',
+  candidates: PgHrEmployeeCandidateRow[],
+  limit: number
+): NumaHrPunchRangeResult {
+  return {
+    query_id: 'punch.range',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date_from: input.date_from,
+    date_to: input.date_to,
+    limit: input.limit,
+    records: [],
     row_count: candidates.length,
     truncated: candidates.length > limit,
     citations: [{ tables: ['org_employees', 'core_persons'], queryId: 'employee.resolve', rowCount: candidates.length, truncated: candidates.length > limit }],
@@ -494,7 +654,7 @@ export function buildNumaHrWorktimeSummaryStatement(input: NumaHrWorktimeSummary
       WHERE cp.type = 1
         AND e.company_id = $1
         AND cp.stamp::date >= $2::date
-        AND cp.stamp::date < $3::date
+        AND cp.stamp::date <= $3::date
         AND (
           ($4::text IS NULL AND $5::text IS NULL)
           OR cp.person_id::text = $4
@@ -663,6 +823,80 @@ export function mapNumaHrPunchDayResult(rows: PgHrPunchDayRow[], input: NumaHrPu
         truncated: summary.truncated
       }
     ]
+  };
+}
+
+export function mapNumaHrCurrentWorkersResult(rows: PgHrCurrentWorkerRow[], input: NumaHrCurrentWorkersParams, asOf: string): NumaHrCurrentWorkersResult {
+  const summary = mapHrResultRows(rows, input.limit);
+  const records = summary.records.map((row) => ({
+    employee_id: row.employee_id,
+    employee_name: row.employee_name,
+    last_entry_at: row.last_entry_at,
+    punching_point_id: row.punching_point_id,
+    point_name: row.point_name
+  })) as NumaHrCurrentWorkersResult['records'];
+  return {
+    query_id: 'presence.current-workers',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    as_of: asOf,
+    worker_count: summary.row_count,
+    limit: input.limit,
+    records,
+    row_count: summary.row_count,
+    truncated: summary.truncated,
+    citations: [{ tables: ['core_punches', 'org_employees', 'core_persons', 'core_punching_points'], queryId: 'presence.current-workers', rowCount: summary.row_count, truncated: summary.truncated }]
+  };
+}
+
+export function mapNumaHrPunchDayWorkersResult(rows: PgHrPunchDayWorkerRow[], input: NumaHrPunchDayWorkersParams): NumaHrPunchDayWorkersResult {
+  const summary = mapHrResultRows(rows, input.limit);
+  const records = summary.records.map((row) => {
+    const punches = normalizePunches(row.punches);
+    return {
+      employee_id: row.employee_id,
+      employee_name: row.employee_name,
+      first_entry_at: row.first_entry_at ?? punches.find((entry) => entry.direction === 'in')?.punched_at ?? null,
+      last_exit_at: row.last_exit_at ?? [...punches].reverse().find((entry) => entry.direction === 'out')?.punched_at ?? null,
+      punch_count: normalizePgNumeric(row.punch_count ?? punches.length),
+      worked_minutes: pairWorkedMinutes(punches)
+    };
+  }) as NumaHrPunchDayWorkersResult['records'];
+  return {
+    query_id: 'punch.day-workers',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    date: input.date,
+    worker_count: summary.row_count,
+    limit: input.limit,
+    records,
+    row_count: summary.row_count,
+    truncated: summary.truncated,
+    citations: [{ tables: ['core_punches', 'org_employees', 'core_persons', 'core_punching_points'], queryId: 'punch.day-workers', rowCount: summary.row_count, truncated: summary.truncated }]
+  };
+}
+
+export function mapNumaHrPunchRangeResult(rows: PgHrPunchDayRow[], input: NumaHrPunchRangeParams, limit: number): NumaHrPunchRangeResult {
+  const summary = mapHrResultRows(rows, limit);
+  const records = summary.records.map((row) => ({
+    punched_at: row.punched_at,
+    punching_point_id: row.punching_point_id,
+    point_name: row.point_name,
+    direction: row.direction
+  })) as NumaHrPunchRangeResult['records'];
+  return {
+    query_id: 'punch.range',
+    organization_id: input.organization_id,
+    correlation_id: input.correlation_id,
+    employee_id: input.employee_id ?? null,
+    employee_name: input.employee_name ?? null,
+    date_from: input.date_from,
+    date_to: input.date_to,
+    limit,
+    records,
+    row_count: summary.row_count,
+    truncated: summary.truncated,
+    citations: [{ tables: ['core_punches', 'core_persons', 'core_punching_points', 'org_employees'], queryId: 'punch.range', rowCount: summary.row_count, truncated: summary.truncated }]
   };
 }
 

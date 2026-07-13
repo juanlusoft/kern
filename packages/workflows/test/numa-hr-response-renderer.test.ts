@@ -43,6 +43,49 @@ test('renders one deterministic business message for every Numa HR query', () =>
   assert.equal(
     renderNumaHrResponseMessage({
       ...base,
+      query_id: 'presence.current-workers',
+      as_of: '2026-07-13T10:00:00.000Z',
+      worker_count: 2,
+      limit: 100,
+      records: [
+        { employee_id: 'employee-1', employee_name: 'Ana', last_entry_at: '2026-07-13T08:00:00.000Z', punching_point_id: 1, point_name: 'Oficina' },
+        { employee_id: 'employee-2', employee_name: 'Luis', last_entry_at: '2026-07-13T08:05:00.000Z', punching_point_id: 1, point_name: 'Oficina' }
+      ]
+    }),
+    'Ahora mismo hay 2 trabajadores con entrada abierta:\n- Ana: entrada 2026-07-13T08:00:00.000Z (Oficina)\n- Luis: entrada 2026-07-13T08:05:00.000Z (Oficina)\nObservado en 2026-07-13T10:00:00.000Z.'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
+      query_id: 'punch.day-workers',
+      date: '2026-01-07',
+      worker_count: 1,
+      limit: 100,
+      records: [
+        { employee_id: 'employee-1', employee_name: 'Ana', first_entry_at: '2026-01-07T08:00:00.000Z', last_exit_at: '2026-01-07T16:00:00.000Z', punch_count: 2, worked_minutes: 480 }
+      ]
+    }),
+    'Trabajadores con fichajes el 2026-01-07 (1):\n- Ana: entrada 2026-01-07T08:00:00.000Z; salida 2026-01-07T16:00:00.000Z; 2 fichajes; 8 h 00 min'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
+      query_id: 'punch.range',
+      employee_id: 'employee-1',
+      employee_name: 'Ana',
+      date_from: '2026-01-01',
+      date_to: '2026-01-07',
+      limit: 250,
+      records: [
+        { punched_at: '2026-01-07T08:00:00.000Z', punching_point_id: 1, point_name: 'Oficina', direction: 'in' },
+        { punched_at: '2026-01-07T16:00:00.000Z', punching_point_id: 1, point_name: 'Oficina', direction: 'out' }
+      ]
+    }),
+    'Fichajes de Ana entre 2026-01-01 y 2026-01-07:\n- Entrada: 2026-01-07T08:00:00.000Z (Oficina)\n- Salida: 2026-01-07T16:00:00.000Z (Oficina)'
+  );
+  assert.equal(
+    renderNumaHrResponseMessage({
+      ...base,
       query_id: 'punch.day',
       employee_id: 'employee-1',
       employee_name: 'Ana',
@@ -388,7 +431,10 @@ test('uses the rendered message without changing response data and retains the f
     worked_minutes: 0
   };
   const port: NumaHrReadPort = {
+    currentWorkers: () => ({ ...base, query_id: 'presence.current-workers', as_of: '2026-07-01T00:00:00.000Z', worker_count: 0, limit: 100, records: [] }),
     punchDay: () => punchResult,
+    punchDayWorkers: () => ({ ...base, query_id: 'punch.day-workers', date: '2026-07-01', worker_count: 0, limit: 100, records: [] }),
+    punchRange: () => ({ ...base, query_id: 'punch.range', employee_id: null, employee_name: null, date_from: '2026-07-01', date_to: '2026-07-01', limit: 250, records: [] }),
     leaveDays: () => ({ ...base, query_id: 'leave.days', employee_id: null, employee_name: null, year: 2026, time_type_ids: [], include_pending: false, records: [] }),
     leaveBalance: () => ({ ...base, query_id: 'leave.balance', employee_id: null, employee_name: null, year: 2026, time_type_ids: [], include_pending: false, records: [] }),
     leaveDetail: () => ({ ...base, query_id: 'leave.detail', employee_id: null, employee_name: null, date_from: '2026-01-01', date_to: '2026-12-31', time_type_ids: [], include_pending: false, limit: 100, records: [] }),

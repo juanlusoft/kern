@@ -199,9 +199,9 @@ export function executeNumaHrReadWorkflow(runtime: WorkflowRuntimeContext, input
       purpose: `Execute ${capabilityId}`,
       requested_scope: ['read:knowledge'],
       payload: {
+        ...stripPresentationParams(normalizedParams),
         organization_id: organizationContext.organization_id,
-        correlation_id,
-        ...stripPresentationParams(normalizedParams)
+        correlation_id
       }
     },
     requested_at,
