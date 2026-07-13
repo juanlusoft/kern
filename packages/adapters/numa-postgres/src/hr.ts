@@ -140,7 +140,7 @@ function normalizePgNumeric(value: number | string): number {
 
 
 type NumaHrPunchDayQueryInput = NumaHrPunchDayParams & { limit: number };
-type NumaHrCurrentWorkersQueryInput = NumaHrCurrentWorkersParams;
+type NumaHrCurrentWorkersQueryInput = NumaHrCurrentWorkersParams & { window_start: string; window_end: string };
 type NumaHrPunchDayWorkersQueryInput = NumaHrPunchDayWorkersParams;
 type NumaHrPunchRangeQueryInput = NumaHrPunchRangeParams;
 
@@ -235,6 +235,8 @@ export function buildNumaHrCurrentWorkersStatement(input: NumaHrCurrentWorkersQu
         LEFT JOIN core_punching_points pp ON pp.id = cp.punching_point_id
         WHERE cp.type = 1
           AND e.company_id = $1
+          AND cp.stamp >= $2::timestamp
+          AND cp.stamp <= $3::timestamp
         ORDER BY cp.person_id, cp.stamp DESC, cp.id DESC
       )
       SELECT
@@ -246,9 +248,9 @@ export function buildNumaHrCurrentWorkersStatement(input: NumaHrCurrentWorkersQu
       FROM latest_punch
       WHERE direction = 'in'
       ORDER BY employee_name ASC, employee_id ASC
-      LIMIT $2 + 1
+      LIMIT $4 + 1
     `.trim(),
-    values: [input.organization_id, input.limit]
+    values: [input.organization_id, input.window_start, input.window_end, input.limit]
   };
 }
 

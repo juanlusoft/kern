@@ -650,14 +650,17 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       limit: Math.trunc(input.limit)
     };
     const companyId = this.resolveCompanyId(normalized.organization_id);
-    const statement = buildNumaHrCurrentWorkersStatement({ ...normalized, organization_id: companyId });
+    const now = this.now();
+    const windowStart = formatMadridTimestamp(new Date(now.getTime() - this.currentWindowHours * 60 * 60 * 1000));
+    const windowEnd = formatMadridTimestamp(now);
+    const statement = buildNumaHrCurrentWorkersStatement({ ...normalized, organization_id: companyId, window_start: windowStart, window_end: windowEnd });
     const rows = this.queryRunner.query<PgHrCurrentWorkerRow>({
       query_id: 'presence.current-workers',
       statement,
       connection: this.connection,
       transaction: this.createTransactionPlan()
     });
-    return mapNumaHrCurrentWorkersResult(rows, normalized, this.now().toISOString());
+    return mapNumaHrCurrentWorkersResult(rows, normalized, now.toISOString());
   }
 
 
