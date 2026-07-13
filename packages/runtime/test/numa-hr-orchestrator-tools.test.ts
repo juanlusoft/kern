@@ -475,6 +475,26 @@ test('runtime slice exposes the Numa HR tools in the Qwen catalog without ids or
 
   assert.equal(qwenRequests.length > 0, true);
   assertHrToolSchemas(qwenRequests[0]);
+  assert.equal(
+    qwenRequests[0].messages?.[0]?.content?.includes('use request_clarification with missing="unsupported"'),
+    true
+  );
+});
+
+test('runtime slice blocks collective employee phrases for individual punch.day proposals', () => {
+  const { qwenRequests, hrCalls, channelResult } = startRuntimeForCase(
+    'punch.day',
+    {
+      employee_name: 'todos los trabajadores',
+      date: '2026-01-07'
+    },
+    'Dime todos los fichajes de todos los trabajadores del dia 7 de enero de 2026.',
+    208
+  );
+
+  assert.equal(qwenRequests.length, 1);
+  assert.equal(hrCalls.length, 0);
+  assert.equal(channelResult.orchestration_outcome?.response.status, 'blocked');
 });
 
 const demoCases: Array<{

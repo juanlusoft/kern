@@ -334,6 +334,9 @@ function isValidNumaHrProposal(capability_key: string, params: Record<string, un
     return false;
   }
   const employee_name = normalizeOptionalString(params.employee_name);
+  if (isCollectiveEmployeePhrase(employee_name)) {
+    return false;
+  }
   if (capability_key === 'punch.day') {
     return Boolean(employee_name && normalizeOptionalString(params.date));
   }
@@ -371,6 +374,29 @@ function normalizeDraftLine(value: unknown): PricingQuoteDraftLineInput | null {
     ancho: record.ancho === undefined || record.ancho === null ? null : normalizeOptionalNumber(record.ancho),
     options: record.options === undefined || record.options === null ? null : normalizeOptions(record.options)
   };
+}
+
+function isCollectiveEmployeePhrase(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [
+    'todos los trabajadores',
+    'todos trabajadores',
+    'todos los empleados',
+    'todos empleados',
+    'todas las personas',
+    'todo el personal',
+    'all workers',
+    'all employees',
+    'everyone'
+  ].includes(normalized);
 }
 
 function normalizeDraftLines(value: unknown): PricingQuoteDraftLineInput[] | null {
