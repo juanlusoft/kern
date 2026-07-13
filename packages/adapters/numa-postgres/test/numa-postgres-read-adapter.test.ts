@@ -331,6 +331,52 @@ test('presence adapter uses a backward-moving window for night shifts', () => {
   assert.match(calls[0].statement, /company_id = \$1/);
 });
 
+test('Numa HR current workers uses a bounded recent window', () => {
+  const { runner, calls } = createRunner({
+    'presence.current-workers': [
+      {
+        employee_id: 'emp-001',
+        employee_name: 'Ana Garc\u00EDa',
+        last_entry_at: '2026-07-03 21:45:00',
+        punching_point_id: 7,
+        point_name: 'Entrada principal'
+      }
+    ]
+  });
+  const adapter = createPgReadAdapter({
+    queryRunner: runner,
+    now: () => new Date('2026-07-04T01:30:00.000Z'),
+    current_window_hours: 6,
+    company_id_by_organization_id,
+    connection: {
+      host: 'postgres.example.test',
+      port: 5432,
+      database: 'kern',
+      user: 'kern_ro',
+      password: null,
+      sslmode: 'disable',
+      application_name: 'numa-postgres-test',
+      role: NUMA_POSTGRES_ROLE
+    }
+  });
+
+  const result = adapter.currentWorkers({
+    organization_id: 'org-acme',
+    correlation_id: 'corr-current-workers',
+    limit: 10
+  });
+
+  assert.equal(result.as_of, '2026-07-04T01:30:00.000Z');
+  assert.equal(result.worker_count, 1);
+  assert.equal(result.records[0]?.employee_name, 'Ana Garc\u00EDa');
+  assert.equal(calls[0].query_id, 'presence.current-workers');
+  assert.equal(calls[0].transactionRole, NUMA_POSTGRES_ROLE);
+  assert.match(calls[0].statement, /e\.company_id = \$1/);
+  assert.match(calls[0].statement, /cp\.stamp >= \$2::timestamp/);
+  assert.match(calls[0].statement, /cp\.stamp <= \$3::timestamp/);
+  assert.deepEqual(calls[0].values, ['company-acme', '2026-07-03 21:30:00', '2026-07-04 03:30:00', 10]);
+});
+
 
 test('HR builders keep name filters from short-circuiting when employee_id is null', () => {
   const punchDayStatement = buildNumaHrPunchDayStatement({
@@ -427,12 +473,16 @@ test('Numa HR attendance builders scope by company and bind dates without dynami
   const currentWorkers = buildNumaHrCurrentWorkersStatement({
     organization_id: 'company-acme',
     correlation_id: 'corr-current-workers',
+    window_start: '2026-01-07 00:00:00',
+    window_end: '2026-01-07 23:59:59',
     limit: 100
   });
   assert.match(currentWorkers.text, /e\.company_id = \$1/);
+  assert.match(currentWorkers.text, /cp\.stamp >= \$2::timestamp/);
+  assert.match(currentWorkers.text, /cp\.stamp <= \$3::timestamp/);
   assert.match(currentWorkers.text, /DISTINCT ON \(cp\.person_id\)/);
   assert.doesNotMatch(currentWorkers.text, /organization_id/);
-  assert.deepEqual(currentWorkers.values, ['company-acme', 100]);
+  assert.deepEqual(currentWorkers.values, ['company-acme', '2026-01-07 00:00:00', '2026-01-07 23:59:59', 100]);
 
   const dayWorkers = buildNumaHrPunchDayWorkersStatement({
     organization_id: 'company-acme',

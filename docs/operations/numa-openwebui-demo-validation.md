@@ -153,7 +153,7 @@ Cuántas horas ha trabajado BEATRIZ VERA desde 2026-01-01 al 2026-01-07?
 
 Expected:
 
-- Current-presence answer includes a count and a list of names.
+- Current-presence answer includes a count and a list of names for recent open entries. It uses the configured rolling current-presence window; stale historical punches must not be presented as "now".
 - Workers-by-day answer includes workers with punches for that day.
 - Punch-range answer includes individual punch entries for the worker and range.
 - Worked-hours answer includes day rows and a total worked time.
