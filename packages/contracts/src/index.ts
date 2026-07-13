@@ -214,7 +214,16 @@ export interface PresenceReadPort {
   listPunches(input: PresencePunchesListParams): PresencePunchesListResult;
   currentPresence(input: PresenceCurrentParams): PresenceCurrentResult;
 }
-export type NumaHrCapabilityKey = 'punch.day' | 'leave.days' | 'leave.balance' | 'leave.detail' | 'worktime.summary' | 'report.month-by-group';
+export type NumaHrCapabilityKey =
+  | 'presence.current-workers'
+  | 'punch.day'
+  | 'punch.day-workers'
+  | 'punch.range'
+  | 'leave.days'
+  | 'leave.balance'
+  | 'leave.detail'
+  | 'worktime.summary'
+  | 'report.month-by-group';
 
 export interface NumaHrResultBase {
   organization_id: string;
@@ -251,6 +260,79 @@ export interface NumaHrPunchDayResult extends NumaHrResultBase {
   first_entry_at: string | null;
   last_exit_at: string | null;
   worked_minutes: number | null;
+}
+
+export interface NumaHrCurrentWorkersParams {
+  organization_id: string;
+  correlation_id: string;
+  limit: number;
+}
+
+export interface NumaHrCurrentWorkerRecord {
+  employee_id: string;
+  employee_name: string;
+  last_entry_at: string;
+  punching_point_id: number | null;
+  point_name: string | null;
+}
+
+export interface NumaHrCurrentWorkersResult extends NumaHrResultBase {
+  query_id: 'presence.current-workers';
+  as_of: string;
+  worker_count: number;
+  limit: number;
+  records: [NumaHrCurrentWorkerRecord, ...NumaHrCurrentWorkerRecord[]] | NumaHrCurrentWorkerRecord[];
+}
+
+export interface NumaHrPunchDayWorkersParams {
+  organization_id: string;
+  correlation_id: string;
+  date: string;
+  limit: number;
+}
+
+export interface NumaHrPunchDayWorkerRecord {
+  employee_id: string;
+  employee_name: string;
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  punch_count: number;
+  worked_minutes: number | null;
+}
+
+export interface NumaHrPunchDayWorkersResult extends NumaHrResultBase {
+  query_id: 'punch.day-workers';
+  date: string;
+  worker_count: number;
+  limit: number;
+  records: [NumaHrPunchDayWorkerRecord, ...NumaHrPunchDayWorkerRecord[]] | NumaHrPunchDayWorkerRecord[];
+}
+
+export interface NumaHrPunchRangeParams {
+  organization_id: string;
+  correlation_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  date_from: string;
+  date_to: string;
+  limit: number;
+}
+
+export interface NumaHrPunchRangeRecord {
+  punched_at: string;
+  punching_point_id: number | null;
+  point_name: string | null;
+  direction: PresenceDirection | 'neutral';
+}
+
+export interface NumaHrPunchRangeResult extends NumaHrResultBase {
+  query_id: 'punch.range';
+  employee_id: string | null;
+  employee_name: string | null;
+  date_from: string;
+  date_to: string;
+  limit: number;
+  records: [NumaHrPunchRangeRecord, ...NumaHrPunchRangeRecord[]] | NumaHrPunchRangeRecord[];
 }
 
 export interface NumaHrLeaveDaysParams {
@@ -411,7 +493,10 @@ export interface NumaHrReportMonthByGroupResult extends NumaHrResultBase {
 }
 
 export interface NumaHrReadPort {
+  currentWorkers(input: NumaHrCurrentWorkersParams): NumaHrCurrentWorkersResult;
   punchDay(input: NumaHrPunchDayParams): NumaHrPunchDayResult;
+  punchDayWorkers(input: NumaHrPunchDayWorkersParams): NumaHrPunchDayWorkersResult;
+  punchRange(input: NumaHrPunchRangeParams): NumaHrPunchRangeResult;
   leaveDays(input: NumaHrLeaveDaysParams): NumaHrLeaveDaysResult;
   leaveBalance(input: NumaHrLeaveBalanceParams): NumaHrLeaveBalanceResult;
   leaveDetail(input: NumaHrLeaveDetailParams): NumaHrLeaveDetailResult;

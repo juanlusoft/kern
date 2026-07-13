@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 import { InMemoryTelegramTransport } from '../../channels/telegram/src/index';
 import type {
+  NumaHrCurrentWorkersParams,
+  NumaHrCurrentWorkersResult,
   NumaHrLeaveBalanceParams,
   NumaHrLeaveBalanceResult,
   NumaHrLeaveDaysParams,
@@ -14,6 +16,10 @@ import type {
   NumaHrLeaveDetailResult,
   NumaHrPunchDayParams,
   NumaHrPunchDayResult,
+  NumaHrPunchDayWorkersParams,
+  NumaHrPunchDayWorkersResult,
+  NumaHrPunchRangeParams,
+  NumaHrPunchRangeResult,
   NumaHrReadPort,
   NumaHrReportMonthByGroupParams,
   NumaHrReportMonthByGroupResult,
@@ -24,7 +30,17 @@ import type {
 import type { QwenChatCompletionsTransport } from '../../orchestrators/qwen/src/index';
 import { startInstallationRuntime, type RuntimeInstallationConfig } from '../src/index';
 
-const HR_TOOL_NAMES = ['punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group'] as const;
+const HR_TOOL_NAMES = [
+  'presence.current-workers',
+  'punch.day',
+  'punch.day-workers',
+  'punch.range',
+  'leave.days',
+  'leave.balance',
+  'leave.detail',
+  'worktime.summary',
+  'report.month-by-group'
+] as const;
 
 type HrToolName = (typeof HR_TOOL_NAMES)[number];
 
@@ -47,7 +63,10 @@ type QwenRequest = {
 };
 
 type HrCall =
+  | { method: 'currentWorkers'; input: NumaHrCurrentWorkersParams }
   | { method: 'punchDay'; input: NumaHrPunchDayParams }
+  | { method: 'punchDayWorkers'; input: NumaHrPunchDayWorkersParams }
+  | { method: 'punchRange'; input: NumaHrPunchRangeParams }
   | { method: 'leaveDays'; input: NumaHrLeaveDaysParams }
   | { method: 'leaveBalance'; input: NumaHrLeaveBalanceParams }
   | { method: 'leaveDetail'; input: NumaHrLeaveDetailParams }
@@ -200,6 +219,25 @@ function citation(queryId: string, rowCount = 1, truncated = false): PresenceSou
 
 function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
   return {
+    currentWorkers(input) {
+      calls.push({ method: 'currentWorkers', input });
+      const result: NumaHrCurrentWorkersResult = {
+        query_id: 'presence.current-workers',
+        organization_id: input.organization_id,
+        correlation_id: input.correlation_id,
+        row_count: 2,
+        truncated: false,
+        citations: [citation('presence.current-workers', 2)],
+        as_of: '2026-07-13T10:00:00.000Z',
+        worker_count: 2,
+        limit: input.limit,
+        records: [
+          { employee_id: 'emp-001', employee_name: 'Eugenio Moya', last_entry_at: '2026-07-13T08:00:00.000Z', punching_point_id: 1, point_name: 'ENTRADA' },
+          { employee_id: 'emp-002', employee_name: 'Beatriz Vera', last_entry_at: '2026-07-13T08:05:00.000Z', punching_point_id: 1, point_name: 'ENTRADA' }
+        ]
+      };
+      return result;
+    },
     punchDay(input) {
       calls.push({ method: 'punchDay', input });
       const result: NumaHrPunchDayResult = {
@@ -223,6 +261,52 @@ function buildHrReadPort(calls: HrCall[]): NumaHrReadPort {
         first_entry_at: '2026-07-01T08:00:00.000Z',
         last_exit_at: '2026-07-01T16:19:00.000Z',
         worked_minutes: 499
+      };
+      return result;
+    },
+    punchDayWorkers(input) {
+      calls.push({ method: 'punchDayWorkers', input });
+      const result: NumaHrPunchDayWorkersResult = {
+        query_id: 'punch.day-workers',
+        organization_id: input.organization_id,
+        correlation_id: input.correlation_id,
+        row_count: 1,
+        truncated: false,
+        citations: [citation('punch.day-workers')],
+        date: input.date,
+        worker_count: 1,
+        limit: input.limit,
+        records: [
+          {
+            employee_id: 'emp-001',
+            employee_name: 'Eugenio Moya',
+            first_entry_at: '2026-01-07T08:00:00.000Z',
+            last_exit_at: '2026-01-07T16:00:00.000Z',
+            punch_count: 2,
+            worked_minutes: 480
+          }
+        ]
+      };
+      return result;
+    },
+    punchRange(input) {
+      calls.push({ method: 'punchRange', input });
+      const result: NumaHrPunchRangeResult = {
+        query_id: 'punch.range',
+        organization_id: input.organization_id,
+        correlation_id: input.correlation_id,
+        row_count: 2,
+        truncated: false,
+        citations: [citation('punch.range', 2)],
+        employee_id: 'emp-001',
+        employee_name: input.employee_name ?? 'Eugenio Moya',
+        date_from: input.date_from,
+        date_to: input.date_to,
+        limit: input.limit,
+        records: [
+          { punched_at: '2026-01-07T08:00:00.000Z', punching_point_id: 1, point_name: 'ENTRADA', direction: 'in' },
+          { punched_at: '2026-01-07T16:00:00.000Z', punching_point_id: 2, point_name: 'SALIDA', direction: 'out' }
+        ]
       };
       return result;
     },
@@ -442,7 +526,10 @@ function assertHrToolSchemas(request: QwenRequest) {
   );
 
   const expectedProperties: Record<HrToolName, string[]> = {
+    'presence.current-workers': [],
     'punch.day': ['employee_name', 'date'],
+    'punch.day-workers': ['date'],
+    'punch.range': ['employee_name', 'date_from', 'date_to'],
     'leave.days': ['employee_name', 'year', 'time_type_labels'],
     'leave.balance': ['employee_name', 'year', 'time_type_labels'],
     'leave.detail': ['employee_name', 'date_from', 'date_to', 'time_type_labels'],
@@ -476,7 +563,7 @@ test('runtime slice exposes the Numa HR tools in the Qwen catalog without ids or
   assert.equal(qwenRequests.length > 0, true);
   assertHrToolSchemas(qwenRequests[0]);
   assert.equal(
-    qwenRequests[0].messages?.[0]?.content?.includes('use request_clarification with missing="unsupported"'),
+    qwenRequests[0].messages?.[0]?.content?.includes('use presence.current-workers'),
     true
   );
 });
@@ -506,6 +593,50 @@ const demoCases: Array<{
   expectedMethod: HrCall['method'];
   expectedInput: Record<string, unknown>;
 }> = [
+  {
+    name: 'current workers',
+    text: 'Cuanta gente hay ahora mismo trabajando?',
+    messageId: 209,
+    capabilityKey: 'presence.current-workers',
+    args: {},
+    expectedMethod: 'currentWorkers',
+    expectedInput: {
+      limit: 100
+    }
+  },
+  {
+    name: 'workers by day',
+    text: 'El dia 2026-01-07 que trabajadores trabajaron?',
+    messageId: 210,
+    capabilityKey: 'punch.day-workers',
+    args: {
+      date: '2026-01-07'
+    },
+    expectedMethod: 'punchDayWorkers',
+    expectedInput: {
+      date: '2026-01-07',
+      limit: 100
+    }
+  },
+  {
+    name: 'punch range',
+    text: 'Dame los fichajes del trabajador Eugenio Moya desde 2026-01-01 al 2026-01-07.',
+    messageId: 211,
+    capabilityKey: 'punch.range',
+    args: {
+      employee_name: 'Eugenio Moya',
+      date_from: '2026-01-01',
+      date_to: '2026-01-07'
+    },
+    expectedMethod: 'punchRange',
+    expectedInput: {
+      employee_id: null,
+      employee_name: 'Eugenio Moya',
+      date_from: '2026-01-01',
+      date_to: '2026-01-07',
+      limit: 250
+    }
+  },
   {
     name: 'asuntos propios',
     text: 'Días de asuntos propios del trabajador Eugenio Moya.',

@@ -24,9 +24,16 @@ import type {
   NumaHrReportMonthByGroupParams,
   NumaHrReportMonthByGroupResult,
   NumaHrWorktimeSummaryParams,
-  NumaHrWorktimeSummaryResult
+  NumaHrWorktimeSummaryResult,
+  NumaHrCurrentWorkersParams,
+  NumaHrCurrentWorkersResult,
+  NumaHrPunchDayWorkersParams,
+  NumaHrPunchDayWorkersResult,
+  NumaHrPunchRangeParams,
+  NumaHrPunchRangeResult
 } from '../../../contracts/src/index';
 import {
+  buildNumaHrCurrentWorkersStatement,
   buildNumaHrLeaveBalanceStatement,
   buildNumaHrLeaveDaysStatement,
   buildNumaHrEmployeeResolveStatement,
@@ -36,17 +43,25 @@ import {
   buildNumaHrLeaveDetailResolutionResult,
   buildNumaHrLeaveDetailStatement,
   buildNumaHrPunchDayStatement,
+  buildNumaHrPunchDayWorkersStatement,
   buildNumaHrPunchDayResolutionResult,
+  buildNumaHrPunchRangeResolutionResult,
+  buildNumaHrPunchRangeStatement,
   buildNumaHrReportMonthByGroupStatement,
   buildNumaHrReportMonthByGroupResolutionResult,
   buildNumaHrWorktimeSummaryStatement,
   buildNumaHrWorktimeSummaryResolutionResult,
   type PgHrEmployeeCandidateRow,
   type PgHrGroupCandidateRow,
+  type PgHrCurrentWorkerRow,
+  type PgHrPunchDayWorkerRow,
   mapNumaHrLeaveBalanceResult,
+  mapNumaHrCurrentWorkersResult,
   mapNumaHrLeaveDaysResult,
   mapNumaHrLeaveDetailResult,
   mapNumaHrPunchDayResult,
+  mapNumaHrPunchDayWorkersResult,
+  mapNumaHrPunchRangeResult,
   mapNumaHrReportMonthByGroupResult,
   mapNumaHrWorktimeSummaryResult,
   type PgHrLeaveDaysRow,
@@ -62,7 +77,18 @@ export const NUMA_POSTGRES_SOURCE_SYSTEM = 'postgres' as const;
 export const NUMA_POSTGRES_ROLE = 'kern_ro' as const;
 
 export type PgPresenceQueryId = 'employee.find' | 'punches.list' | 'presence.current';
-export type PgHrQueryId = 'employee.resolve' | 'group.resolve' | 'punch.day' | 'leave.days' | 'leave.balance' | 'leave.detail' | 'worktime.summary' | 'report.month-by-group';
+export type PgHrQueryId =
+  | 'employee.resolve'
+  | 'group.resolve'
+  | 'presence.current-workers'
+  | 'punch.day'
+  | 'punch.day-workers'
+  | 'punch.range'
+  | 'leave.days'
+  | 'leave.balance'
+  | 'leave.detail'
+  | 'worktime.summary'
+  | 'report.month-by-group';
 export type PgQueryId = PgPresenceQueryId | PgHrQueryId;
 
 export interface PgSqlStatement {
@@ -617,6 +643,23 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
     });
   }
 
+  currentWorkers(input: NumaHrCurrentWorkersParams): NumaHrCurrentWorkersResult {
+    const normalized: NumaHrCurrentWorkersParams = {
+      organization_id: input.organization_id.trim(),
+      correlation_id: input.correlation_id.trim(),
+      limit: Math.trunc(input.limit)
+    };
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrCurrentWorkersStatement({ ...normalized, organization_id: companyId });
+    const rows = this.queryRunner.query<PgHrCurrentWorkerRow>({
+      query_id: 'presence.current-workers',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    return mapNumaHrCurrentWorkersResult(rows, normalized, this.now().toISOString());
+  }
+
 
   punchDay(input: NumaHrPunchDayParams): NumaHrPunchDayResult {
     const normalized: NumaHrPunchDayParams = {
@@ -648,6 +691,58 @@ export class PgReadAdapter implements PresenceReadPort, NumaHrReadPort {
       transaction: this.createTransactionPlan()
     });
     return mapNumaHrPunchDayResult(rows, resolved, this.punchesListLimit);
+  }
+
+  punchDayWorkers(input: NumaHrPunchDayWorkersParams): NumaHrPunchDayWorkersResult {
+    const normalized: NumaHrPunchDayWorkersParams = {
+      organization_id: input.organization_id.trim(),
+      correlation_id: input.correlation_id.trim(),
+      date: input.date.trim(),
+      limit: Math.trunc(input.limit)
+    };
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const statement = buildNumaHrPunchDayWorkersStatement({ ...normalized, organization_id: companyId });
+    const rows = this.queryRunner.query<PgHrPunchDayWorkerRow>({
+      query_id: 'punch.day-workers',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    return mapNumaHrPunchDayWorkersResult(rows, normalized);
+  }
+
+  punchRange(input: NumaHrPunchRangeParams): NumaHrPunchRangeResult {
+    const normalized: NumaHrPunchRangeParams = {
+      organization_id: input.organization_id.trim(),
+      correlation_id: input.correlation_id.trim(),
+      employee_id: normalizeString(input.employee_id),
+      employee_name: normalizeString(input.employee_name),
+      date_from: input.date_from.trim(),
+      date_to: input.date_to.trim(),
+      limit: Math.trunc(input.limit)
+    };
+    const companyId = this.resolveCompanyId(normalized.organization_id);
+    const resolvedEmployee = this.resolveHrEmployee({
+      company_id: companyId,
+      employee_id: normalized.employee_id ?? null,
+      employee_name: normalized.employee_name ?? null
+    });
+    if (resolvedEmployee.status !== 'resolved') {
+      return buildNumaHrPunchRangeResolutionResult(normalized, resolvedEmployee.status, resolvedEmployee.candidates, 5);
+    }
+    const resolved = {
+      ...normalized,
+      employee_id: resolvedEmployee.employee_id,
+      employee_name: resolvedEmployee.employee_name
+    };
+    const statement = buildNumaHrPunchRangeStatement({ ...resolved, organization_id: companyId });
+    const rows = this.queryRunner.query<PgHrPunchDayRow>({
+      query_id: 'punch.range',
+      statement,
+      connection: this.connection,
+      transaction: this.createTransactionPlan()
+    });
+    return mapNumaHrPunchRangeResult(rows, resolved, normalized.limit);
   }
 
   leaveDays(input: NumaHrLeaveDaysParams): NumaHrLeaveDaysResult {

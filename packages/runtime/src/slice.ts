@@ -386,6 +386,17 @@ function buildQwenToolCatalog() {
   };
   const numaHrTools: QwenToolDefinition[] = [
     {
+      capability_key: 'presence.current-workers',
+      description:
+        'List how many workers are currently inside/working now and their names. Use when the user asks how many people are working now, inside now, currently present, or cuanta gente hay ahora trabajando. No parameters.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: [],
+        additionalProperties: false as const,
+        properties: {}
+      }
+    },
+    {
       capability_key: 'punch.day',
       description:
         'Read one employee punch timeline for a specific day. Use employee_name and date only. Never emit employee_id or any internal ids.',
@@ -401,6 +412,49 @@ function buildQwenToolCatalog() {
           date: {
             type: 'string' as const,
             description: 'Target day in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'punch.day-workers',
+      description:
+        'List workers who had punches on one specific day. Use when the user asks which workers worked on a date or who came in on a date. Use date only.',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['date'],
+        additionalProperties: false as const,
+        properties: {
+          date: {
+            type: 'string' as const,
+            description: 'Target day in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          }
+        }
+      }
+    },
+    {
+      capability_key: 'punch.range',
+      description:
+        'Read raw punch entries for one employee in a date range. Use employee_name, date_from and date_to only. Use this for "dame los fichajes del trabajador X desde A hasta B".',
+      parameters_schema: {
+        type: 'object' as const,
+        required: ['employee_name', 'date_from', 'date_to'],
+        additionalProperties: false as const,
+        properties: {
+          employee_name: {
+            type: 'string' as const,
+            description: 'Employee full name exactly as written by the user. Never use employee_id.'
+          },
+          date_from: {
+            type: 'string' as const,
+            description: 'Start date in YYYY-MM-DD format.',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+          },
+          date_to: {
+            type: 'string' as const,
+            description: 'End date in YYYY-MM-DD format.',
             pattern: '^\\d{4}-\\d{2}-\\d{2}$'
           }
         }
@@ -825,7 +879,9 @@ function buildOrchestrationBoundary(options: {
       [options.config.installation_id]: [
         ...options.config.active_capabilities,
         ...(options.presenceReadPort ? ['employee.find', 'punches.list', 'presence.current'] : []),
-        ...(options.hrReadPort ? ['punch.day', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group'] : [])
+        ...(options.hrReadPort
+          ? ['presence.current-workers', 'punch.day', 'punch.day-workers', 'punch.range', 'leave.days', 'leave.balance', 'leave.detail', 'worktime.summary', 'report.month-by-group']
+          : [])
       ]
     }
   });
