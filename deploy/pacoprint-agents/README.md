@@ -56,6 +56,28 @@ Private inventory on Juanlu workstation:
 
 Do not commit `env.runtime` or `runtime.installation.json` if they contain real values.
 
+## Persistent folder permissions
+
+The containers run as the image `node` user, not as root. Bind-mounted runtime folders must therefore be writable by UID/GID `1000:1000`.
+
+Create the runtime folders and fix ownership before starting, and repeat this after any deploy that recreates folders, for example after `rsync --delete`:
+
+```bash
+mkdir -p \
+  gema-administracion/data gema-administracion/evidence gema-administracion/memory gema-administracion/logs \
+  juan-lopez/data juan-lopez/evidence juan-lopez/memory juan-lopez/logs
+
+sudo chown -R 1000:1000 \
+  gema-administracion/data gema-administracion/evidence gema-administracion/memory gema-administracion/logs \
+  juan-lopez/data juan-lopez/evidence juan-lopez/memory juan-lopez/logs
+```
+
+If ownership is wrong, the containers restart with errors like:
+
+```text
+EACCES: permission denied, open '/app/evidence/evidence.jsonl'
+```
+
 ## Required secrets
 
 For `juan-lopez` pricing:
