@@ -9,3 +9,4 @@ This directory contains small architecture, product, or repository decisions tha
 - [ADR-0003 — Model Stays Out of the Data Path](./ADR-0003-model-stays-out-of-the-data-path.md)
 - [ADR-0004 — Aislamiento del trabajo: un concepto por rama y arbol de trabajo aislado por esfuerzo](./ADR-0004-work-isolation-one-concept-per-branch.md)
 - [ADR-0005 — Dockerized per-installation production deployment](./ADR-0005-dockerized-per-installation-production-deployment.md)
+- [ADR-0006 — Separacion de Core, integraciones reutilizables y modulos especificos de empresa](./ADR-0006-client-specific-module-separation.md)
