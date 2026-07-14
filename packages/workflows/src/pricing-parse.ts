@@ -175,6 +175,8 @@ function optionMatchKeys(nombre: string): string[] {
   const core = normalizeText(nombre.replace(/\([^)]*\)/g, ' '));
   const keys = new Set<string>();
   if (core.length >= 3) keys.add(core);
+  const compact = core.replace(/\s+/g, '');
+  if (/\d/.test(compact) && compact.length >= 2) keys.add(compact);
   const firstLong = core.split(' ').find((w) => w.length >= 4);
   if (firstLong) keys.add(firstLong);
   return [...keys];
