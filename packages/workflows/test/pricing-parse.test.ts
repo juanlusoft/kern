@@ -94,6 +94,14 @@ test('matchOptionInText: casa por la raíz aunque el nombre tenga paréntesis', 
   });
 });
 
+test('matchOptionInText: casa opciones numéricas aunque el usuario omita espacios', () => {
+  const options = [
+    { id: 10, nombre: '10 mm' },
+    { id: 5, nombre: '5 mm' }
+  ];
+  assert.deepEqual(matchOptionInText('grosor 10mm', options), { id: 10, nombre: '10 mm' });
+});
+
 test('matchOptionInText: null si no aparece ninguna opción', () => {
   const options = [
     { id: 117, nombre: 'Escuadrado' },

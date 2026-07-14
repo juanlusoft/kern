@@ -44,7 +44,8 @@ export function runInstallation(): number {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+const entrypoint = process.argv[1] ? `file://${process.argv[1].replace(/\\/g, '/')}` : null;
+if (entrypoint && import.meta.url === entrypoint) {
   const exitCode = runInstallation();
   process.exitCode = exitCode;
 }

@@ -23,6 +23,7 @@ import {
 } from '../../contracts/src/index';
 import { InMemoryEvidenceLedger } from '../../evidence/src/index';
 import { InMemoryGovernedWorkflowRuntime } from '../../workflows/src/index';
+import { deriveHoldedReadRoutingOverride } from './holded-read';
 import {
   buildNumaHrTimeTypeLabelById,
   deriveNumaHrRoutingOverride,
@@ -440,6 +441,33 @@ function isValidPricingQuoteDraftProposal(params: Record<string, unknown>): bool
   return normalizeDraftLines(params.lines) !== null;
 }
 
+function shouldUseConversationHistoryForPricingRawMessage(message: string): boolean {
+  const normalized = message.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+  if (normalized.length > 90) {
+    return false;
+  }
+  return !/\d+(?:[.,]\d+)?\s*[x×]\s*\d+(?:[.,]\d+)?/.test(normalized);
+}
+
+function buildPricingRawMessage(request: OrchestrationRequest): string | null {
+  const current = normalizeOptionalString(request.user_message);
+  if (!current) {
+    return null;
+  }
+  if (!shouldUseConversationHistoryForPricingRawMessage(current)) {
+    return current;
+  }
+  const previousUserMessages = (request.conversation_history ?? [])
+    .filter((turn) => turn.role === 'user')
+    .map((turn) => normalizeOptionalString(turn.content))
+    .filter((turn): turn is string => turn !== null)
+    .slice(-3);
+  return [...previousUserMessages, current].join('\n');
+}
+
 function isValidMockResourceReadProposal(params: Record<string, unknown>): boolean {
   const estimate_id = normalizeOptionalString(params.estimate_id);
   const year = normalizeYear(params.year);
@@ -783,7 +811,7 @@ function resolveWorkflowRequest(
       alto,
       ancho,
       options,
-      raw_message: request.user_message ?? null,
+      raw_message: buildPricingRawMessage(request),
       capability_id: proposal.capability_key,
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
@@ -806,7 +834,7 @@ function resolveWorkflowRequest(
       correlation_id: request.correlation_id,
       lines,
       customer: normalizeOptionalString(proposal.params.customer),
-      raw_message: request.user_message ?? null,
+      raw_message: buildPricingRawMessage(request),
       capability_id: proposal.capability_key,
       claimed_result: request.claimed_result ?? null,
       claimed_output: request.claimed_output ?? null,
@@ -905,7 +933,9 @@ export class InMemoryOrchestrationBoundary {
       normalizedRequest,
       activeCapabilitiesForOrchestrator
     );
-    const routingOverride = deriveNumaHrRoutingOverride(orchestratorRequest.user_message, this.now());
+    const routingOverride =
+      deriveNumaHrRoutingOverride(orchestratorRequest.user_message, this.now()) ??
+      deriveHoldedReadRoutingOverride(orchestratorRequest.user_message);
     const requestForOrchestrator =
       routingOverride &&
       activeCapabilitiesForOrchestrator.includes(routingOverride.force_capability_key) &&

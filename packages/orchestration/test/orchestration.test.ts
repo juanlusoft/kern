@@ -266,6 +266,80 @@ test('M8 forwards invoice payment status through the orchestration boundary into
   assert.equal(responseData?.records?.[2]?.invoice_id, 'F26/1930');
 });
 
+test('M8 routes explicit invoice payment status reads deterministically before model output', () => {
+  const invoiceHolded = buildHoldedFetch(200, [
+    {
+      resource_type: 'invoice',
+      source_system: 'Holded',
+      invoice_id: 'F26/1930',
+      docNumber: 'F26/1930',
+      customer_id: 'granapublic',
+      customer_name: 'Granapublic Xx Sl',
+      contact: 'contact-granapublic',
+      contactName: 'Granapublic Xx Sl',
+      status: 0,
+      paymentsPending: 1100,
+      dueDate: '2024-03-09T00:00:00.000Z',
+      total_amount: 1100,
+      currency: 'EUR',
+      date: '2024-03-09T00:00:00.000Z'
+    }
+  ]);
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    organization_id: 'org-acme',
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    externalReadAdapter: createHoldedReadAdapter({
+      apiKey: 'token',
+      fetch: invoiceHolded.fetch,
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      installation: {
+        installation_id: 'install-acme',
+        active_modules: ['holded-read']
+      }
+    })
+  });
+  const boundary = new InMemoryOrchestrationBoundary({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    workflowRuntime: runtime,
+    orchestrator: new MockOrchestrator({
+      now: () => new Date('2026-06-29T00:00:00.000Z'),
+      routes: [
+        {
+          keywords: ['unused-route'],
+          capability_key: 'mock.resource.read',
+          reason: 'fallback read route',
+          confidence: 1,
+          buildParams: () => ({
+            resource_type: 'estimate',
+            customer_id: 'should-not-be-used'
+          })
+        }
+      ]
+    }),
+    installationCapabilities: {
+      'install-acme': ['mock.resource.read']
+    }
+  });
+
+  const outcome = boundary.execute(
+    buildRequest({
+      user_message: 'Dime las facturas vencidas',
+      correlation_id: 'corr-deterministic-invoice-status'
+    })
+  );
+
+  assert.equal(outcome.status, 'proposal');
+  assert.equal(outcome.proposal?.capability_key, 'mock.resource.read');
+  assert.equal(outcome.proposal?.params.resource_type, 'invoice');
+  assert.equal(outcome.proposal?.params.payment_status, 'overdue');
+  assert.equal(outcome.response.response_source, 'runtime_result');
+  assert.equal(outcome.response.status, 'completed');
+  const responseData = outcome.response.data as { kind?: string; payment_status?: string; aggregate?: { count?: number } } | null | undefined;
+  assert.equal(responseData?.kind, 'list');
+  assert.equal(responseData?.payment_status, 'overdue');
+  assert.equal(responseData?.aggregate?.count, 1);
+});
+
 test('M8 accepts invoice payment-status proposals without a customer', () => {
   const invoiceHolded = buildHoldedFetch(200, [
     {
@@ -382,13 +456,13 @@ test('M8 blocks invoice payment-status proposals that use estimate resource type
       routes: [buildReadProposal({
         resource_type: 'estimate',
         payment_status: 'overdue'
-      }, ['vencidas'])]
+      }, ['vencidos'])]
     })
   });
 
   const outcome = boundary.execute(
     buildRequest({
-      user_message: 'facturas vencidas',
+      user_message: 'documentos vencidos',
       correlation_id: 'corr-estimate-payment-status'
     })
   );
@@ -618,13 +692,13 @@ test('M8 blocks invalid invoice year proposals', () => {
       routes: [buildReadProposal({
         resource_type: 'invoice',
         year: '20a4'
-      }, ['2024'])]
+      }, ['documentos'])]
     })
   });
 
   const outcome = boundary.execute(
     buildRequest({
-      user_message: 'facturas de 2024',
+      user_message: 'documentos de 2024',
       correlation_id: 'corr-invoice-year-invalid'
     })
   );

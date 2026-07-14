@@ -43,6 +43,44 @@ function hasWholeWord(text: string, word: string): boolean {
   return normalizedTokens(text).includes(normalizeSearchText(word));
 }
 
+function normalizeCompact(value: string): string {
+  return normalizeSearchText(value).replace(/\s+/g, '');
+}
+
+function extractNumberNearLabel(rawText: string, labels: string[]): number | null {
+  const normalized = normalizeSearchText(rawText);
+  const uniqueLabels = [...new Set(labels.map((label) => normalizeSearchText(label)).filter((label) => label.length > 0))];
+  for (const label of uniqueLabels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const labelThenNumber = new RegExp(`\\b${escaped}\\b\\s*(?:diferentes?)?\\s*:?\\s*(\\d+(?:[.,]\\d+)?)\\b`);
+    const numberThenLabel = new RegExp(`\\b(\\d+(?:[.,]\\d+)?)\\s*(?:disenos?|diseños?)?\\s*(?:diferentes?)?\\s*\\b${escaped}\\b`);
+    const labelMatch = normalized.match(labelThenNumber);
+    const numberMatch = normalized.match(numberThenLabel);
+    const rawValue = labelMatch?.[1] ?? numberMatch?.[1] ?? null;
+    if (!rawValue) {
+      continue;
+    }
+    const parsed = Number(rawValue.replace(',', '.'));
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (uniqueLabels.some((label) => /\bdiseno\b|\bdisenos\b|\bdiseño\b|\bdiseños\b/.test(label))) {
+    const designMatch = normalized.match(/\b(\d+(?:[.,]\d+)?)\s*(?:disenos?|diseños?)\s*diferentes?\b/);
+    const differentDesignMatch = normalized.match(/\bdisenos?\s*diferentes?\s*:?\s*(\d+(?:[.,]\d+)?)\b/);
+    const rawValue = designMatch?.[1] ?? differentDesignMatch?.[1] ?? null;
+    if (rawValue) {
+      const parsed = Number(rawValue.replace(',', '.'));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
 interface ResolvedAttribute {
   id: string | number;
   nombre: string;
@@ -83,7 +121,11 @@ export function selectChoice(attribute: ResolvedAttribute, rawValue: unknown): {
   }
   if (typeof rawValue === 'number' || typeof rawValue === 'string') {
     for (const option of values) {
-      if (String(option.id) === String(rawValue) || normalizeSearchText(option.nombre) === normalizeSearchText(String(rawValue))) {
+      if (
+        String(option.id) === String(rawValue) ||
+        normalizeSearchText(option.nombre) === normalizeSearchText(String(rawValue)) ||
+        normalizeCompact(option.nombre) === normalizeCompact(String(rawValue))
+      ) {
         return { id: option.id, nombre: option.nombre };
       }
     }
@@ -174,6 +216,9 @@ export function resolveLineAttributes(
             break;
           }
         }
+      }
+      if ((value === undefined || value === null || value === '') && rawMessage && (rule.tipo === 'number' || rule.tipo === 'numero')) {
+        value = extractNumberNearLabel(rawMessage, [ruleName, displayLabel]);
       }
       let appliedDefault = false;
       if ((value === undefined || value === null || value === '') && rule.valor_defecto !== undefined && rule.valor_defecto !== null) {

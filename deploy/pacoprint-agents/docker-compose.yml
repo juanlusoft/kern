@@ -1,0 +1,63 @@
+services:
+  kern-pacoprint-gema-administracion:
+    build:
+      context: ../..
+      dockerfile: deploy/pacoprint-agents/Dockerfile
+    image: kern-runtime:pacoprint-agents
+    container_name: kern-pacoprint-gema-administracion
+    init: true
+    read_only: true
+    restart: unless-stopped
+    env_file:
+      - ./gema-administracion/env.runtime
+    environment:
+      KERN_RUNTIME_CONFIG_PATH: /app/config/runtime.installation.json
+      KERN_EVIDENCE_FILE_PATH: /app/evidence/evidence.jsonl
+    volumes:
+      - ./gema-administracion/runtime.installation.json:/app/config/runtime.installation.json:ro
+      - ./gema-administracion/data:/app/data
+      - ./gema-administracion/evidence:/app/evidence
+      - ./gema-administracion/memory:/app/memory
+      - ./gema-administracion/logs:/app/logs
+    tmpfs:
+      - /tmp
+    networks:
+      - kern_pacoprint_runtime
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  kern-pacoprint-juan-lopez:
+    image: kern-runtime:pacoprint-agents
+    container_name: kern-pacoprint-juan-lopez
+    init: true
+    read_only: true
+    restart: unless-stopped
+    env_file:
+      - ./juan-lopez/env.runtime
+    environment:
+      KERN_RUNTIME_CONFIG_PATH: /app/config/runtime.installation.json
+      KERN_EVIDENCE_FILE_PATH: /app/evidence/evidence.jsonl
+    volumes:
+      - ./juan-lopez/runtime.installation.json:/app/config/runtime.installation.json:ro
+      - ./juan-lopez/data:/app/data
+      - ./juan-lopez/evidence:/app/evidence
+      - ./juan-lopez/memory:/app/memory
+      - ./juan-lopez/logs:/app/logs
+    tmpfs:
+      - /tmp
+    networks:
+      - kern_pacoprint_runtime
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  kern_pacoprint_runtime:
+    name: kern_pacoprint_runtime
