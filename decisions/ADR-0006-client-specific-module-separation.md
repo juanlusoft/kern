@@ -148,6 +148,14 @@ Mientras la migracion no este completada, cualquier excepcion debe quedar docume
 - fecha o hito de retirada;
 - test que evite regresiones de aislamiento.
 
+Excepciones conocidas al aprobar este ADR:
+
+- `packages/adapters/pacoprint-catalog`: contiene pricing y capability de dominio PacoPrint dentro de un paquete clasificado hoy como adapter/provider. Debe separarse en una integracion reutilizable, si existe, y un modulo de empresa `pacoprint-pricing`.
+- `packages/adapters/numa-postgres`: contiene queries y tipos de dominio HR Numa dentro de un adapter PostgreSQL. Debe separarse en una integracion PostgreSQL reutilizable y un modulo de empresa `numa-hr` que aporte queries cerradas, mappings y semantics de RRHH.
+- `packages/orchestration/src/numa-hr.ts`, `packages/capabilities/src/numa-capabilities.ts` y `packages/workflows/src/numa-hr-response-renderer.ts`: contienen comportamiento Numa en paquetes gobernados comunes. Deben migrarse al modulo de empresa `numa-hr` o quedar detras de contribuciones explicitas de ese modulo.
+
+Estas excepciones no bloquean el ADR porque su estado es `Proposed`, pero deben ser retiradas durante la migracion a modulos especificos de empresa.
+
 ### 3.3 Integraciones compartidas no contienen negocio de cliente
 
 Las integraciones reutilizables no deben contener reglas, nombres, prompts, mapeos ni semantica de un cliente.
@@ -366,6 +374,7 @@ Orden recomendado:
 
 1. Inventariar referencias de empresa en `packages/`, `docs/`, `deploy/` y tests.
 2. Separar primero las areas con mas riesgo de mezcla:
+   - adapters que hoy mezclan proveedor con negocio de cliente, empezando por `packages/adapters/pacoprint-catalog` y `packages/adapters/numa-postgres`;
    - prompts;
    - catalogos de tools;
    - workflows de dominio;
