@@ -169,3 +169,25 @@ The first regression cases derived from real PacoPrint feedback are:
 These cases are covered in workflow/catalog tests. The next step is to extract a
 small Holded sample and convert only anonymized representative cases into this
 format.
+
+## Local sample findings
+
+The first local Holded sample contained a minimized estimate-line batch. The
+sample itself is ignored by Git and must remain local; exact operational counts
+stay in local reports, not in versioned documentation.
+
+Current qualitative result after deterministic labeling:
+
+- Many cases still require human review because the article is genuinely
+  ambiguous or required attributes are not stated.
+- A smaller subset is complete enough to promote into anonymized regression
+  tests.
+
+Parser improvements promoted from this sample into anonymized tests:
+
+- `unidad` singular is accepted as a quantity suffix.
+- Generic color-only text such as `vinilo blanco` must not invent a more
+  specific article subtype.
+- Explicit discriminants such as `microventosa`, `pvc suelo`, `carton pluma`,
+  `carton microcanal`, `lona camion`, `doble cara blockout`, `metacrilato
+  transparente` and `metacrilato blanco opal` are covered by synthetic tests.

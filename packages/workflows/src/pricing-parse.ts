@@ -119,6 +119,23 @@ const FRONTLIT_RE = /frontlit|frontli\b|frontly|fronlit/;
 const MESH_RE = /microperforad|mesh/;
 // Tokens de nombre de artículo sin valor discriminante (gramaje, ruido).
 const NOISE_TOKEN = /^\d+\s*g$|^\d+g$|^\d+$/;
+const FAMILY_TOKENS = new Set(['carton', 'lona', 'metacrilato', 'pvc', 'vinilo']);
+const COLOR_TOKENS = new Set([
+  'acido',
+  'amarillo',
+  'azul',
+  'blanco',
+  'dorado',
+  'granate',
+  'gris',
+  'marron',
+  'naranja',
+  'negro',
+  'plata',
+  'rojo',
+  'transparente',
+  'verde'
+]);
 
 /**
  * Puntúa cuánto encaja el nombre de un candidato del catálogo con el texto del
@@ -132,8 +149,14 @@ export function scoreCandidate(rawText: string, candidateName: string): number {
   if (MESH_RE.test(t) && FRONTLIT_RE.test(n)) return -1;
   const tokens = n.split(' ').filter((w) => w.length >= 3 && !NOISE_TOKEN.test(w));
   if (tokens.length === 0) return 0;
+  const distinctiveTokens = tokens.filter((w) => !COLOR_TOKENS.has(w) && !FAMILY_TOKENS.has(w));
+  const distinctiveTokensPresent = distinctiveTokens.length === 0 || distinctiveTokens.every((w) => t.includes(w));
   let hit = 0;
-  for (const w of tokens) if (t.includes(w)) hit += 1;
+  for (const w of tokens) {
+    if (!t.includes(w)) continue;
+    if (COLOR_TOKENS.has(w) && !distinctiveTokensPresent) continue;
+    hit += 1;
+  }
   return hit;
 }
 
