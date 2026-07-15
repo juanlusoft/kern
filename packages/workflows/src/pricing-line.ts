@@ -43,6 +43,24 @@ function hasWholeWord(text: string, word: string): boolean {
   return normalizedTokens(text).includes(normalizeSearchText(word));
 }
 
+function containsPhrase(text: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeSearchText(phrase);
+  if (!normalizedPhrase) {
+    return false;
+  }
+  return new RegExp(`\\b${normalizedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(normalizeSearchText(text));
+}
+
+function containsNegatedPhrase(text: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeSearchText(phrase);
+  if (!normalizedPhrase) {
+    return false;
+  }
+  return new RegExp(`\\b(?:sin|no(?:\\s+\\w+){0,4})\\s+${normalizedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(
+    normalizeSearchText(text)
+  );
+}
+
 function normalizeCompact(value: string): string {
   return normalizeSearchText(value).replace(/\s+/g, '');
 }
@@ -142,6 +160,32 @@ export function selectChoice(attribute: ResolvedAttribute, rawValue: unknown): {
   return null;
 }
 
+function rawTextSupportsStructuredChoice(input: {
+  rawMessage: string | null;
+  displayLabel: string;
+  rawValue: unknown;
+  selected: { id: string | number; nombre: string };
+}): boolean {
+  if (!input.rawMessage) {
+    return true;
+  }
+  const trimmed = input.rawMessage.trim();
+  const isShortClarification = trimmed.length <= 90 && !/\d+(?:[.,]\d+)?\s*[x×]\s*\d+(?:[.,]\d+)?/.test(trimmed);
+  const rawMessage = input.rawMessage;
+  const valueText = typeof input.rawValue === 'string' || typeof input.rawValue === 'number' ? String(input.rawValue) : '';
+  const labels = [input.displayLabel, valueText, input.selected.nombre].filter((label) => label.trim().length > 0);
+  if (labels.some((label) => containsNegatedPhrase(rawMessage, label))) {
+    return false;
+  }
+  if (isShortClarification) {
+    return true;
+  }
+  if (matchOptionInText(rawMessage, [input.selected])) {
+    return true;
+  }
+  return labels.some((label) => containsPhrase(rawMessage, label));
+}
+
 export interface LineAttributeResolution {
   resolvedAttributes: Record<string, unknown>;
   defaultsApplied: string[];
@@ -212,6 +256,12 @@ export function resolveLineAttributes(
       if ((value === undefined || value === null || value === '') && resolvedOptions) {
         for (const [key, optionValue] of Object.entries(resolvedOptions)) {
           if (normalizeSearchText(key) === normalizedKey || normalizeSearchText(key) === normalizedLabel) {
+            if (rule.tipo === 'select' && attribute) {
+              const selected = selectChoice(attribute, optionValue);
+              if (!selected || !rawTextSupportsStructuredChoice({ rawMessage, displayLabel, rawValue: optionValue, selected })) {
+                continue;
+              }
+            }
             value = optionValue;
             break;
           }
@@ -221,7 +271,7 @@ export function resolveLineAttributes(
         value = extractNumberNearLabel(rawMessage, [ruleName, displayLabel]);
       }
       let appliedDefault = false;
-      if ((value === undefined || value === null || value === '') && rule.valor_defecto !== undefined && rule.valor_defecto !== null) {
+      if ((value === undefined || value === null || value === '') && rule.obligatorio && rule.valor_defecto !== undefined && rule.valor_defecto !== null) {
         value = rule.valor_defecto;
         appliedDefault = true;
       }

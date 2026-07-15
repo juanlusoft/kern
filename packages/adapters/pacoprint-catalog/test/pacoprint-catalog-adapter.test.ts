@@ -81,6 +81,29 @@ function buildCatalogStructure() {
         json_calcular_precio: {
           atributos: []
         }
+      },
+      {
+        id: 'D-303',
+        nombre: 'Dibond',
+        caracteristicas: {
+          tipo_calculo: 'm2' as const,
+          cantidad_minima: 1,
+          medidas: {
+            alto_minimo: 1,
+            ancho_minimo: 1
+          }
+        },
+        json_calcular_precio: {
+          atributos: [
+            {
+              atributo_id: 'color',
+              nombre: 'Color',
+              tipo: 'select' as const,
+              obligatorio: true,
+              valores_validos: ['blanco', 'negro']
+            }
+          ]
+        }
       }
     ]
   };
@@ -120,6 +143,23 @@ test('PacoPrint catalog search returns candidates and sends Bearer auth', () => 
   assert.equal(result.source_evidence.length > 0, true);
   assert.equal(result.source_evidence[0].source_system, 'pacoprint.catalog');
   assert.equal(serialized.includes('pacoprint-secret-token'), false);
+});
+
+test('PacoPrint catalog search finds an article when the query includes an option qualifier', () => {
+  const { fetch, calls } = createFetchSequence([{ status: 200, body: buildCatalogStructure() }]);
+  const adapter = buildAdapter(fetch);
+
+  const result = adapter.catalogSearch({
+    text: 'Dibond blanco',
+    correlation_id: 'corr-search-dibond-option'
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(result.status, 'found');
+  const searchData = result.status === 'found' ? (result.data as { candidates: Array<{ id: string | number; nombre: string }> }) : null;
+  assert.equal(searchData?.candidates.length, 1);
+  assert.equal(searchData?.candidates[0]?.id, 'D-303');
+  assert.equal(searchData?.candidates[0]?.nombre, 'Dibond');
 });
 
 test('PacoPrint quote_line sends atributos as an object and returns SourceEvidence', () => {
