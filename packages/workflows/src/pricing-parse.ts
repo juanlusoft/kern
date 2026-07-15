@@ -105,7 +105,7 @@ export function parseMeasures(text: string): ParsedMeasures | null {
  */
 export function parseQuantity(text: string): number | null {
   const t = normalizeText(text);
-  const m = t.match(/(\d+)\s*(?:unidades?|unid|uds?|und)\b/);
+  const m = t.match(/(\d+)\s*(?:unidad(?:es)?|unid|uds?|und)\b/);
   if (m?.[1]) {
     const n = Number.parseInt(m[1], 10);
     if (n >= 1 && n <= 100000) return n;

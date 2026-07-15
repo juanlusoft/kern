@@ -85,6 +85,24 @@ phones, addresses, tax ids and secret-like text. This is a safety filter, not a
 formal anonymizer: every generated row remains `needs_human_review` and must be
 reviewed before converting it into tests, fixtures or documentation.
 
+## Local labeling command
+
+After exporting a corpus batch and a local PacoPrint catalog structure, run the
+local labeler:
+
+```bash
+node --import tsx scripts/label-pacoprint-holded-corpus.mjs \
+  --input data/pacoprint-corpus/holded-estimates-sample.ndjson \
+  --catalog data/pacoprint-corpus/catalog-structure.json \
+  --output data/pacoprint-corpus/holded-estimates-labeled.ndjson
+```
+
+The labeler never calls external services. It compares each local corpus row with
+the local catalog, fills deterministic fields only when the article is
+unambiguous, and leaves all generated labels as `auto_labeled_needs_review`.
+Ambiguous rows stay as `needs_human_review`; Kern must ask for clarification
+rather than guessing.
+
 ## Mismatch classes
 
 - `parser_missing_article`: the text names a real product but Kern cannot map it
