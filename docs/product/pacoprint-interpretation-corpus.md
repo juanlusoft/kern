@@ -56,6 +56,35 @@ Not allowed:
 5. Classify every mismatch.
 6. Convert representative anonymized cases into tests.
 
+## Local export command
+
+Use the local-only exporter for a first minimized batch. The output path is
+ignored by Git.
+
+```bash
+HOLDED_API_KEY=... node scripts/export-pacoprint-holded-corpus.mjs \
+  --document-type estimate \
+  --limit 100 \
+  --output data/pacoprint-corpus/holded-estimates-sample.ndjson
+```
+
+The exporter writes only below `data/pacoprint-corpus/`, which is ignored by Git.
+It calls the official Holded API endpoint only; the API base URL is not
+configurable, to avoid sending the API key to an arbitrary host.
+
+The exporter writes a minimized local review file with only allowlisted fields:
+
+- `utterance`
+- optional observed quantity
+- empty target fields for human review
+- non-reversible batch id
+- line index
+
+It rejects obvious prices, totals, discounts, document references, emails,
+phones, addresses, tax ids and secret-like text. This is a safety filter, not a
+formal anonymizer: every generated row remains `needs_human_review` and must be
+reviewed before converting it into tests, fixtures or documentation.
+
 ## Mismatch classes
 
 - `parser_missing_article`: the text names a real product but Kern cannot map it

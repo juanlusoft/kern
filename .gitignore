@@ -55,6 +55,7 @@ htmlcov/
 .cache/
 tmp/
 temp/
+data/pacoprint-corpus/
 
 # Generated documentation outputs
 site/
