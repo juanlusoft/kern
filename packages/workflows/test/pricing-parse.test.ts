@@ -75,6 +75,57 @@ test('pickArticleCandidate: sin señal en el texto queda ambiguo', () => {
   assert.equal(picked.ambiguous, true);
 });
 
+test('pickArticleCandidate: color-only qualifiers do not invent a more specific article subtype', () => {
+  const candidates = [
+    { nombre: 'Vinilo Monomérico' },
+    { nombre: 'Vinilo Polimérico' },
+    { nombre: 'Vinilo Transparente' },
+    { nombre: 'Vinilo Microventosa Blanco' },
+    { nombre: 'Vinilo Microventosa Transparente' },
+    { nombre: 'Vinilo Especial Rojo' }
+  ];
+
+  const genericWhite = pickArticleCandidate('vinilo blanco 100x50', candidates);
+  assert.equal(genericWhite.selected, null);
+  assert.equal(genericWhite.ambiguous, true);
+
+  const transparent = pickArticleCandidate('vinilo transparente 100x50', candidates);
+  assert.equal(transparent.ambiguous, false);
+  assert.equal(transparent.selected?.nombre, 'Vinilo Transparente');
+
+  const microventosaWhite = pickArticleCandidate('vinilo microventosa blanco 100x50', candidates);
+  assert.equal(microventosaWhite.ambiguous, false);
+  assert.equal(microventosaWhite.selected?.nombre, 'Vinilo Microventosa Blanco');
+
+  const genericRed = pickArticleCandidate('vinilo rojo 100x50', candidates);
+  assert.equal(genericRed.selected, null);
+  assert.equal(genericRed.ambiguous, true);
+});
+
+test('pickArticleCandidate: corpus-derived material discriminants select the intended article', () => {
+  const candidates = [
+    { nombre: 'PVC' },
+    { nombre: 'PVC Suelo (Print floor)' },
+    { nombre: 'Cartón Compacto' },
+    { nombre: 'Cartón Microcanal' },
+    { nombre: 'Cartón Pluma' },
+    { nombre: 'Lona Frontlit 510g' },
+    { nombre: 'Lona Doble Cara Blockout' },
+    { nombre: 'Lona camión' },
+    { nombre: 'Metacrilato Blanco Opal' },
+    { nombre: 'Metacrilato Transparente' },
+    { nombre: 'Trofeos Metacrilato' }
+  ];
+
+  assert.equal(pickArticleCandidate('pvc suelo 100x50', candidates).selected?.nombre, 'PVC Suelo (Print floor)');
+  assert.equal(pickArticleCandidate('carton pluma 100x50', candidates).selected?.nombre, 'Cartón Pluma');
+  assert.equal(pickArticleCandidate('carton microcanal 100x50', candidates).selected?.nombre, 'Cartón Microcanal');
+  assert.equal(pickArticleCandidate('lona camion 100x50', candidates).selected?.nombre, 'Lona camión');
+  assert.equal(pickArticleCandidate('lona doble cara blockout 100x50', candidates).selected?.nombre, 'Lona Doble Cara Blockout');
+  assert.equal(pickArticleCandidate('metacrilato transparente 100x50', candidates).selected?.nombre, 'Metacrilato Transparente');
+  assert.equal(pickArticleCandidate('metacrilato blanco opal 100x50', candidates).selected?.nombre, 'Metacrilato Blanco Opal');
+});
+
 test('matchOptionInText: resuelve la opción por su nombre real del catálogo', () => {
   const options = [
     { id: 117, nombre: 'Escuadrado' },
