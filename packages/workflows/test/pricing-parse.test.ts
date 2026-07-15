@@ -36,6 +36,7 @@ test('parseMeasures: sin medidas devuelve null', () => {
 test('parseQuantity: detecta cantidad con sufijo', () => {
   assert.equal(parseQuantity('5 uds'), 5);
   assert.equal(parseQuantity('10 unidades'), 10);
+  assert.equal(parseQuantity('1 unidad'), 1);
   assert.equal(parseQuantity('1 ud de lona'), 1);
   assert.equal(parseQuantity('pon 25 und'), 25);
 });
