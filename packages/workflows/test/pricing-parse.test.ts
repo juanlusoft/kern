@@ -102,6 +102,18 @@ test('matchOptionInText: casa opciones numéricas aunque el usuario omita espaci
   assert.deepEqual(matchOptionInText('grosor 10mm', options), { id: 10, nombre: '10 mm' });
 });
 
+test('matchOptionInText: prioriza la opcion numerica especifica frente a prefijos genericos', () => {
+  const options = [
+    { id: 50, nombre: 'Todo el perímetro (cada 50 cm)' },
+    { id: 100, nombre: 'Todo el perímetro (cada 100 cm)' }
+  ];
+
+  assert.deepEqual(matchOptionInText('ollado metálico todo el perímetro cada 100 cm', options), {
+    id: 100,
+    nombre: 'Todo el perímetro (cada 100 cm)'
+  });
+});
+
 test('matchOptionInText: null si no aparece ninguna opción', () => {
   const options = [
     { id: 117, nombre: 'Escuadrado' },

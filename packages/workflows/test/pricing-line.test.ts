@@ -57,6 +57,54 @@ const CARTON_PLUMA: PacoPrintCatalogCandidate = {
   ]
 };
 
+const LONA_FRONTLIT: PacoPrintCatalogCandidate = {
+  id: 'lona-1',
+  nombre: 'Lona Frontlit 510g',
+  tipo_calculo: 'm2',
+  json_calcular_precio: {
+    atributos: [
+      { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true },
+      { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
+      { atributo_id: 'ollado', nombre: 'Ollado metálico', tipo: 'select', obligatorio: false },
+      { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
+    ] as never
+  },
+  atributos: [
+    {
+      id: 'corte',
+      nombre: 'Corte',
+      valores_posibles: [
+        { id: 'escuadrado', nombre: 'Escuadrado' },
+        { id: 'forma', nombre: 'Con Forma' }
+      ]
+    },
+    {
+      id: 'refuerzo',
+      nombre: 'Refuerzo',
+      valores_posibles: [
+        { id: 'termosellado', nombre: 'Termosellado (todo el perímetro)' },
+        { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
+      ]
+    },
+    {
+      id: 'ollado',
+      nombre: 'Ollado metálico',
+      valores_posibles: [
+        { id: '50', nombre: 'Todo el perímetro (cada 50 cm)' },
+        { id: '100', nombre: 'Todo el perímetro (cada 100 cm)' }
+      ]
+    },
+    {
+      id: 'velcro',
+      nombre: 'Velcro',
+      valores_posibles: [
+        { id: 'perimetro', nombre: 'Velcro Todo el perímetro' },
+        { id: 'hembra', nombre: 'Velcro hembra cosido' }
+      ]
+    }
+  ]
+};
+
 test('pricing line resolves numeric diseño diferente from full user text', () => {
   const result = resolveLineAttributes(DIBOND, {
     rawMessage: 'Dime el precio de 10 unidades de dibond de 50x40cm. Diseño diferente: 1. Impresión con frente y reverso iguales y corte escuadrado.',
@@ -116,4 +164,38 @@ test('pricing line resolves compact numeric select options such as 10mm', () => 
   assert.equal(result.resolvedAttributes.diseno, 3);
   assert.equal(result.resolvedAttributes.grosor, '10');
   assert.equal(result.resolvedAttributes.corte, 'forma');
+});
+
+test('pricing line does not apply optional priced defaults that the user did not request', () => {
+  const result = resolveLineAttributes(LONA_FRONTLIT, {
+    rawMessage:
+      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el perímetro, Ollado metálico todo el perímetro cada 100 cm',
+    resolvedUnits: 1,
+    resolvedAlto: 120,
+    resolvedAncho: 300,
+    resolvedOptions: {}
+  });
+
+  assert.deepEqual(result.missingFields, []);
+  assert.deepEqual(result.invalidFields, []);
+  assert.equal(result.resolvedAttributes.corte, 'escuadrado');
+  assert.equal(result.resolvedAttributes.refuerzo, 'termosellado');
+  assert.equal(result.resolvedAttributes.ollado, '100');
+  assert.equal(result.resolvedAttributes.velcro, undefined);
+  assert.equal(result.defaultsApplied.includes('Velcro'), false);
+  assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
+});
+
+test('pricing line ignores model-proposed select options that are not backed by user text', () => {
+  const result = resolveLineAttributes(LONA_FRONTLIT, {
+    rawMessage:
+      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el perímetro, Ollado metálico todo el perímetro cada 100 cm',
+    resolvedUnits: 1,
+    resolvedAlto: 120,
+    resolvedAncho: 300,
+    resolvedOptions: { velcro: 'Velcro Todo el perímetro' }
+  });
+
+  assert.equal(result.resolvedAttributes.velcro, undefined);
+  assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
 });

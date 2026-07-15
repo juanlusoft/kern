@@ -172,11 +172,24 @@ export interface CatalogOption {
 
 /** Claves de match de una opción: su nombre sin paréntesis + su primera palabra larga. */
 function optionMatchKeys(nombre: string): string[] {
+  const full = normalizeText(nombre.replace(/[()]/g, ' '));
   const core = normalizeText(nombre.replace(/\([^)]*\)/g, ' '));
   const keys = new Set<string>();
-  if (core.length >= 3) keys.add(core);
-  const compact = core.replace(/\s+/g, '');
+  const sourceForNumeric = /\d/.test(full) ? full : core;
+  if (!/\d/.test(sourceForNumeric) && core.length >= 3) keys.add(core);
+  const compact = sourceForNumeric.replace(/\s+/g, '');
   if (/\d/.test(compact) && compact.length >= 2) keys.add(compact);
+  if (/\d/.test(sourceForNumeric)) {
+    if (sourceForNumeric.length >= 3) keys.add(sourceForNumeric);
+    for (const match of sourceForNumeric.matchAll(/\d+(?:[.,]\d+)?\s*(?:mm|cm|m)?/g)) {
+      const numericKey = match[0]?.trim();
+      if (numericKey && numericKey.length >= 1) {
+        keys.add(numericKey);
+        keys.add(numericKey.replace(/\s+/g, ''));
+      }
+    }
+    return [...keys];
+  }
   const firstLong = core.split(' ').find((w) => w.length >= 4);
   if (firstLong) keys.add(firstLong);
   return [...keys];
@@ -190,6 +203,10 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
  */
 function containsWord(text: string, phrase: string): boolean {
   return new RegExp(`\\b${escapeRegExp(phrase)}\\b`).test(text);
+}
+
+function containsNegatedWord(text: string, phrase: string): boolean {
+  return new RegExp(`\\b(?:sin|no(?:\\s+\\w+){0,4})\\s+${escapeRegExp(phrase)}\\b`).test(text);
 }
 
 /**
@@ -207,6 +224,10 @@ export function matchOptionInText(
   for (const option of options) {
     if (typeof option?.nombre !== 'string') continue;
     for (const key of optionMatchKeys(option.nombre)) {
+      const optionIsNegative = /^\s*(?:sin|no)\b/.test(normalizeText(option.nombre));
+      if (!optionIsNegative && containsNegatedWord(t, key)) {
+        continue;
+      }
       if (key.length > bestLen && containsWord(t, key)) {
         best = { id: option.id, nombre: option.nombre };
         bestLen = key.length;

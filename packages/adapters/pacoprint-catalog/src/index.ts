@@ -395,7 +395,14 @@ function matchesSearch(article: PacoPrintCatalogArticle, normalizedText: string)
   }
   const name = normalizeSearchText(article.nombre);
   const id = normalizeSearchText(article.id);
-  return Boolean(name?.includes(normalizedText) || id?.includes(normalizedText));
+  if ((name && (name.includes(normalizedText) || normalizedText.includes(name))) || id?.includes(normalizedText)) {
+    return true;
+  }
+  const nameTokens = (name ?? '')
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !/^\d+\s*g$|^\d+g$|^\d+$/.test(token));
+  return nameTokens.length > 0 && nameTokens.every((token) => normalizedText.includes(token));
 }
 
 function formatArticleRecord(article: PacoPrintCatalogArticle): PacoPrintCatalogCandidate {
