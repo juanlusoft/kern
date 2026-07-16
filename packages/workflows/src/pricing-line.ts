@@ -61,6 +61,31 @@ function containsNegatedPhrase(text: string, phrase: string): boolean {
   );
 }
 
+function isContextlessGenericChoice(value: string): boolean {
+  const tokens = normalizedTokens(value);
+  if (tokens.length === 0) {
+    return false;
+  }
+  const genericTokens = new Set([
+    'todo',
+    'toda',
+    'todos',
+    'todas',
+    'el',
+    'la',
+    'los',
+    'las',
+    'perimetro',
+    'perimetral',
+    'cada',
+    'cm',
+    'mm',
+    'metro',
+    'metros'
+  ]);
+  return tokens.every((token) => genericTokens.has(token) || /^\d+(?:[.,]\d+)?$/.test(token));
+}
+
 function labelsForNegation(...labels: string[]): string[] {
   const expanded = new Set<string>();
   for (const label of labels) {
@@ -187,6 +212,11 @@ function rawTextSupportsStructuredChoice(input: {
     return false;
   }
   const rawMessage = input.rawMessage;
+  const optionIncludesAttributeLabel = containsPhrase(input.selected.nombre, input.displayLabel);
+  const rawMentionsAttributeLabel = containsPhrase(rawMessage, input.displayLabel);
+  if ((optionIncludesAttributeLabel || isContextlessGenericChoice(input.selected.nombre)) && !rawMentionsAttributeLabel) {
+    return false;
+  }
   const valueText = typeof input.rawValue === 'string' || typeof input.rawValue === 'number' ? String(input.rawValue) : '';
   const labels = [input.displayLabel, valueText, input.selected.nombre].filter((label) => label.trim().length > 0);
   if (labels.some((label) => containsNegatedPhrase(rawMessage, label))) {
@@ -203,6 +233,35 @@ function rawTextSupportsStructuredNumber(rawMessage: string | null, labels: stri
     return false;
   }
   return extractNumberNearLabel(rawMessage, labels) !== null;
+}
+
+function rawTextSupportsDefault(input: {
+  rawMessage: string | null;
+  ruleType: string | undefined;
+  ruleName: string;
+  displayLabel: string;
+  defaultValue: string | number | boolean;
+  attribute: ResolvedAttribute | null;
+}): boolean {
+  if (!input.rawMessage) {
+    return false;
+  }
+  if (input.ruleType === 'select' && input.attribute) {
+    const selected = selectChoice(input.attribute, input.defaultValue);
+    return Boolean(
+      selected &&
+        rawTextSupportsStructuredChoice({
+          rawMessage: input.rawMessage,
+          displayLabel: input.displayLabel,
+          rawValue: input.defaultValue,
+          selected
+        })
+    );
+  }
+  if (input.ruleType === 'number' || input.ruleType === 'numero') {
+    return rawTextSupportsStructuredNumber(input.rawMessage, [input.ruleName, input.displayLabel]);
+  }
+  return containsPhrase(input.rawMessage, input.displayLabel) || containsPhrase(input.rawMessage, input.ruleName);
 }
 
 export interface LineAttributeResolution {
@@ -268,7 +327,11 @@ export function resolveLineAttributes(
       if (rawMessage && rule.tipo === 'select' && attribute?.valores_posibles && attribute.valores_posibles.length > 0) {
         const matched = matchOptionInText(rawMessage, attribute.valores_posibles);
         if (matched) {
-          value = matched.id;
+          const optionIncludesAttributeLabel = containsPhrase(matched.nombre, displayLabel) || containsPhrase(matched.nombre, ruleName);
+          const rawMentionsAttributeLabel = containsPhrase(rawMessage, displayLabel) || containsPhrase(rawMessage, ruleName);
+          if ((!optionIncludesAttributeLabel && !isContextlessGenericChoice(matched.nombre)) || rawMentionsAttributeLabel) {
+            value = matched.id;
+          }
         }
       }
       // 2) Respaldo: opciones estructuradas que haya dado el modelo.
@@ -306,7 +369,15 @@ export function resolveLineAttributes(
         rule.obligatorio &&
         !rawMessageNegatesAttribute &&
         rule.valor_defecto !== undefined &&
-        rule.valor_defecto !== null
+        rule.valor_defecto !== null &&
+        rawTextSupportsDefault({
+          rawMessage,
+          ruleType: rule.tipo,
+          ruleName,
+          displayLabel,
+          defaultValue: rule.valor_defecto,
+          attribute
+        })
       ) {
         value = rule.valor_defecto;
         appliedDefault = true;
