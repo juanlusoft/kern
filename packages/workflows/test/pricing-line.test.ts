@@ -10,7 +10,7 @@ const DIBOND: PacoPrintCatalogCandidate = {
   tipo_calculo: 'm2',
   json_calcular_precio: {
     atributos: [
-      { atributo_id: 'diseno', nombre: 'Diseño diferente', tipo: 'number', obligatorio: true },
+      { atributo_id: 'diseno', nombre: 'Dise?o diferente', tipo: 'number', obligatorio: true },
       { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true }
     ] as never
   },
@@ -28,11 +28,11 @@ const DIBOND: PacoPrintCatalogCandidate = {
 
 const CARTON_PLUMA: PacoPrintCatalogCandidate = {
   id: 'carton-1',
-  nombre: 'Cartón Pluma',
+  nombre: 'Carton Pluma',
   tipo_calculo: 'm2',
   json_calcular_precio: {
     atributos: [
-      { atributo_id: 'diseno', nombre: 'Diseño diferente', tipo: 'number', obligatorio: true },
+      { atributo_id: 'diseno', nombre: 'Dise?o diferente', tipo: 'number', obligatorio: true },
       { atributo_id: 'grosor', nombre: 'Grosor', tipo: 'select', obligatorio: true },
       { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true }
     ] as never
@@ -63,13 +63,18 @@ const LONA_FRONTLIT: PacoPrintCatalogCandidate = {
   tipo_calculo: 'm2',
   json_calcular_precio: {
     atributos: [
+      { atributo_id: 'diseno', nombre: 'Dise?o diferente', tipo: 'number', obligatorio: false },
       { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true },
       { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
-      { atributo_id: 'ollado', nombre: 'Ollado metálico', tipo: 'select', obligatorio: false },
+      { atributo_id: 'ollado', nombre: 'Ollado met?lico', tipo: 'select', obligatorio: false },
       { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
     ] as never
   },
   atributos: [
+    {
+      id: 'diseno',
+      nombre: 'Dise?o diferente'
+    },
     {
       id: 'corte',
       nombre: 'Corte',
@@ -82,23 +87,23 @@ const LONA_FRONTLIT: PacoPrintCatalogCandidate = {
       id: 'refuerzo',
       nombre: 'Refuerzo',
       valores_posibles: [
-        { id: 'termosellado', nombre: 'Termosellado (todo el perímetro)' },
+        { id: 'termosellado', nombre: 'Termosellado (todo el per?metro)' },
         { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
       ]
     },
     {
       id: 'ollado',
-      nombre: 'Ollado metálico',
+      nombre: 'Ollado met?lico',
       valores_posibles: [
-        { id: '50', nombre: 'Todo el perímetro (cada 50 cm)' },
-        { id: '100', nombre: 'Todo el perímetro (cada 100 cm)' }
+        { id: '50', nombre: 'Todo el per?metro (cada 50 cm)' },
+        { id: '100', nombre: 'Todo el per?metro (cada 100 cm)' }
       ]
     },
     {
       id: 'velcro',
       nombre: 'Velcro',
       valores_posibles: [
-        { id: 'perimetro', nombre: 'Velcro Todo el perímetro' },
+        { id: 'perimetro', nombre: 'Velcro Todo el per?metro' },
         { id: 'hembra', nombre: 'Velcro hembra cosido' }
       ]
     }
@@ -148,9 +153,9 @@ const DIBOND_WITHOUT_NEGATIVE_LAMINADO: PacoPrintCatalogCandidate = {
   ]
 };
 
-test('pricing line resolves numeric diseño diferente from full user text', () => {
+test('pricing line resolves numeric diseno diferente from full user text', () => {
   const result = resolveLineAttributes(DIBOND, {
-    rawMessage: 'Dime el precio de 10 unidades de dibond de 50x40cm. Diseño diferente: 1. Impresión con frente y reverso iguales y corte escuadrado.',
+    rawMessage: 'Dime el precio de 10 unidades de dibond de 50x40cm. Dise?o diferente: 1. Impresi?n con frente y reverso iguales y corte escuadrado.',
     resolvedUnits: 10,
     resolvedAlto: 40,
     resolvedAncho: 50,
@@ -163,24 +168,24 @@ test('pricing line resolves numeric diseño diferente from full user text', () =
   assert.equal(result.resolvedAttributes.corte, 'escuadrado');
 });
 
-test('pricing line resolves numeric diseño diferente from short clarification text', () => {
+test('pricing line rejects model-proposed select options without text backing', () => {
   const result = resolveLineAttributes(DIBOND, {
-    rawMessage: 'solo 1 diseño diferente',
+    rawMessage: 'solo 1 dise?o diferente',
     resolvedUnits: 10,
     resolvedAlto: 40,
     resolvedAncho: 50,
     resolvedOptions: { corte: 'escuadrado' }
   });
 
-  assert.deepEqual(result.missingFields, []);
+  assert.deepEqual(result.missingFields, ['Corte']);
   assert.deepEqual(result.invalidFields, []);
   assert.equal(result.resolvedAttributes.diseno, 1);
-  assert.equal(result.resolvedAttributes.corte, 'escuadrado');
+  assert.equal(result.resolvedAttributes.corte, undefined);
 });
 
-test('pricing line resolves plural diseños diferentes from clarification text', () => {
+test('pricing line resolves plural disenos diferentes from clarification text', () => {
   const result = resolveLineAttributes(DIBOND, {
-    rawMessage: 'Son 5 unidades de cartón pluma y 3 diseños diferentes.',
+    rawMessage: 'Son 5 unidades de carton pluma, 3 dise?os diferentes y corte con forma.',
     resolvedUnits: 5,
     resolvedAlto: 50,
     resolvedAncho: 120,
@@ -195,7 +200,7 @@ test('pricing line resolves plural diseños diferentes from clarification text',
 
 test('pricing line resolves compact numeric select options such as 10mm', () => {
   const result = resolveLineAttributes(CARTON_PLUMA, {
-    rawMessage: 'Necesito el precio de 5 unidades de Cartón Pluma de 120x50cm. Diseño diferente: 3. Grosor 10mm, impresión anverso y corte con forma.',
+    rawMessage: 'Necesito el precio de 5 unidades de Carton Pluma de 120x50cm. Dise?o diferente: 3. Grosor 10mm, impresi?n anverso y corte con forma.',
     resolvedUnits: 5,
     resolvedAlto: 50,
     resolvedAncho: 120,
@@ -209,14 +214,14 @@ test('pricing line resolves compact numeric select options such as 10mm', () => 
   assert.equal(result.resolvedAttributes.corte, 'forma');
 });
 
-test('pricing line does not apply optional priced defaults that the user did not request', () => {
+test('pricing line ignores model-proposed extras unless the raw text backs them', () => {
   const result = resolveLineAttributes(LONA_FRONTLIT, {
     rawMessage:
-      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el perímetro, Ollado metálico todo el perímetro cada 100 cm',
+      'Lona Frontlit 510g 300x120 cm, 1 unidad, corte escuadrado, refuerzo termosellado todo el per?metro, ollado met?lico cada 100 cm, sin velcro',
     resolvedUnits: 1,
     resolvedAlto: 120,
     resolvedAncho: 300,
-    resolvedOptions: {}
+    resolvedOptions: { diseno: 2, velcro: 'perimetro' }
   });
 
   assert.deepEqual(result.missingFields, []);
@@ -224,19 +229,21 @@ test('pricing line does not apply optional priced defaults that the user did not
   assert.equal(result.resolvedAttributes.corte, 'escuadrado');
   assert.equal(result.resolvedAttributes.refuerzo, 'termosellado');
   assert.equal(result.resolvedAttributes.ollado, '100');
+  assert.equal(result.resolvedAttributes.diseno, undefined);
   assert.equal(result.resolvedAttributes.velcro, undefined);
   assert.equal(result.defaultsApplied.includes('Velcro'), false);
+  assert.equal(result.optionsSummary.some((item) => item.includes('Dise?o')), false);
   assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
 });
 
 test('pricing line ignores model-proposed select options that are not backed by user text', () => {
   const result = resolveLineAttributes(LONA_FRONTLIT, {
     rawMessage:
-      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el perímetro, Ollado metálico todo el perímetro cada 100 cm',
+      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el per?metro, Ollado met?lico todo el per?metro cada 100 cm',
     resolvedUnits: 1,
     resolvedAlto: 120,
     resolvedAncho: 300,
-    resolvedOptions: { velcro: 'Velcro Todo el perímetro' }
+    resolvedOptions: { velcro: 'Velcro Todo el per?metro' }
   });
 
   assert.equal(result.resolvedAttributes.velcro, undefined);
@@ -245,7 +252,7 @@ test('pricing line ignores model-proposed select options that are not backed by 
 
 test('pricing line resolves explicit negative options before defaults', () => {
   const result = resolveLineAttributes(DIBOND_WITH_LAMINADO, {
-    rawMessage: 'Dibond blanco de 70x50 cm, impresión frente y reverso iguales, corte escuadrado, sin laminado.',
+    rawMessage: 'Dibond blanco de 70x50 cm, impresi?n frente y reverso iguales, corte escuadrado, sin laminado.',
     resolvedUnits: 5,
     resolvedAlto: 50,
     resolvedAncho: 70,
@@ -260,7 +267,7 @@ test('pricing line resolves explicit negative options before defaults', () => {
 
 test('pricing line does not apply a required default when the user negates that attribute', () => {
   const result = resolveLineAttributes(DIBOND_WITHOUT_NEGATIVE_LAMINADO, {
-    rawMessage: 'Dibond blanco de 70x50 cm, impresión frente y reverso iguales, corte escuadrado, sin laminado.',
+    rawMessage: 'Dibond blanco de 70x50 cm, impresi?n frente y reverso iguales, corte escuadrado, sin laminado.',
     resolvedUnits: 5,
     resolvedAlto: 50,
     resolvedAncho: 70,
