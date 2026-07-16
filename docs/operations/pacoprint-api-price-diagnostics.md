@@ -116,8 +116,8 @@ await quote('dibond_70x50_5uds_blanco_doble_cara_sin_laminado', {
 Customer-facing problem observed:
 
 ```text
-5 unidades de dibond blanco de 70x50 cm, 1 dise?o diferente,
-impresi?n frente y reverso iguales, corte escuadrado, sin laminado.
+5 unidades de dibond blanco de 70x50 cm, 1 diseno diferente,
+impresion frente y reverso iguales, corte escuadrado, sin laminado.
 ```
 
 Current API catalog contains the required structure:
@@ -126,7 +126,7 @@ Current API catalog contains the required structure:
 article: Dibond
 article_id: 12
 Color Blanco: 10=160
-Impresi?n Frente y reverso iguales: 7=333
+Impresion Frente y reverso iguales: 7=333
 Corte Escuadrado: 8=117
 Laminado Sin Laminado: 14=175
 ```
@@ -193,8 +193,8 @@ Lona Frontlit 510g
 No design change requested by the user
 Anverso/frente
 Corte Escuadrado
-Refuerzo Termosellado todo el per?metro
-Ollado met?lico todo el per?metro cada 100 cm
+Refuerzo Termosellado todo el perimetro
+Ollado metalico todo el perimetro cada 100 cm
 No Velcro attribute present
 ```
 
@@ -243,17 +243,17 @@ Do not store:
 ## Escalation template
 
 ```text
-Caso:
-- Artículo:
-- Medidas:
-- Unidades:
-- Opciones:
-- Payload sin token:
-- Precio API:
-- Precio esperado por PacoPrint:
-- Diferencia:
+Case:
+- Item:
+- Measures:
+- Units:
+- Options:
+- Payload without token:
+- API price:
+- Expected PacoPrint price:
+- Difference:
 
-Conclusión técnica:
-- El payload no incluye opciones no solicitadas.
-- Si el precio esperado es correcto, revisar reglas/datos de la web/API.
+Technical conclusion:
+- The payload does not include options the user did not request.
+- If the expected price is correct, review the web/API rules and data.
 ```

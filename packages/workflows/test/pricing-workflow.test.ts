@@ -237,15 +237,15 @@ test('pricing quote line workflow ignores model-proposed extras without raw text
     tipo_calculo: 'm2',
     json_calcular_precio: {
       atributos: [
-        { atributo_id: 'diseno', nombre: 'Dise?o diferente', tipo: 'number', obligatorio: false },
+        { atributo_id: 'diseno', nombre: 'Diseno diferente', tipo: 'number', obligatorio: false },
         { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true },
         { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
-        { atributo_id: 'ollado', nombre: 'Ollado met?lico', tipo: 'select', obligatorio: false },
+        { atributo_id: 'ollado', nombre: 'Ollado metalico', tipo: 'select', obligatorio: false },
         { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
       ]
     },
     atributos: [
-      { id: 'diseno', nombre: 'Dise?o diferente' },
+      { id: 'diseno', nombre: 'Diseno diferente' },
       {
         id: 'corte',
         nombre: 'Corte',
@@ -258,23 +258,23 @@ test('pricing quote line workflow ignores model-proposed extras without raw text
         id: 'refuerzo',
         nombre: 'Refuerzo',
         valores_posibles: [
-          { id: 'termosellado', nombre: 'Termosellado (todo el per?metro)' },
+          { id: 'termosellado', nombre: 'Termosellado (todo el perimetro)' },
           { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
         ]
       },
       {
         id: 'ollado',
-        nombre: 'Ollado met?lico',
+        nombre: 'Ollado metalico',
         valores_posibles: [
-          { id: '50', nombre: 'Todo el per?metro (cada 50 cm)' },
-          { id: '100', nombre: 'Todo el per?metro (cada 100 cm)' }
+          { id: '50', nombre: 'Todo el perimetro (cada 50 cm)' },
+          { id: '100', nombre: 'Todo el perimetro (cada 100 cm)' }
         ]
       },
       {
         id: 'velcro',
         nombre: 'Velcro',
         valores_posibles: [
-          { id: 'perimetro', nombre: 'Velcro Todo el per?metro' },
+          { id: 'perimetro', nombre: 'Velcro Todo el perimetro' },
           { id: 'hembra', nombre: 'Velcro hembra cosido' }
         ]
       }
@@ -392,7 +392,7 @@ test('pricing quote line workflow ignores model-proposed extras without raw text
     alto: 120,
     ancho: 300,
     options: { diseno: 2, velcro: 'perimetro' },
-    raw_message: 'Lona Frontlit 510g 300x120 cm, 1 unidad, corte escuadrado, refuerzo termosellado todo el per?metro, ollado met?lico cada 100 cm, sin velcro'
+    raw_message: 'Lona Frontlit 510g 300x120 cm, 1 unidad, corte escuadrado, refuerzo termosellado todo el perimetro, ollado metalico cada 100 cm, sin velcro'
   });
 
   assert.equal(result.status, 'completed');
