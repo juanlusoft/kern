@@ -250,6 +250,32 @@ test('pricing line ignores model-proposed select options that are not backed by 
   assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
 });
 
+test('pricing line does not apply required defaults that are not backed by user text', () => {
+  const catalog = structuredClone(LONA_FRONTLIT);
+  const rules = catalog.json_calcular_precio.atributos as unknown as Array<{ atributo_id?: unknown; obligatorio?: boolean }>;
+  const velcroRule = rules.find((rule) => rule.atributo_id === 'velcro');
+  assert.ok(velcroRule);
+  velcroRule.obligatorio = true;
+  const attributes = catalog.atributos as unknown as Array<{ id?: unknown; valores_posibles?: Array<{ nombre: string }> }>;
+  const velcroAttribute = attributes.find((attribute) => attribute.id === 'velcro');
+  assert.ok(velcroAttribute?.valores_posibles?.[0]);
+  velcroAttribute.valores_posibles[0].nombre = 'Todo el perimetro';
+
+  const result = resolveLineAttributes(catalog, {
+    rawMessage:
+      'Lona Frontlit 510g 300x120 cm 1 uds Corte Escuadrado, Refuerzo Termosellado todo el perimetro, Ollado metalico todo el perimetro cada 100 cm',
+    resolvedUnits: 1,
+    resolvedAlto: 120,
+    resolvedAncho: 300,
+    resolvedOptions: {}
+  });
+
+  assert.deepEqual(result.missingFields, ['Velcro']);
+  assert.equal(result.resolvedAttributes.velcro, undefined);
+  assert.equal(result.defaultsApplied.includes('Velcro'), false);
+  assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
+});
+
 test('pricing line resolves explicit negative options before defaults', () => {
   const result = resolveLineAttributes(DIBOND_WITH_LAMINADO, {
     rawMessage: 'Dibond blanco de 70x50 cm, impresion frente y reverso iguales, corte escuadrado, sin laminado.',

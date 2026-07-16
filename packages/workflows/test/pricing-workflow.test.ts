@@ -179,7 +179,7 @@ function buildPricingAdapter(recordedQuoteCalls: Array<Record<string, unknown>>)
   };
 }
 
-test('pricing quote line workflow resolves PacoPrint defaults and returns a governed runtime result', () => {
+test('pricing quote line workflow resolves text-backed PacoPrint options and returns a governed runtime result', () => {
   const calls: Array<Record<string, unknown>> = [];
   const adapter = buildPricingAdapter(calls);
   const runtime = new InMemoryGovernedWorkflowRuntime({
@@ -200,7 +200,8 @@ test('pricing quote line workflow resolves PacoPrint defaults and returns a gove
     unidades: 2,
     alto: 100,
     ancho: 200,
-    options: {}
+    options: {},
+    raw_message: 'Vinilo Monomérico Plus blanco de 200x100 cm, 2 unidades'
   });
 
   assert.equal(result.status, 'completed');
@@ -210,7 +211,7 @@ test('pricing quote line workflow resolves PacoPrint defaults and returns a gove
   assert.equal(result.response.data?.article_name, 'Vinilo Monomérico Plus');
   assert.equal(result.response.data?.total, 1210);
   const responseData = result.response.data as Record<string, unknown> | null;
-  assert.equal((responseData?.defaults_applied as string[] | undefined)?.includes('Color'), true);
+  assert.equal(responseData?.defaults_applied, null);
   assert.equal((responseData?.options_summary as string[] | undefined)?.includes('Color Blanco'), true);
   assert.equal(calls.length >= 2, true);
   assert.equal(calls[0].type, 'search');

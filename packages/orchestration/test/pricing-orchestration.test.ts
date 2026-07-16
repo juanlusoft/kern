@@ -210,7 +210,7 @@ test('pricing proposal travels through the orchestration boundary into the runti
   const boundary = buildBoundary();
   const outcome = boundary.execute({
     request_id: 'pricing-request-1',
-    user_message: 'Quiero precio de Vinilo Monomérico Plus',
+    user_message: 'Quiero precio de Vinilo Monomérico Plus blanco',
     organization_id: 'org-pacoprint',
     principal_id: 'principal-gema',
     actor: {
@@ -237,6 +237,7 @@ test('pricing proposal travels through the orchestration boundary into the runti
   assert.equal(outcome.workflow_result?.response.data?.article_name, 'Vinilo Monomérico Plus');
   assert.equal(outcome.workflow_result?.response.data?.total, 1210);
   const responseData = outcome.workflow_result?.response.data as Record<string, unknown> | null;
-  assert.equal((responseData?.defaults_applied as string[] | undefined)?.includes('Color'), true);
+  assert.equal(responseData?.defaults_applied, null);
+  assert.equal((responseData?.options_summary as string[] | undefined)?.includes('Color Blanco'), true);
   assert.equal(outcome.workflow_result?.capability_result?.output?.result.status, 'found');
 });
