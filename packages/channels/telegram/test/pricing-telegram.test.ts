@@ -65,3 +65,23 @@ test('Telegram renders pricing results as human-readable text', () => {
   assert.equal(text.includes('{'), false);
   assert.equal(text.includes('runtime completed'), false);
 });
+
+test('Telegram renders web pricing measure rejections without leaking internal adapter names', () => {
+  const text = buildTelegramOutboundText({
+    ...buildPricingOutcome(),
+    reason: 'PacoPrint alto below minimum',
+    response: {
+      response_source: 'workflow_blocked',
+      workflow_kind: 'pricing.quote_line',
+      status: 'denied',
+      message: 'PacoPrint alto below minimum',
+      data: {
+        reason: 'PacoPrint alto below minimum'
+      }
+    }
+  });
+
+  assert.equal(text, 'La web rechaza la medida: alto por debajo del mínimo permitido.');
+  assert.equal(text.includes('PacoPrint'), false);
+  assert.equal(text.includes('No puedo calcular'), false);
+});
