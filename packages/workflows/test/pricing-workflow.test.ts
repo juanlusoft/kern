@@ -218,6 +218,190 @@ test('pricing quote line workflow resolves PacoPrint defaults and returns a gove
   assert.equal((calls[1].input as { atributos?: Record<string, unknown> }).atributos?.color, 'white');
 });
 
+test('pricing quote line workflow ignores model-proposed extras without raw text backing', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const now = '2026-06-29T00:00:00.000Z';
+  const sourceEvidence = createSourceEvidence({
+    source_id: 'source-extra-1',
+    source_type: 'pricing.catalog',
+    source_system: 'PacoPrint',
+    resource_id: 'art-extra-1',
+    record_id: 'record-extra-1',
+    field_path: 'json_calcular_precio',
+    observed_at: now,
+    correlation_id: 'corr-pricing-extra-1'
+  });
+  const candidate = {
+    id: 'art-extra-1',
+    nombre: 'Lona Frontlit 510g',
+    tipo_calculo: 'm2',
+    json_calcular_precio: {
+      atributos: [
+        { atributo_id: 'diseno', nombre: 'Diseno diferente', tipo: 'number', obligatorio: false },
+        { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true },
+        { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
+        { atributo_id: 'ollado', nombre: 'Ollado metalico', tipo: 'select', obligatorio: false },
+        { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
+      ]
+    },
+    atributos: [
+      { id: 'diseno', nombre: 'Diseno diferente' },
+      {
+        id: 'corte',
+        nombre: 'Corte',
+        valores_posibles: [
+          { id: 'escuadrado', nombre: 'Escuadrado' },
+          { id: 'forma', nombre: 'Con Forma' }
+        ]
+      },
+      {
+        id: 'refuerzo',
+        nombre: 'Refuerzo',
+        valores_posibles: [
+          { id: 'termosellado', nombre: 'Termosellado (todo el perimetro)' },
+          { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
+        ]
+      },
+      {
+        id: 'ollado',
+        nombre: 'Ollado metalico',
+        valores_posibles: [
+          { id: '50', nombre: 'Todo el perimetro (cada 50 cm)' },
+          { id: '100', nombre: 'Todo el perimetro (cada 100 cm)' }
+        ]
+      },
+      {
+        id: 'velcro',
+        nombre: 'Velcro',
+        valores_posibles: [
+          { id: 'perimetro', nombre: 'Velcro Todo el perimetro' },
+          { id: 'hembra', nombre: 'Velcro hembra cosido' }
+        ]
+      }
+    ]
+  };
+  const searchResult = {
+    query_id: 'query-search-extra-1',
+    organization_id: 'org-pacoprint',
+    correlation_id: 'corr-pricing-extra-1',
+    resource_type: 'pricing.catalog',
+    resource_id: 'art-extra-1',
+    created_at: now,
+    evidence_links: ['evidence-search-extra-1'],
+    produced_by_adapter: true,
+    status: 'found',
+    data: { candidates: [candidate] },
+    source_evidence: [sourceEvidence],
+    error: null,
+    decision: {
+      query_id: 'query-search-extra-1',
+      adapter_id: 'pacoprint-catalog',
+      source_system: 'PacoPrint',
+      status: 'found',
+      reason: 'found',
+      authorization: {
+        adapter_id: 'pacoprint-catalog',
+        source_system: 'PacoPrint',
+        organization_id: 'org-pacoprint',
+        correlation_id: 'corr-pricing-extra-1',
+        actor: null,
+        authorized: true,
+        reason: 'allowed'
+      }
+    }
+  } as unknown as ResourceResult;
+  const quoteResult = {
+    query_id: 'query-quote-extra-1',
+    organization_id: 'org-pacoprint',
+    correlation_id: 'corr-pricing-extra-1',
+    resource_type: 'pricing.quote_line',
+    resource_id: 'art-extra-1',
+    created_at: now,
+    evidence_links: ['evidence-quote-extra-1'],
+    produced_by_adapter: true,
+    status: 'found',
+    data: {
+      kind: 'pricing.quote_line',
+      article: 'Lona Frontlit 510g',
+      article_name: 'Lona Frontlit 510g',
+      articulo_id: 'art-extra-1',
+      unidades: 1,
+      alto: 120,
+      ancho: 300,
+      options: { diseno: 2, velcro: 'perimetro' },
+      attributes: { corte: 'escuadrado', refuerzo: 'termosellado', ollado: '100' },
+      defaults_applied: null,
+      options_summary: ['Corte Escuadrado'],
+      neto_unitario: 500,
+      neto_base: 500,
+      neto_total: 500,
+      iva_percentage: 21,
+      iva_amount: 105,
+      total: 605,
+      stock: true,
+      source_system: 'Holded',
+      source_record_id: 'F26/1932'
+    },
+    source_evidence: [sourceEvidence],
+    error: null,
+    decision: {
+      query_id: 'query-quote-extra-1',
+      adapter_id: 'pacoprint-catalog',
+      source_system: 'PacoPrint',
+      status: 'found',
+      reason: 'found',
+      authorization: {
+        adapter_id: 'pacoprint-catalog',
+        source_system: 'PacoPrint',
+        organization_id: 'org-pacoprint',
+        correlation_id: 'corr-pricing-extra-1',
+        actor: null,
+        authorized: true,
+        reason: 'allowed'
+      }
+    }
+  } as unknown as ResourceResult;
+  const adapter: PacoPrintCatalogAdapterPort = {
+    adapter_id: 'pacoprint-catalog',
+    source_system: 'PacoPrint',
+    catalogSearch(input: PacoPrintCatalogSearchInput) {
+      calls.push({ type: 'search', input });
+      return searchResult;
+    },
+    quoteLine(input: PacoPrintQuoteLineInput) {
+      calls.push({ type: 'quote', input });
+      return quoteResult;
+    }
+  };
+  const runtime = new InMemoryGovernedWorkflowRuntime({
+    now: () => new Date('2026-06-29T00:00:00.000Z'),
+    pacoPrintCatalogAdapter: adapter,
+    resolveOrganizationContext: () => buildPricingOrganizationContext(),
+    resolveIdentityContext: () => buildPricingIdentityContext()
+  });
+  runtime.registerCapability(createPricingQuoteLineCapability(adapter, {}, 'org-pacoprint'));
+
+  const result = runtime.executeWorkflow({
+    kind: 'pricing.quote_line',
+    workflow_id: 'pricing-workflow-extras',
+    organization_hint: 'org-pacoprint',
+    principal_hint: 'principal-gema',
+    correlation_id: 'corr-pricing-extra-1',
+    article: 'Lona Frontlit 510g',
+    unidades: 1,
+    alto: 120,
+    ancho: 300,
+    options: { diseno: 2, velcro: 'perimetro' },
+    raw_message: 'Lona Frontlit 510g 300x120 cm, 1 unidad, corte escuadrado, refuerzo termosellado todo el perimetro, ollado metalico cada 100 cm, sin velcro'
+  });
+
+  assert.equal(result.status, 'completed');
+  const quoteCall = calls.find((call) => call.type === 'quote') as { input?: { atributos?: Record<string, unknown> } } | undefined;
+  assert.deepEqual(quoteCall?.input?.atributos, { corte: 'escuadrado', refuerzo: 'termosellado', ollado: '100' });
+  assert.equal('diseno' in (quoteCall?.input?.atributos ?? {}), false);
+  assert.equal('velcro' in (quoteCall?.input?.atributos ?? {}), false);
+});
+
 test('pricing quote line workflow asks for clarification when the article is missing', () => {
   const calls: Array<Record<string, unknown>> = [];
   const adapter = buildPricingAdapter(calls);

@@ -184,23 +184,25 @@ function rawTextSupportsStructuredChoice(input: {
   selected: { id: string | number; nombre: string };
 }): boolean {
   if (!input.rawMessage) {
-    return true;
+    return false;
   }
-  const trimmed = input.rawMessage.trim();
-  const isShortClarification = trimmed.length <= 90 && !/\d+(?:[.,]\d+)?\s*[x×]\s*\d+(?:[.,]\d+)?/.test(trimmed);
   const rawMessage = input.rawMessage;
   const valueText = typeof input.rawValue === 'string' || typeof input.rawValue === 'number' ? String(input.rawValue) : '';
   const labels = [input.displayLabel, valueText, input.selected.nombre].filter((label) => label.trim().length > 0);
   if (labels.some((label) => containsNegatedPhrase(rawMessage, label))) {
     return false;
   }
-  if (isShortClarification) {
-    return true;
-  }
   if (matchOptionInText(rawMessage, [input.selected])) {
     return true;
   }
   return labels.some((label) => containsPhrase(rawMessage, label));
+}
+
+function rawTextSupportsStructuredNumber(rawMessage: string | null, labels: string[]): boolean {
+  if (!rawMessage) {
+    return false;
+  }
+  return extractNumberNearLabel(rawMessage, labels) !== null;
 }
 
 export interface LineAttributeResolution {
@@ -273,11 +275,20 @@ export function resolveLineAttributes(
       if ((value === undefined || value === null || value === '') && resolvedOptions) {
         for (const [key, optionValue] of Object.entries(resolvedOptions)) {
           if (normalizeSearchText(key) === normalizedKey || normalizeSearchText(key) === normalizedLabel) {
+            if (!rawMessage) {
+              continue;
+            }
             if (rule.tipo === 'select' && attribute) {
               const selected = selectChoice(attribute, optionValue);
               if (!selected || !rawTextSupportsStructuredChoice({ rawMessage, displayLabel, rawValue: optionValue, selected })) {
                 continue;
               }
+            } else if (rule.tipo === 'number' || rule.tipo === 'numero') {
+              if (!rawTextSupportsStructuredNumber(rawMessage, [ruleName, displayLabel])) {
+                continue;
+              }
+            } else if (!containsPhrase(rawMessage, displayLabel) && !containsPhrase(rawMessage, ruleName)) {
+              continue;
             }
             value = optionValue;
             break;

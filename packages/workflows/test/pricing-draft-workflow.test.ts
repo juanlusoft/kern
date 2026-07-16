@@ -58,19 +58,110 @@ const LONA = {
   nombre: 'Lona Frontlit',
   tipo_calculo: 'm2',
   json_calcular_precio: {
-    atributos: [{ atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true, valores_validos: ['recto', 'curvo'] }]
+    atributos: [
+      { atributo_id: 'diseno', nombre: 'Diseno diferente', tipo: 'number', obligatorio: false },
+      { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true, valores_validos: ['recto', 'curvo'] },
+      { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
+      { atributo_id: 'ollado', nombre: 'Ollado metalico', tipo: 'select', obligatorio: false },
+      { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
+    ]
   },
   atributos: [
+    {
+      id: 'diseno',
+      nombre: 'Diseno diferente'
+    },
     {
       id: 'corte',
       nombre: 'Corte',
       valores_posibles: [
         { id: 'recto', nombre: 'Recto' },
-        { id: 'curvo', nombre: 'Curvo' }
+        { id: 'curvo', nombre: 'Curvo' },
+        { id: 'escuadrado', nombre: 'Escuadrado' },
+        { id: 'forma', nombre: 'Con Forma' }
+      ]
+    },
+    {
+      id: 'refuerzo',
+      nombre: 'Refuerzo',
+      valores_posibles: [
+        { id: 'termosellado', nombre: 'Termosellado (todo el perimetro)' },
+        { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
+      ]
+    },
+    {
+      id: 'ollado',
+      nombre: 'Ollado metalico',
+      valores_posibles: [
+        { id: '50', nombre: 'Todo el perimetro (cada 50 cm)' },
+        { id: '100', nombre: 'Todo el perimetro (cada 100 cm)' }
+      ]
+    },
+    {
+      id: 'velcro',
+      nombre: 'Velcro',
+      valores_posibles: [
+        { id: 'perimetro', nombre: 'Velcro Todo el perimetro' },
+        { id: 'hembra', nombre: 'Velcro hembra cosido' }
       ]
     }
   ]
 };
+
+const LONA_ESCUADRADO = {
+  ...LONA,
+  id: 'lona-escuadrado',
+  json_calcular_precio: {
+    atributos: [
+      { atributo_id: 'diseno', nombre: 'Diseno diferente', tipo: 'number', obligatorio: false },
+      { atributo_id: 'corte', nombre: 'Corte', tipo: 'select', obligatorio: true, valores_validos: ['escuadrado', 'forma'] },
+      { atributo_id: 'refuerzo', nombre: 'Refuerzo', tipo: 'select', obligatorio: false },
+      { atributo_id: 'ollado', nombre: 'Ollado metalico', tipo: 'select', obligatorio: false },
+      { atributo_id: 'velcro', nombre: 'Velcro', tipo: 'select', obligatorio: false, valor_defecto: 'perimetro' }
+    ]
+  },
+  atributos: [
+    {
+      id: 'diseno',
+      nombre: 'Diseno diferente'
+    },
+    {
+      id: 'corte',
+      nombre: 'Corte',
+      valores_posibles: [
+        { id: 'recto', nombre: 'Recto' },
+        { id: 'curvo', nombre: 'Curvo' },
+        { id: 'escuadrado', nombre: 'Escuadrado' },
+        { id: 'forma', nombre: 'Con Forma' }
+      ]
+    },
+    {
+      id: 'refuerzo',
+      nombre: 'Refuerzo',
+      valores_posibles: [
+        { id: 'termosellado', nombre: 'Termosellado (todo el perimetro)' },
+        { id: 'sin_refuerzo', nombre: 'Sin refuerzo' }
+      ]
+    },
+    {
+      id: 'ollado',
+      nombre: 'Ollado metalico',
+      valores_posibles: [
+        { id: '50', nombre: 'Todo el perimetro (cada 50 cm)' },
+        { id: '100', nombre: 'Todo el perimetro (cada 100 cm)' }
+      ]
+    },
+    {
+      id: 'velcro',
+      nombre: 'Velcro',
+      valores_posibles: [
+        { id: 'perimetro', nombre: 'Velcro Todo el perimetro' },
+        { id: 'hembra', nombre: 'Velcro hembra cosido' }
+      ]
+    }
+  ]
+};
+
 const VINILO = { id: 'vinilo-1', nombre: 'Vinilo Mate', tipo_calculo: 'm2', json_calcular_precio: { atributos: [] }, atributos: [] };
 
 function found(data: Record<string, unknown>, resource_id: string): ResourceResult {
@@ -113,7 +204,7 @@ function buildDraftAdapter(calls: Array<Record<string, unknown>>): PacoPrintCata
     catalogSearch(input: PacoPrintCatalogSearchInput) {
       calls.push({ type: 'search', text: input.text });
       const text = String(input.text).toLowerCase();
-      const candidate = text.includes('vinilo') ? VINILO : LONA;
+      const candidate = text.includes('vinilo') ? VINILO : text.includes('escuadrado') ? LONA_ESCUADRADO : LONA;
       return found({ candidates: [candidate] }, String(candidate.id));
     },
     quoteLine(input: PacoPrintQuoteLineInput) {
@@ -199,6 +290,35 @@ test('pricing draft: multi-line complete returns a draft with per-line prices an
   assert.equal(data.total, 181.5);
   assert.equal(data.neto_total, 150);
   assert.equal(data.iva_amount, 31.5);
+});
+
+test('pricing draft: ignores model-proposed extras unless the raw text backs them', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const runtime = buildRuntime(buildDraftAdapter(calls));
+
+  const result = runtime.executeWorkflow({
+    kind: 'pricing.quote_draft',
+    workflow_id: 'draft-extras',
+    organization_hint: 'org-pacoprint',
+    principal_hint: 'principal-gema',
+    correlation_id: 'corr',
+    customer: 'acme',
+    lines: [
+      {
+        text: 'Lona Frontlit 510g 300x120 cm, 1 unidad, corte escuadrado, refuerzo termosellado todo el perimetro, ollado metalico cada 100 cm, sin velcro',
+        article: 'lona frontlit',
+        alto: 120,
+        ancho: 300,
+        options: { diseno: 2, velcro: 'perimetro' }
+      }
+    ]
+  });
+
+  assert.equal(result.status, 'completed');
+  const quoteCall = calls.find((call) => call.type === 'quote') as { atributos?: Record<string, unknown> } | undefined;
+  assert.deepEqual(quoteCall?.atributos, { corte: 'escuadrado', refuerzo: 'termosellado', ollado: '100' });
+  assert.equal('diseno' in (quoteCall?.atributos ?? {}), false);
+  assert.equal('velcro' in (quoteCall?.atributos ?? {}), false);
 });
 
 test('pricing draft: any incomplete line blocks and names the missing datum per line', () => {
