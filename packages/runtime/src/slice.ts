@@ -27,6 +27,7 @@ import {
   createQwenNodeFetchTransport
 } from './transports';
 import { createConversationMemoryStore } from './conversation-memory';
+import { createLearningShadowRecorder, type LearningShadowRecorder } from './learning-shadow';
 import { type PacoPrintFetch } from '../../adapters/pacoprint-catalog/src/index';
 import type { QwenToolDefinition } from '../../orchestrators/qwen/src/index';
 import {
@@ -134,6 +135,7 @@ export interface InstallationRuntimeSlice {
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
   readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
   readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
+  readonly learningShadowRecorder: LearningShadowRecorder | null;
   pollOnce(limit?: number): ChannelMessageResult[];
   runLoop(options?: { maxIterations?: number; limit?: number }): ChannelMessageResult[][];
 }
@@ -1097,6 +1099,10 @@ export function startInstallationRuntime(input: {
     filePath: loaded.config.runtime_options.conversation_memory_file_path,
     now: nowFn
   });
+  const learningShadowRecorder = createLearningShadowRecorder({
+    config: loaded.config.runtime_options.learning_shadow,
+    now: nowFn
+  });
   const telegramAdapter = loaded.config.active_modules.includes('telegram-channel')
     ? createTelegramChannelAdapter({
         installation: buildTelegramInstallationConfig(loaded.config, secrets),
@@ -1160,6 +1166,7 @@ export function startInstallationRuntime(input: {
     orchestrationBoundary,
     telegramAdapter,
     openwebuiServer,
+    learningShadowRecorder,
     telegramTransport,
     now: nowFn
   });
@@ -1182,6 +1189,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
   readonly orchestrationBoundary: InMemoryOrchestrationBoundary;
   readonly telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
   readonly openwebuiServer: OpenWebUIChannelServerHandle | null;
+  readonly learningShadowRecorder: LearningShadowRecorder | null;
   private readonly telegramTransport: TelegramTransport | null;
   private readonly now: () => Date;
   private lastOffset: number | null = null;
@@ -1195,6 +1203,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
     orchestrationBoundary: InMemoryOrchestrationBoundary;
     telegramAdapter: ReturnType<typeof createTelegramChannelAdapter> | null;
     openwebuiServer: OpenWebUIChannelServerHandle | null;
+    learningShadowRecorder: LearningShadowRecorder | null;
     telegramTransport: TelegramTransport | null;
     now: () => Date;
   }) {
@@ -1206,6 +1215,7 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
     this.orchestrationBoundary = input.orchestrationBoundary;
     this.telegramAdapter = input.telegramAdapter;
     this.openwebuiServer = input.openwebuiServer;
+    this.learningShadowRecorder = input.learningShadowRecorder;
     this.telegramTransport = input.telegramTransport;
     this.now = input.now;
   }
@@ -1235,6 +1245,12 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
       });
       try {
         const result = this.telegramAdapter.handleTelegramUpdate(clonedUpdate);
+        let learning_shadow_error: string | null = null;
+        try {
+          this.learningShadowRecorder?.record(result);
+        } catch (error) {
+          learning_shadow_error = error instanceof Error ? error.message : 'learning shadow record failed';
+        }
         createRuntimeEvidence(this.evidenceLedger, this.now, {
           organization_id: this.config.organization.organization_id,
           correlation_id,
@@ -1243,7 +1259,8 @@ class InstallationRuntimeSliceImpl implements InstallationRuntimeSlice {
           data: {
             status: result.status,
             reason: result.reason,
-            channel_status: result.status
+            channel_status: result.status,
+            learning_shadow_error
           }
         });
         results.push(result);

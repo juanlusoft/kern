@@ -27,6 +27,7 @@ test('runtime config sample validates and resolves secrets', () => {
   assert.deepEqual(loaded.config.active_modules, ['telegram-channel', 'qwen-orchestrator', 'holded-read']);
   assert.deepEqual(loaded.config.active_capabilities, ['mock.resource.read']);
   assert.equal(loaded.config.runtime_options.evidence_ledger_file_path, null);
+  assert.equal(loaded.config.runtime_options.learning_shadow, null);
   assert.deepEqual(loaded.config.runtime_options.numa_hr?.time_type_by_label, {
     vacaciones: [5],
     'asuntos propios': [34]
@@ -44,6 +45,50 @@ test('runtime config sample validates and resolves secrets', () => {
   assert.equal(loaded.secrets.KERN_MODEL_BASE_URL, 'https://model.example.test');
   assert.equal(loaded.secrets.KERN_MODEL_NAME, 'kern-qwen');
   assert.equal(loaded.secrets.KERN_MODEL_API_KEY, 'model-secret');
+});
+
+test('runtime config accepts learning shadow only with an explicit jsonl path', () => {
+  const sample = createSampleInstallationConfig();
+  const loaded = loadInstallationConfig(
+    {
+      ...sample,
+      runtime_options: {
+        ...sample.runtime_options,
+        learning_shadow: {
+          enabled: true,
+          file_path: '/tmp/kern-learning/pacoprint-learning-shadow.jsonl',
+          capture_raw_text: false,
+          capture_model_params: false
+        }
+      }
+    },
+    buildEnv()
+  );
+
+  assert.deepEqual(loaded.config.runtime_options.learning_shadow, {
+    enabled: true,
+    file_path: '/tmp/kern-learning/pacoprint-learning-shadow.jsonl',
+    capture_raw_text: false,
+    capture_model_params: false
+  });
+});
+
+test('runtime config rejects enabled learning shadow without a jsonl path', () => {
+  const sample = createSampleInstallationConfig();
+  assert.throws(
+    () =>
+      validateInstallationConfig({
+        ...sample,
+        runtime_options: {
+          ...sample.runtime_options,
+          learning_shadow: {
+            enabled: true,
+            file_path: null
+          }
+        }
+      }),
+    (error) => error instanceof RuntimeConfigError && error.field === 'runtime_options.learning_shadow.file_path'
+  );
 });
 
 test('runtime config fails closed on a missing env secret', () => {
