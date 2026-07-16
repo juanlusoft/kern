@@ -606,9 +606,24 @@ function buildCompletedOutboundText(outcome: OrchestrationOutcome): string {
 
 function buildPricingBlockedText(outcome: OrchestrationOutcome): string {
   const data = extractResponseData(outcome);
-  const reason = data && typeof data.reason === 'string' ? data.reason.trim() : '';
+  const reason =
+    (data && typeof data.reason === 'string' ? data.reason.trim() : '') ||
+    normalizeOptionalString(outcome.response.message) ||
+    normalizeOptionalString(outcome.reason);
   if (!reason) {
     return 'No puedo calcular ese precio con lo que tengo. Dame el artículo y los datos que falten.';
+  }
+  const webMeasureMatch = reason.match(/^PacoPrint\s+(alto|ancho)\s+(below minimum|above maximum|invalid)$/i);
+  if (webMeasureMatch) {
+    const field = webMeasureMatch[1].toLowerCase();
+    const problem = webMeasureMatch[2].toLowerCase();
+    if (problem === 'below minimum') {
+      return `La web rechaza la medida: ${field} por debajo del mínimo permitido.`;
+    }
+    if (problem === 'above maximum') {
+      return `La web rechaza la medida: ${field} por encima del máximo permitido.`;
+    }
+    return `La web rechaza la medida: ${field} no es válido.`;
   }
   const candidatesRaw = data && Array.isArray(data.candidates) ? data.candidates : [];
   const candidates = candidatesRaw.filter(
