@@ -39,11 +39,15 @@ test('parseQuantity: detecta cantidad con sufijo', () => {
   assert.equal(parseQuantity('1 unidad'), 1);
   assert.equal(parseQuantity('1 ud de lona'), 1);
   assert.equal(parseQuantity('pon 25 und'), 25);
+  assert.equal(parseQuantity('5unidades de dibond'), 5);
 });
 
 test('parseQuantity: no confunde una medida con cantidad', () => {
   assert.equal(parseQuantity('lona de 200x100'), null);
   assert.equal(parseQuantity('200'), null);
+  assert.equal(parseQuantity('2,5 uds'), null);
+  assert.equal(parseQuantity('2.5 uds'), null);
+  assert.equal(parseQuantity('0 uds'), null);
 });
 
 test('scoreCandidate: excluye frontlit <-> mesh', () => {
@@ -71,6 +75,12 @@ test('pickArticleCandidate: un único candidato se selecciona directo', () => {
 
 test('pickArticleCandidate: sin señal en el texto queda ambiguo', () => {
   const picked = pickArticleCandidate('quiero un precio', [{ nombre: 'Roll Up 85x200' }, { nombre: 'Vinilo Monomérico' }]);
+  assert.equal(picked.selected, null);
+  assert.equal(picked.ambiguous, true);
+});
+
+test('pickArticleCandidate: article tokens must match whole words', () => {
+  const picked = pickArticleCandidate('cartonaje 100x50', [{ nombre: 'Cartón Pluma' }, { nombre: 'Vinilo Monomérico' }]);
   assert.equal(picked.selected, null);
   assert.equal(picked.ambiguous, true);
 });
@@ -143,6 +153,23 @@ test('matchOptionInText: casa por la raíz aunque el nombre tenga paréntesis', 
   assert.deepEqual(matchOptionInText('con termosellado', options), {
     id: 17,
     nombre: 'Termosellado (todo el perímetro)'
+  });
+});
+
+test('matchOptionInText: opciones negativas no casan por una clave positiva parcial', () => {
+  const options = [
+    { id: 17, nombre: 'Termosellado (todo el perímetro)' },
+    { id: 18, nombre: 'Sin refuerzo (a sangre)' }
+  ];
+
+  assert.deepEqual(matchOptionInText('sin refuerzo', options), {
+    id: 18,
+    nombre: 'Sin refuerzo (a sangre)'
+  });
+  assert.equal(matchOptionInText('con refuerzo', options), null);
+  assert.deepEqual(matchOptionInText('no quiero refuerzo', options), {
+    id: 18,
+    nombre: 'Sin refuerzo (a sangre)'
   });
 });
 

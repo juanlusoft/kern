@@ -61,6 +61,23 @@ function containsNegatedPhrase(text: string, phrase: string): boolean {
   );
 }
 
+function labelsForNegation(...labels: string[]): string[] {
+  const expanded = new Set<string>();
+  for (const label of labels) {
+    const normalized = normalizeSearchText(label);
+    if (!normalized) {
+      continue;
+    }
+    expanded.add(normalized);
+    for (const token of normalized.split(' ')) {
+      if (token.length >= 4) {
+        expanded.add(token);
+      }
+    }
+  }
+  return [...expanded];
+}
+
 function normalizeCompact(value: string): string {
   return normalizeSearchText(value).replace(/\s+/g, '');
 }
@@ -271,7 +288,15 @@ export function resolveLineAttributes(
         value = extractNumberNearLabel(rawMessage, [ruleName, displayLabel]);
       }
       let appliedDefault = false;
-      if ((value === undefined || value === null || value === '') && rule.obligatorio && rule.valor_defecto !== undefined && rule.valor_defecto !== null) {
+      const rawMessageNegatesAttribute =
+        rawMessage && labelsForNegation(ruleName, displayLabel).some((label) => containsNegatedPhrase(rawMessage, label));
+      if (
+        (value === undefined || value === null || value === '') &&
+        rule.obligatorio &&
+        !rawMessageNegatesAttribute &&
+        rule.valor_defecto !== undefined &&
+        rule.valor_defecto !== null
+      ) {
         value = rule.valor_defecto;
         appliedDefault = true;
       }

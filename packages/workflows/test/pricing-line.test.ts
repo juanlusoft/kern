@@ -105,6 +105,49 @@ const LONA_FRONTLIT: PacoPrintCatalogCandidate = {
   ]
 };
 
+const DIBOND_WITH_LAMINADO: PacoPrintCatalogCandidate = {
+  id: 'dibond-laminado',
+  nombre: 'Dibond',
+  tipo_calculo: 'm2',
+  json_calcular_precio: {
+    atributos: [
+      { atributo_id: 'laminado', nombre: 'Laminado', tipo: 'select', obligatorio: true, valor_defecto: 'mate' }
+    ] as never
+  },
+  atributos: [
+    {
+      id: 'laminado',
+      nombre: 'Laminado',
+      valores_posibles: [
+        { id: 'sin', nombre: 'Sin laminado' },
+        { id: 'mate', nombre: 'Laminado mate' },
+        { id: 'brillo', nombre: 'Laminado brillo' }
+      ]
+    }
+  ]
+};
+
+const DIBOND_WITHOUT_NEGATIVE_LAMINADO: PacoPrintCatalogCandidate = {
+  id: 'dibond-laminado-no-negative',
+  nombre: 'Dibond',
+  tipo_calculo: 'm2',
+  json_calcular_precio: {
+    atributos: [
+      { atributo_id: 'laminado', nombre: 'Laminado', tipo: 'select', obligatorio: true, valor_defecto: 'mate' }
+    ] as never
+  },
+  atributos: [
+    {
+      id: 'laminado',
+      nombre: 'Laminado',
+      valores_posibles: [
+        { id: 'mate', nombre: 'Laminado mate' },
+        { id: 'brillo', nombre: 'Laminado brillo' }
+      ]
+    }
+  ]
+};
+
 test('pricing line resolves numeric diseño diferente from full user text', () => {
   const result = resolveLineAttributes(DIBOND, {
     rawMessage: 'Dime el precio de 10 unidades de dibond de 50x40cm. Diseño diferente: 1. Impresión con frente y reverso iguales y corte escuadrado.',
@@ -198,4 +241,34 @@ test('pricing line ignores model-proposed select options that are not backed by 
 
   assert.equal(result.resolvedAttributes.velcro, undefined);
   assert.equal(result.optionsSummary.some((item) => item.includes('Velcro')), false);
+});
+
+test('pricing line resolves explicit negative options before defaults', () => {
+  const result = resolveLineAttributes(DIBOND_WITH_LAMINADO, {
+    rawMessage: 'Dibond blanco de 70x50 cm, impresión frente y reverso iguales, corte escuadrado, sin laminado.',
+    resolvedUnits: 5,
+    resolvedAlto: 50,
+    resolvedAncho: 70,
+    resolvedOptions: {}
+  });
+
+  assert.deepEqual(result.missingFields, []);
+  assert.deepEqual(result.invalidFields, []);
+  assert.equal(result.resolvedAttributes.laminado, 'sin');
+  assert.equal(result.defaultsApplied.includes('Laminado'), false);
+});
+
+test('pricing line does not apply a required default when the user negates that attribute', () => {
+  const result = resolveLineAttributes(DIBOND_WITHOUT_NEGATIVE_LAMINADO, {
+    rawMessage: 'Dibond blanco de 70x50 cm, impresión frente y reverso iguales, corte escuadrado, sin laminado.',
+    resolvedUnits: 5,
+    resolvedAlto: 50,
+    resolvedAncho: 70,
+    resolvedOptions: {}
+  });
+
+  assert.deepEqual(result.missingFields, ['Laminado']);
+  assert.deepEqual(result.invalidFields, []);
+  assert.equal(result.resolvedAttributes.laminado, undefined);
+  assert.equal(result.defaultsApplied.includes('Laminado'), false);
 });

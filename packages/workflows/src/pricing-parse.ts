@@ -105,7 +105,7 @@ export function parseMeasures(text: string): ParsedMeasures | null {
  */
 export function parseQuantity(text: string): number | null {
   const t = normalizeText(text);
-  const m = t.match(/(\d+)\s*(?:unidad(?:es)?|unid|uds?|und)\b/);
+  const m = t.match(/(?:^|[^\d.,])(\d+)\s*(?:unidad(?:es)?|unid|uds?|und)\b/);
   if (m?.[1]) {
     const n = Number.parseInt(m[1], 10);
     if (n >= 1 && n <= 100000) return n;
@@ -150,10 +150,10 @@ export function scoreCandidate(rawText: string, candidateName: string): number {
   const tokens = n.split(' ').filter((w) => w.length >= 3 && !NOISE_TOKEN.test(w));
   if (tokens.length === 0) return 0;
   const distinctiveTokens = tokens.filter((w) => !COLOR_TOKENS.has(w) && !FAMILY_TOKENS.has(w));
-  const distinctiveTokensPresent = distinctiveTokens.length === 0 || distinctiveTokens.every((w) => t.includes(w));
+  const distinctiveTokensPresent = distinctiveTokens.length === 0 || distinctiveTokens.every((w) => containsWord(t, w));
   let hit = 0;
   for (const w of tokens) {
-    if (!t.includes(w)) continue;
+    if (!containsWord(t, w)) continue;
     if (COLOR_TOKENS.has(w) && !distinctiveTokensPresent) continue;
     hit += 1;
   }
@@ -198,8 +198,12 @@ function optionMatchKeys(nombre: string): string[] {
   const full = normalizeText(nombre.replace(/[()]/g, ' '));
   const core = normalizeText(nombre.replace(/\([^)]*\)/g, ' '));
   const keys = new Set<string>();
+  const optionIsNegative = /^\s*(?:sin|no)\b/.test(core);
   const sourceForNumeric = /\d/.test(full) ? full : core;
   if (!/\d/.test(sourceForNumeric) && core.length >= 3) keys.add(core);
+  if (optionIsNegative) {
+    return [...keys];
+  }
   const compact = sourceForNumeric.replace(/\s+/g, '');
   if (/\d/.test(compact) && compact.length >= 2) keys.add(compact);
   if (/\d/.test(sourceForNumeric)) {
@@ -246,8 +250,17 @@ export function matchOptionInText(
   let bestLen = 0;
   for (const option of options) {
     if (typeof option?.nombre !== 'string') continue;
+    const normalizedCore = normalizeText(option.nombre.replace(/\([^)]*\)/g, ' '));
+    const optionIsNegative = /^\s*(?:sin|no)\b/.test(normalizedCore);
+    if (optionIsNegative) {
+      const negativeTarget = normalizedCore.replace(/^\s*(?:sin|no)\s+/, '').trim();
+      if (negativeTarget && negativeTarget.length > bestLen && containsNegatedWord(t, negativeTarget)) {
+        best = { id: option.id, nombre: option.nombre };
+        bestLen = negativeTarget.length;
+        continue;
+      }
+    }
     for (const key of optionMatchKeys(option.nombre)) {
-      const optionIsNegative = /^\s*(?:sin|no)\b/.test(normalizeText(option.nombre));
       if (!optionIsNegative && containsNegatedWord(t, key)) {
         continue;
       }
