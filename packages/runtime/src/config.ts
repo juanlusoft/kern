@@ -36,6 +36,13 @@ export interface RuntimeOpenWebUIConfig {
   users: Record<string, RuntimeOpenWebUIUserConfig>;
 }
 
+export interface RuntimeLearningShadowConfig {
+  enabled: boolean;
+  file_path: string | null;
+  capture_raw_text: boolean;
+  capture_model_params: boolean;
+}
+
 export interface RuntimeOrganizationConfig {
   organization_id: string;
   name: string;
@@ -72,6 +79,7 @@ export interface RuntimeOptions {
   polling_iterations: number;
   numa_hr?: RuntimeNumaHrConfig | null;
   openwebui_channel?: RuntimeOpenWebUIConfig | null;
+  learning_shadow?: RuntimeLearningShadowConfig | null;
 }
 
 export interface RuntimeInstallationConfig {
@@ -249,6 +257,7 @@ export function createSampleInstallationConfig(): RuntimeInstallationConfig {
       conversation_memory_file_path: null,
       evidence_ledger_file_path: null,
       polling_iterations: 1,
+      learning_shadow: null,
       openwebui_channel: null,
       numa_hr: {
         time_type_by_label: {
@@ -481,6 +490,40 @@ function normalizeOpenWebUIConfig(value: unknown): RuntimeOpenWebUIConfig | null
   };
 }
 
+function normalizeLearningShadowConfig(value: unknown): RuntimeLearningShadowConfig | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isPlainObject(value)) {
+    fail('runtime_options.learning_shadow', 'learning_shadow must be an object');
+  }
+  const enabled = normalizeBoolean(value.enabled);
+  if (enabled === null) {
+    fail('runtime_options.learning_shadow.enabled', 'enabled must be boolean');
+  }
+  const file_path = normalizeString(value.file_path ?? null);
+  const capture_raw_text = normalizeBoolean(value.capture_raw_text ?? false);
+  const capture_model_params = normalizeBoolean(value.capture_model_params ?? false);
+  if (enabled && !file_path) {
+    fail('runtime_options.learning_shadow.file_path', 'file_path is required when learning_shadow is enabled');
+  }
+  if (file_path && !file_path.endsWith('.jsonl')) {
+    fail('runtime_options.learning_shadow.file_path', 'file_path must use .jsonl extension');
+  }
+  if (capture_raw_text === null) {
+    fail('runtime_options.learning_shadow.capture_raw_text', 'capture_raw_text must be boolean');
+  }
+  if (capture_model_params === null) {
+    fail('runtime_options.learning_shadow.capture_model_params', 'capture_model_params must be boolean');
+  }
+  return {
+    enabled,
+    file_path,
+    capture_raw_text,
+    capture_model_params
+  };
+}
+
 function normalizeOrganization(value: unknown): RuntimeOrganizationConfig {
   if (!isPlainObject(value)) {
     fail('organization', 'organization must be an object');
@@ -643,6 +686,7 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
   const polling_iterations = normalizePositiveInteger(value.polling_iterations) ?? 1;
   const numa_hr = normalizeNumaHrConfig(value.numa_hr);
   const openwebui_channel = normalizeOpenWebUIConfig(value.openwebui_channel);
+  const learning_shadow = normalizeLearningShadowConfig(value.learning_shadow);
   return {
     telegram_mode,
     telegram_poll_timeout_ms,
@@ -654,7 +698,8 @@ function normalizeRuntimeOptions(value: unknown): RuntimeOptions {
     evidence_ledger_file_path,
     polling_iterations,
     numa_hr,
-    openwebui_channel
+    openwebui_channel,
+    learning_shadow
   };
 }
 

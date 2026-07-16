@@ -191,3 +191,44 @@ Parser improvements promoted from this sample into anonymized tests:
 - Explicit discriminants such as `microventosa`, `pvc suelo`, `carton pluma`,
   `carton microcanal`, `lona camion`, `doble cara blockout`, `metacrilato
   transparente` and `metacrilato blanco opal` are covered by synthetic tests.
+
+## Learning shadow mode
+
+PacoPrint installations can enable a local learning shadow to capture structured
+review traces from real conversations while Kern remains the system that answers
+the customer.
+
+The shadow is not an agent that replies to the customer. It only appends local
+JSONL records after Telegram processing, so the normal runtime path remains:
+
+```text
+Telegram user -> Kern -> local model + deterministic parser + PacoPrint API -> Telegram response
+```
+
+Example runtime option:
+
+```json
+{
+  "runtime_options": {
+    "learning_shadow": {
+      "enabled": true,
+      "file_path": "/opt/kern/installations/pacoprint/learning/learning-shadow.jsonl",
+      "capture_raw_text": false,
+      "capture_model_params": false
+    }
+  }
+}
+```
+
+By default, records contain a random trace id, text hash, text length, workflow
+status, capability key, validation state and a small runtime summary. They do
+not contain Telegram identifiers, principal ids, correlation ids, raw user text,
+Telegram replies or model parameters. Raw text and model parameters require
+explicit opt-in:
+
+- `capture_raw_text: true`
+- `capture_model_params: true`
+
+Use raw capture only in a private, access-controlled installation folder. Do not
+commit learning shadow files. Daily review should promote only anonymized or
+synthetic patterns into tests, parser rules or documentation.
