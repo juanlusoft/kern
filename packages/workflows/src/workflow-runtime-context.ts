@@ -26,14 +26,15 @@ export interface AppendWorkflowEvidenceInput {
     | 'external_read_unavailable'
     | 'external_read_error'
     | 'source_evidence_recorded'
-    | 'external_read_result_bound';
+    | 'external_read_result_bound'
+    | 'failed_closed';
   subject: string;
   data: Record<string, unknown>;
 }
 
 export interface FinishWorkflowInput {
   workflow_id: string;
-  workflow_kind: GovernedWorkflowKind;
+  workflow_kind: GovernedWorkflowKind | null;
   organization_id: string | null;
   correlation_id: string;
   turn_id: string | null;

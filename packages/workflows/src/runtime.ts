@@ -45,6 +45,7 @@ import { executeNumaHrReadWorkflow } from './hr-workflow';
 import { executeMockEmailSendWorkflow } from './email-workflow';
 import { executePricingQuoteLineWorkflow } from './pricing-workflow';
 import { executePricingQuoteDraftWorkflow } from './pricing-draft-workflow';
+import { executeUnsupportedWorkflow, type UnsupportedWorkflowInput } from './unsupported-workflow';
 import { createMockEstimateReadCapability, createMockEmailPreviewCapability, createMockEmailSendCapability } from './mock-capabilities';
 import { type AppendWorkflowEvidenceInput, type FinishWorkflowInput, type WorkflowRuntimeContext } from './workflow-runtime-context';
 
@@ -145,17 +146,30 @@ export class InMemoryGovernedWorkflowRuntime {
     return result ? buildWorkflowResult(result) : undefined;
   }
 
+  /**
+   * Despacho fail-closed: cada `kind` soportado se declara explícitamente y
+   * cualquier otro valor termina en `executeUnsupportedWorkflow`.
+   *
+   * No debe existir una rama por defecto que ejecute el workflow de una empresa
+   * concreta: eso convertiría una petición no reconocida de un cliente en
+   * lógica de otro (ADR-0002 §2.5, ADR-0006 §3.6).
+   */
   executeWorkflow(input: GovernedWorkflowRequest): GovernedWorkflowResult {
     const runtimeContext: WorkflowRuntimeContext = this.createWorkflowRuntimeContext();
-    return input.kind === 'mock.estimate.read'
-      ? executeMockEstimateReadWorkflow(runtimeContext, input)
-      : input.kind === 'mock.email.send'
-        ? executeMockEmailSendWorkflow(runtimeContext, input)
-        : input.kind === 'numa.hr.read'
-          ? executeNumaHrReadWorkflow(runtimeContext, input)
-          : input.kind === 'pricing.quote_draft'
-            ? executePricingQuoteDraftWorkflow(runtimeContext, input)
-            : executePricingQuoteLineWorkflow(runtimeContext, input);
+    switch (input.kind) {
+      case 'mock.estimate.read':
+        return executeMockEstimateReadWorkflow(runtimeContext, input);
+      case 'mock.email.send':
+        return executeMockEmailSendWorkflow(runtimeContext, input);
+      case 'numa.hr.read':
+        return executeNumaHrReadWorkflow(runtimeContext, input);
+      case 'pricing.quote_draft':
+        return executePricingQuoteDraftWorkflow(runtimeContext, input);
+      case 'pricing.quote_line':
+        return executePricingQuoteLineWorkflow(runtimeContext, input);
+      default:
+        return executeUnsupportedWorkflow(runtimeContext, input as UnsupportedWorkflowInput);
+    }
   }
 
   private createWorkflowRuntimeContext(): WorkflowRuntimeContext {
