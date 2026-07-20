@@ -874,7 +874,12 @@ export interface ExternalReadAdapter {
 
 export interface GovernedWorkflowResponse {
   response_source: 'runtime_result' | 'workflow_blocked';
-  workflow_kind: GovernedWorkflowKind;
+  /**
+   * `null` cuando el runtime no reconoce el workflow solicitado. En ese caso la
+   * ejecución falla cerrada (ADR-0002 §2.5, ADR-0006 §3.6) y no se resuelve con
+   * el workflow de otra empresa.
+   */
+  workflow_kind: GovernedWorkflowKind | null;
   status: WorkflowExecutionStatus;
   message: string;
   data: Record<string, unknown> | null;
@@ -882,7 +887,8 @@ export interface GovernedWorkflowResponse {
 
 export interface GovernedWorkflowResult {
   workflow_id: string;
-  workflow_kind: GovernedWorkflowKind;
+  /** `null` cuando el kind solicitado no está soportado por esta instalación. */
+  workflow_kind: GovernedWorkflowKind | null;
   organization_id: string | null;
   correlation_id: string;
   turn_id: string | null;

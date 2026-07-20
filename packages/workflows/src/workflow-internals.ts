@@ -180,7 +180,7 @@ export function createWorkflowCoreRequest(input: {
 }
 
 export function createRuntimeResponse(input: {
-  kind: GovernedWorkflowKind;
+  kind: GovernedWorkflowKind | null;
   status: WorkflowExecutionStatus;
   message: string;
   data: Record<string, unknown> | null;
@@ -239,7 +239,7 @@ export function workflowEvidenceTrace(records: { evidence_id: string; record_typ
 
 export function buildWorkflowResult(input: {
   workflow_id: string;
-  workflow_kind: GovernedWorkflowKind;
+  workflow_kind: GovernedWorkflowKind | null;
   organization_id: string | null;
   correlation_id: string;
   turn_id: string | null;
