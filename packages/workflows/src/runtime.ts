@@ -78,6 +78,7 @@ export class InMemoryGovernedWorkflowRuntime {
   private readonly pacoPrintCatalogAdapter: PacoPrintCatalogAdapterPort | null;
   private readonly resolveIdentityContext: typeof resolveIdentityContext;
   private readonly hrReadPort: NumaHrReadPort | null;
+  private readonly installationOrganizationId: string | null;
   private readonly now: () => Date;
   private readonly workflowRecords = new Map<string, GovernedWorkflowResult>();
 
@@ -88,6 +89,7 @@ export class InMemoryGovernedWorkflowRuntime {
     this.resolveOrganizationContext = options.resolveOrganizationContext ?? resolveOrganizationContext;
     this.pacoPrintCatalogAdapter = options.pacoPrintCatalogAdapter ?? null;
     this.resolveIdentityContext = options.resolveIdentityContext ?? resolveIdentityContext;
+    this.installationOrganizationId = normalizeOptionalOrganizationId(options.organization_id);
     this.capabilityRuntime =
       options.capabilityRuntime ?? new InMemoryCapabilityRuntime({ evidenceLedger: this.evidenceLedger, bindingStore: this.bindingStore, now: options.now });
     this.turnRuntime = options.turnRuntime ?? new InMemoryTurnRuntime({ evidenceLedger: this.evidenceLedger, now: options.now });
@@ -95,7 +97,7 @@ export class InMemoryGovernedWorkflowRuntime {
     this.hrReadPort = options.hrReadPort ?? null;
 
     if (!options.capabilityRuntime) {
-      const capabilityOrganizationId = normalizeOptionalOrganizationId(options.organization_id);
+      const capabilityOrganizationId = this.installationOrganizationId;
       if (capabilityOrganizationId) {
         this.registerCapability(createMockResourceReadCapability(this.externalReadAdapter, {}, capabilityOrganizationId));
         this.registerCapability(createMockEstimateReadCapability(capabilityOrganizationId));
@@ -181,6 +183,7 @@ export class InMemoryGovernedWorkflowRuntime {
       externalReadAdapter: this.externalReadAdapter,
       pacoPrintCatalogAdapter: this.pacoPrintCatalogAdapter,
       hrReadPort: this.hrReadPort,
+      installationOrganizationId: this.installationOrganizationId,
       resolveOrganizationContext: this.resolveOrganizationContext,
       resolveIdentityContext: this.resolveIdentityContext,
       now: this.now,

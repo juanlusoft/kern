@@ -96,6 +96,7 @@ test('unknown workflow kind fails closed and never falls back to PacoPrint prici
   assert.equal(result.response.status, 'unavailable');
   assert.equal(result.response.data, null);
   assert.equal(result.capability_result, null);
+  assert.equal(result.organization_id, 'org-pacoprint');
 
   // Ninguna lógica de cliente se ha ejecutado.
   assert.deepEqual(spy.calls, []);
@@ -128,6 +129,7 @@ test('unknown workflow kind records diagnosable evidence without echoing the req
   assert.equal(failedClosed?.data.workflow_id, 'workflow-unknown-2');
   assert.equal(failedClosed?.data.correlation_id, result.correlation_id);
   assert.equal(failedClosed?.data.organization_hint, 'org-proinsur');
+  assert.equal(failedClosed?.organization_id, 'org-pacoprint');
   assert.deepEqual(Object.keys(failedClosed?.data ?? {}).sort(), [
     'correlation_id',
     'organization_hint',
@@ -138,6 +140,30 @@ test('unknown workflow kind records diagnosable evidence without echoing the req
   assert.equal(JSON.stringify(failedClosed?.data).includes('DNI'), false);
   assert.equal(records.some((record) => record.record_type === 'workflow_response_created'), true);
   assert.equal(result.evidence_links.length > 0, true);
+});
+
+test('unknown workflow kind never trusts organization or requested timestamp from the payload', () => {
+  const spy = buildSpyCatalogAdapter();
+  const runtime = buildRuntime(spy.adapter);
+
+  const result = runtime.executeWorkflow({
+    kind: 'unknown.workflow',
+    workflow_id: 'workflow-unknown-scope',
+    organization_hint: 'org-foreign\nspoofed',
+    requested_at: '1900-01-01T00:00:00.000Z',
+    correlation_id: 'corr-unknown-scope'
+  } as unknown as GovernedWorkflowRequest);
+
+  const records = runtime.getEvidenceLedger().listByCorrelation(result.correlation_id);
+  assert.equal(result.organization_id, 'org-pacoprint');
+  assert.equal(result.created_at, NOW);
+  assert.equal(records.length, 2);
+  for (const record of records) {
+    assert.equal(record.organization_id, 'org-pacoprint');
+    assert.equal(record.created_at, NOW);
+  }
+  assert.equal(records[0]?.data.organization_hint, 'org-foreign spoofed');
+  assert.deepEqual(spy.calls, []);
 });
 
 test('unknown workflow kind reports a bounded kind and never crashes on hostile values', () => {

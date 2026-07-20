@@ -23,7 +23,7 @@ const MAX_REPORTED_KIND_LENGTH = 64;
  * y sin caracteres de control, y nunca se acompaña del payload de la petición:
  * el resto de campos puede contener datos de negocio o personales.
  */
-function normalizeReportedKind(value: unknown): string | null {
+function normalizeReportedText(value: unknown, maxLength: number): string | null {
   if (typeof value !== 'string') {
     return null;
   }
@@ -31,7 +31,7 @@ function normalizeReportedKind(value: unknown): string | null {
   if (printable.length === 0) {
     return null;
   }
-  return printable.length > MAX_REPORTED_KIND_LENGTH ? `${printable.slice(0, MAX_REPORTED_KIND_LENGTH)}…` : printable;
+  return printable.length > maxLength ? `${printable.slice(0, maxLength)}…` : printable;
 }
 
 /**
@@ -43,10 +43,10 @@ function normalizeReportedKind(value: unknown): string | null {
  */
 export function executeUnsupportedWorkflow(runtime: WorkflowRuntimeContext, input: UnsupportedWorkflowInput): GovernedWorkflowResult {
   const correlation_id = normalizeCorrelationId({ request_id: input.workflow_id, correlation_id: input.correlation_id ?? null });
-  const created_at = input.requested_at?.trim() || runtime.now().toISOString();
-  const organization_hint = input.organization_hint?.trim() || null;
-  const organization_id = organization_hint ?? 'unknown';
-  const requested_kind = normalizeReportedKind(input.kind);
+  const created_at = runtime.now().toISOString();
+  const organization_hint = normalizeReportedText(input.organization_hint, 128);
+  const organization_id = runtime.installationOrganizationId ?? 'unknown';
+  const requested_kind = normalizeReportedText(input.kind, MAX_REPORTED_KIND_LENGTH);
 
   const diagnosticContext = {
     workflow_id: input.workflow_id,
@@ -107,7 +107,7 @@ export function executeUnsupportedWorkflow(runtime: WorkflowRuntimeContext, inpu
   return runtime.finishWorkflow({
     workflow_id: input.workflow_id,
     workflow_kind: null,
-    organization_id: organization_hint,
+    organization_id: runtime.installationOrganizationId,
     correlation_id,
     turn_id: null,
     status: 'unavailable',

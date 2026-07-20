@@ -57,6 +57,8 @@ export interface WorkflowRuntimeContext {
   externalReadAdapter: ExternalReadAdapter;
   pacoPrintCatalogAdapter: PacoPrintCatalogAdapterPort | null;
   hrReadPort: NumaHrReadPort | null;
+  /** Organizacion fijada por el bootstrap; nunca procede del payload de la request. */
+  installationOrganizationId: string | null;
   resolveOrganizationContext: typeof resolveOrganizationContext;
   resolveIdentityContext: typeof resolveIdentityContext;
   now: () => Date;
