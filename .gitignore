@@ -69,6 +69,12 @@ deploy/numa-demo/data/
 deploy/numa-demo/evidence/
 deploy/numa-demo/memory/
 deploy/numa-demo/logs/
+deploy/proinsur/env.runtime
+deploy/proinsur/runtime.installation.json
+deploy/proinsur/data/
+deploy/proinsur/evidence/
+deploy/proinsur/memory/
+deploy/proinsur/logs/
 deploy/openwebui-kern/.env
 deploy/openwebui-kern/data/
 deploy/openwebui-kern/backups/

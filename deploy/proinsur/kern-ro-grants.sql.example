@@ -1,0 +1,66 @@
+-- Run as a PostgreSQL administrator only after setting all three psql variables.
+-- The target role must already exist and must be dedicated exclusively to Kern.
+-- Example invocation (no password on the command line):
+-- psql -v target_role=kern_ro -v target_database=REAL_DB \
+--   -v target_hr_schema=REAL_HR_SCHEMA -v target_presence_schema=kern \
+--   -f deploy/proinsur/kern-ro-grants.sql.example
+
+\if :{?target_role}
+\else
+  \quit
+\endif
+\if :{?target_database}
+\else
+  \quit
+\endif
+\if :{?target_hr_schema}
+\else
+  \quit
+\endif
+\if :{?target_presence_schema}
+\else
+  \quit
+\endif
+
+BEGIN;
+
+ALTER ROLE :"target_role" NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
+ALTER ROLE :"target_role" SET default_transaction_read_only = on;
+ALTER ROLE :"target_role" SET statement_timeout = '5s';
+
+REVOKE CREATE, TEMPORARY ON DATABASE :"target_database" FROM :"target_role";
+GRANT CONNECT ON DATABASE :"target_database" TO :"target_role";
+REVOKE CREATE ON SCHEMA :"target_hr_schema" FROM :"target_role";
+REVOKE CREATE ON SCHEMA :"target_presence_schema" FROM :"target_role";
+GRANT USAGE ON SCHEMA :"target_hr_schema" TO :"target_role";
+GRANT USAGE ON SCHEMA :"target_presence_schema" TO :"target_role";
+ALTER ROLE :"target_role" IN DATABASE :"target_database"
+  SET search_path TO :"target_hr_schema", :"target_presence_schema", pg_catalog;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE
+  :"target_presence_schema".employees,
+  :"target_presence_schema".employee_punches,
+  :"target_hr_schema".core_punches,
+  :"target_hr_schema".core_persons,
+  :"target_hr_schema".core_punching_points,
+  :"target_hr_schema".org_employees,
+  :"target_hr_schema".org_employee_groups,
+  :"target_hr_schema".org_employee_groups_employees,
+  :"target_hr_schema".ta_requests,
+  :"target_hr_schema".ta_time_types
+FROM :"target_role";
+
+GRANT SELECT ON TABLE
+  :"target_presence_schema".employees,
+  :"target_presence_schema".employee_punches,
+  :"target_hr_schema".core_punches,
+  :"target_hr_schema".core_persons,
+  :"target_hr_schema".core_punching_points,
+  :"target_hr_schema".org_employees,
+  :"target_hr_schema".org_employee_groups,
+  :"target_hr_schema".org_employee_groups_employees,
+  :"target_hr_schema".ta_requests,
+  :"target_hr_schema".ta_time_types
+TO :"target_role";
+
+COMMIT;

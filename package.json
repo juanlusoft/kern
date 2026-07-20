@@ -5,7 +5,8 @@
   "scripts": {
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:client-boundaries": "node scripts/check-client-boundaries.mjs",
-    "test": "npm run check:boundaries && npm run check:client-boundaries && node --import tsx --test scripts/check-boundaries.test.mjs scripts/export-pacoprint-holded-corpus.test.mjs scripts/label-pacoprint-holded-corpus.test.mjs && node --import tsx packages/compliance-tests/src/run-tests.ts",
+    "preflight:numa-postgres": "node --import tsx scripts/preflight-numa-postgres.ts",
+    "test": "npm run check:boundaries && npm run check:client-boundaries && node --import tsx --test scripts/check-boundaries.test.mjs scripts/export-pacoprint-holded-corpus.test.mjs scripts/label-pacoprint-holded-corpus.test.mjs scripts/preflight-numa-postgres.test.ts && node --import tsx packages/compliance-tests/src/run-tests.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
