@@ -547,7 +547,7 @@ function buildPricingDraftOutboundText(outcome: OrchestrationOutcome): string {
 function buildClarificationText(outcome: OrchestrationOutcome): string {
   const clarification = clarificationDataFromOutcome(outcome);
   if (!clarification) {
-    return 'No tengo suficiente contexto para responder. Dime el cliente o el documento que buscas.';
+    return 'No tengo suficiente contexto para responder. Indica qué necesitas y aporta los datos relevantes.';
   }
   switch (clarification.missing) {
     case 'customer':
@@ -557,7 +557,7 @@ function buildClarificationText(outcome: OrchestrationOutcome): string {
     case 'ambiguous':
       return 'No tengo el contexto suficiente; dime el cliente y qué quieres consultar.';
     case 'unsupported':
-      return 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
+      return 'Esa consulta no está disponible en esta instalación.';
     case 'pricing':
       return clarification.reason || '¿Qué quieres presupuestar?';
     default:
@@ -644,16 +644,16 @@ function buildStatusText(outcome: OrchestrationOutcome): string {
             ? buildInvoiceListOutboundText(outcome)
             : buildCompletedOutboundText(outcome);
     case 'not_found':
-      return 'No he encontrado ese documento en Holded.';
+      return 'No he encontrado resultados para esa consulta.';
     case 'unavailable':
-      return 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.';
+      return 'El servicio necesario no está disponible ahora mismo. Inténtalo de nuevo más tarde.';
     case 'error':
       return 'Ha habido un problema técnico al procesar la consulta. Inténtalo de nuevo.';
     case 'denied':
     case 'blocked':
       return outcome.response.workflow_kind === 'pricing.quote_line' || outcome.response.workflow_kind === 'pricing.quote_draft'
         ? buildPricingBlockedText(outcome)
-        : 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.';
+        : 'Esa consulta no está disponible en esta instalación.';
     case 'no_proposal':
       return buildClarificationText(outcome);
     default:
