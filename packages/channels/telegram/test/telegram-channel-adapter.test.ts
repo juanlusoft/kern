@@ -1362,12 +1362,12 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     {
       status: 'not_found',
       message: 'estimate not found',
-      expected: 'No he encontrado ese documento en Holded.'
+      expected: 'No he encontrado resultados para esa consulta.'
     },
     {
       status: 'unavailable',
       message: 'estimate service unavailable',
-      expected: 'Holded no está disponible ahora mismo. Inténtalo de nuevo más tarde.'
+      expected: 'El servicio necesario no está disponible ahora mismo. Inténtalo de nuevo más tarde.'
     },
     {
       status: 'error',
@@ -1377,17 +1377,17 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     {
       status: 'denied',
       message: 'estimate denied',
-      expected: 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.'
+      expected: 'Esa consulta no está disponible en esta instalación.'
     },
     {
       status: 'blocked',
       message: 'estimate blocked',
-      expected: 'Esa consulta todavía no la sé responder. Puedo darte la última factura o presupuesto de un cliente, sus facturas pendientes/vencidas/pagadas, o las facturas de un año.'
+      expected: 'Esa consulta no está disponible en esta instalación.'
     },
     {
       status: 'no_proposal',
       message: 'no proposal',
-      expected: 'No tengo suficiente contexto para responder. Dime el cliente o el documento que buscas.'
+      expected: 'No tengo suficiente contexto para responder. Indica qué necesitas y aporta los datos relevantes.'
     }
   ] as const;
 
@@ -1419,6 +1419,7 @@ test('Telegram outbound text reports runtime failure states honestly', () => {
     assert.equal(text, testCase.expected);
     assert.equal(text.includes('{'), false);
     assert.equal(text.includes('parse_mode'), false);
+    assert.equal(/Holded|facturas?|presupuestos?/i.test(text), false);
     if (testCase.status === 'error') {
       assert.equal(text.includes('runtime'), false);
     }
@@ -1457,6 +1458,39 @@ test('Telegram outbound text uses structured clarification reasons when availabl
   assert.equal(text, '¿De qué cliente?');
   assert.equal(text.includes('{'), false);
   assert.equal(text.includes('parse_mode'), false);
+});
+
+test('Telegram renders unsupported clarifications without advertising capabilities from another installation', () => {
+  const text = buildTelegramOutboundText({
+    request_id: 'telegram:req-unsupported',
+    organization_id: 'org-acme',
+    principal_id: 'principal-acme',
+    correlation_id: 'corr-unsupported',
+    installation_id: 'telegram-installation',
+    status: 'no_proposal',
+    proposal: null,
+    validation: null,
+    workflow_kind: null,
+    workflow_result: null,
+    response: {
+      response_source: 'workflow_blocked',
+      workflow_kind: null,
+      status: 'no_proposal',
+      message: 'unsupported capability',
+      data: {
+        kind: 'request_clarification',
+        missing: 'unsupported',
+        reason: 'unsupported capability'
+      }
+    },
+    evidence_links: [],
+    created_at: '2026-06-30T00:00:00.000Z',
+    updated_at: '2026-06-30T00:00:00.000Z',
+    reason: 'unsupported capability'
+  } as unknown as Parameters<typeof buildTelegramOutboundText>[0]);
+
+  assert.equal(text, 'Esa consulta no está disponible en esta instalación.');
+  assert.equal(/Holded|facturas?|presupuestos?/i.test(text), false);
 });
 
 test('Telegram adapter surfaces transport failures as error without leaking the token', () => {
