@@ -1,0 +1,74 @@
+{
+  "installation_id": "REEMPLAZAR_CON_INSTALLATION_ID_REAL",
+  "organization": {
+    "organization_id": "REEMPLAZAR_CON_ORGANIZATION_ID_REAL",
+    "name": "Proinsur",
+    "active": true,
+    "isolation_boundary": "Proinsur installation"
+  },
+  "principals": [
+    {
+      "principal_id": "REEMPLAZAR_CON_PRINCIPAL_ID_REAL",
+      "name": "REEMPLAZAR_CON_NOMBRE_REAL",
+      "principal_type": "human",
+      "active": true,
+      "scopes": ["request:governed", "read:knowledge"]
+    }
+  ],
+  "identity_mappings": [
+    {
+      "channel": "openwebui",
+      "openwebui_user_id": "REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL",
+      "organization_id": "REEMPLAZAR_CON_ORGANIZATION_ID_REAL",
+      "principal_id": "REEMPLAZAR_CON_PRINCIPAL_ID_REAL",
+      "installation_id": "REEMPLAZAR_CON_INSTALLATION_ID_REAL",
+      "principal_type": "human",
+      "active": true,
+      "display_name": "REEMPLAZAR_CON_NOMBRE_REAL"
+    }
+  ],
+  "active_modules": ["qwen-orchestrator", "numa-postgres-read", "openwebui-channel"],
+  "active_capabilities": [],
+  "secret_refs": {
+    "KERN_MODEL_BASE_URL": "KERN_MODEL_BASE_URL",
+    "KERN_MODEL_NAME": "KERN_MODEL_NAME",
+    "KERN_MODEL_API_KEY": "KERN_MODEL_API_KEY"
+  },
+  "runtime_options": {
+    "telegram_mode": "long_polling",
+    "telegram_poll_timeout_ms": 30000,
+    "telegram_poll_limit": 100,
+    "qwen_temperature": 0.1,
+    "qwen_request_timeout_ms": 30000,
+    "holded_base_url": null,
+    "conversation_memory_file_path": "/app/memory/conversation-memory.json",
+    "evidence_ledger_file_path": "/app/evidence/evidence.jsonl",
+    "polling_iterations": 1,
+    "numa_hr": {
+      "time_type_by_label": {},
+      "annual_quota_by_time_type": {},
+      "company_id_by_organization_id": {
+        "REEMPLAZAR_CON_ORGANIZATION_ID_REAL": "REEMPLAZAR_CON_COMPANY_ID_REAL"
+      }
+    },
+    "openwebui_channel": {
+      "host": "0.0.0.0",
+      "port": 8787,
+      "request_body_limit_bytes": 1000000,
+      "network_boundary": "trusted_network",
+      "allowed_remote_addresses": ["REEMPLAZAR_CON_IP_O_CIDR_DEL_PROXY_REAL"],
+      "identity": {
+        "source": "header",
+        "header": "x-openwebui-user-id"
+      },
+      "users": {
+        "REEMPLAZAR_CON_X_OPENWEBUI_USER_ID_REAL": {
+          "principal_id": "REEMPLAZAR_CON_PRINCIPAL_ID_REAL",
+          "organization_id": "REEMPLAZAR_CON_ORGANIZATION_ID_REAL",
+          "active": true,
+          "display_name": "REEMPLAZAR_CON_NOMBRE_REAL"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+services:
+  kern-proinsur:
+    image: ${KERN_RUNTIME_IMAGE:?Set KERN_RUNTIME_IMAGE to an immutable image digest}
+    container_name: kern-proinsur
+    init: true
+    read_only: true
+    restart: unless-stopped
+    env_file:
+      - ./env.runtime
+    environment:
+      KERN_RUNTIME_CONFIG_PATH: /app/config/runtime.installation.json
+      KERN_EVIDENCE_FILE_PATH: /app/evidence/evidence.jsonl
+    volumes:
+      - ./runtime.installation.json:/app/config/runtime.installation.json:ro
+      - ./data:/app/data
+      - ./evidence:/app/evidence
+      - ./memory:/app/memory
+      - ./logs:/app/logs
+    tmpfs:
+      - /tmp
+    networks:
+      - kern_proinsur_internal
+      - proinsur_db
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  kern_proinsur_internal:
+    external: true
+  proinsur_db:
+    external: true
