@@ -1,0 +1,16 @@
+[Unit]
+Description=Kern Proinsur (Numa) demo
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/kern/installations/proinsur-demo/start-demo.sh
+ExecStop=/usr/bin/docker compose --project-directory /opt/kern/installations/proinsur-demo -f /opt/kern/installations/proinsur-demo/docker-compose.yml stop
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

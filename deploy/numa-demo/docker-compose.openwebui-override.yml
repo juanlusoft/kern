@@ -1,0 +1,11 @@
+services:
+  openwebui:
+    environment:
+      OPENAI_API_BASE_URLS: "http://kern-numa:8787/v1"
+    networks:
+      - default
+      - kern_numa_internal
+
+networks:
+  kern_numa_internal:
+    external: true
