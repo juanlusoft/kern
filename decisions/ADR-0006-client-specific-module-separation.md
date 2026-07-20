@@ -1,7 +1,6 @@
 # ADR-0006 — Separacion de Core, integraciones reutilizables y modulos especificos de empresa
 
-- **Estado:** Proposed
-- **Pendiente:** aceptacion del decisor. El primer invariante de la seccion 7 ya esta implementado y en verde (ver seccion 11); al aceptar, cambiar el estado a `Accepted` y retirar esta linea.
+- **Estado:** Accepted
 - **Fecha:** 2026-07-14
 - **Decisor:** Juan Luis, con ChatGPT como CTO/arquitecto
 - **Contexto:** Crecimiento multiempresa de Kern con PacoPrint, Numa, MiPC y futuras empresas
