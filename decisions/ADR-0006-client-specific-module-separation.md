@@ -159,6 +159,11 @@ Estas excepciones no bloquean el ADR porque su estado es `Proposed`, pero deben 
 
 Desde M13 estas excepciones, y todas las demas detectadas al inventariar, estan registradas de forma legible por maquina en `scripts/client-boundary-allowlist.json`, con paquete afectado, motivo, destino, hito de retirada, responsable y fecha, tal y como exige esta seccion. El inventario narrado por tipo esta en `docs/implementation/m13-client-boundary-check.md`.
 
+La allowlist se contrasta con su version historica: no admite rutas o clientes nuevos,
+crecimiento de ocurrencias ni aumento de presupuesto. Los clientes detectados deben
+coincidir exactamente con los declarados por fichero, de modo que no se pueda sustituir
+deuda de una empresa por deuda de otra conservando el contador.
+
 ### 3.3 Integraciones compartidas no contienen negocio de cliente
 
 Las integraciones reutilizables no deben contener reglas, nombres, prompts, mapeos ni semantica de un cliente.

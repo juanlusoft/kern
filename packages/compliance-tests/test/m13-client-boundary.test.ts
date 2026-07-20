@@ -74,6 +74,24 @@ test('M13 growing an already allowlisted file fails the check', () => {
   );
 });
 
+test('M13 swapping the client inside an allowlisted file fails the check', () => {
+  const files = loadScannableSourceFiles().map((file) =>
+    file.filePath === 'packages/capabilities/src/index.ts'
+      ? { ...file, content: file.content.replaceAll('numa', 'pacoprint').replaceAll('Numa', 'PacoPrint') }
+      : file
+  );
+
+  const result = evaluateClientBoundaries({ files, allowlist, baselineAllowlist: null });
+
+  assert.equal(
+    result.problems.some(
+      (problem) => problem.kind === 'client_mismatch' && problem.path === 'packages/capabilities/src/index.ts'
+    ),
+    true,
+    buildClientBoundaryReport(result)
+  );
+});
+
 test('M13 a cleaned file must be removed from the allowlist', () => {
   const entry = allowlist.entries[0];
   const files = loadScannableSourceFiles().filter((file) => file.filePath !== entry.path);
@@ -126,6 +144,43 @@ test('M13 the allowlist can only shrink', () => {
     result.problems.some((problem) => problem.kind === 'budget_exceeded'),
     true,
     'anadir una entrada sin tocar el presupuesto debe romper el check'
+  );
+});
+
+test('M13 raising the budget and allowlisting a new path still fails against history', () => {
+  const files = loadScannableSourceFiles().map((file) =>
+    file.filePath === 'packages/turns/src/index.ts'
+      ? { ...file, content: `${file.content}\nconst pacoPrintRule = 'PacoPrint';\n` }
+      : file
+  );
+  const extended = {
+    ...allowlist,
+    budget: {
+      max_entries: allowlist.budget.max_entries + 1,
+      max_occurrences: allowlist.budget.max_occurrences + 2
+    },
+    entries: [
+      ...allowlist.entries,
+      {
+        path: 'packages/turns/src/index.ts',
+        clients: ['pacoprint'],
+        allowed_occurrences: 2,
+        category: 'domain-workflow',
+        reason: 'entrada de prueba',
+        target: 'packages/customer-modules/pacoprint-pricing',
+        retire_with: 'never',
+        owner: 'test',
+        recorded_on: '2026-07-20'
+      }
+    ]
+  };
+
+  const result = evaluateClientBoundaries({ files, allowlist: extended, baselineAllowlist: allowlist });
+
+  assert.equal(
+    result.problems.some((problem) => problem.kind === 'allowlist_growth'),
+    true,
+    buildClientBoundaryReport(result)
   );
 });
 

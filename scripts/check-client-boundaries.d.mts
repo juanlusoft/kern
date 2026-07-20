@@ -41,9 +41,12 @@ export interface ClientBoundaryAllowlist {
 export type ClientBoundaryProblemKind =
   | 'new_violation'
   | 'grown_violation'
+  | 'shrunk_violation'
+  | 'client_mismatch'
   | 'stale_entry'
   | 'missing_file'
-  | 'budget_exceeded';
+  | 'budget_exceeded'
+  | 'allowlist_growth';
 
 export interface ClientBoundaryProblem {
   kind: ClientBoundaryProblemKind;
@@ -72,9 +75,11 @@ export declare function isScannedFile(filePath: string): boolean;
 export declare function loadScannableSourceFiles(rootDir?: string): ScannedSourceFile[];
 export declare function scanClientReferences(files: ScannedSourceFile[]): ClientBoundaryViolation[];
 export declare function loadAllowlist(allowlistPath?: string): ClientBoundaryAllowlist;
+export declare function loadBaselineAllowlist(currentAllowlist?: ClientBoundaryAllowlist): ClientBoundaryAllowlist | null;
 export declare function evaluateClientBoundaries(options?: {
   rootDir?: string;
   files?: ScannedSourceFile[];
   allowlist?: Partial<ClientBoundaryAllowlist>;
+  baselineAllowlist?: Partial<ClientBoundaryAllowlist> | null;
 }): ClientBoundaryResult;
 export declare function buildClientBoundaryReport(result: ClientBoundaryResult): string;

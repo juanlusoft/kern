@@ -72,13 +72,21 @@ La allowlist no es una lista de perdones abierta. El evaluador rompe el build cu
 
 - `new_violation`: un fichero comun no registrado menciona a un cliente;
 - `grown_violation`: un fichero registrado supera sus `allowed_occurrences`;
+- `client_mismatch`: los clientes reales de un fichero no coinciden exactamente con
+  `entry.clients` (impide sustituir deuda Numa por deuda PacoPrint conservando el total);
+- `shrunk_violation`: un fichero tiene menos ocurrencias que las declaradas y obliga a
+  reducir su entrada y el presupuesto en el mismo cambio;
 - `stale_entry`: un fichero registrado ya esta limpio (hay que borrar la entrada);
 - `missing_file`: la entrada apunta a un fichero inexistente;
 - `budget_exceeded`: `budget.max_entries` no coincide con el numero de entradas, o las
-  ocurrencias declaradas superan `budget.max_occurrences`.
+  ocurrencias declaradas no coinciden con `budget.max_occurrences`;
+- `allowlist_growth`: una ruta, un cliente, un techo por fichero o el presupuesto crecen
+  respecto a la allowlist del commit anterior.
 
-`stale_entry` y la igualdad estricta de `max_entries` son lo que hace que el contador solo
-pueda bajar: limpiar obliga a bajarlo y ensuciar obliga a subirlo en un diff visible.
+El checker compara cambios sin commit contra `HEAD` y commits limpios contra `HEAD^`. El
+commit que introduce M13 establece el inventario inicial; desde el siguiente commit, las
+rutas, clientes y techos solo pueden mantenerse o decrecer. La igualdad estricta de ambos
+presupuestos con la allowlist hace que una limpieza parcial tambien tenga que consolidarse.
 
 Estado al abrir el mecanismo: **21 ficheros / 477 menciones**.
 

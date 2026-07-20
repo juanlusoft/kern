@@ -26,6 +26,7 @@
  */
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -242,6 +243,42 @@ export function loadAllowlist(allowlistPath = ALLOWLIST_PATH) {
   return JSON.parse(readFileSync(allowlistPath, 'utf8'));
 }
 
+function loadAllowlistFromGit(revision) {
+  try {
+    const content = execFileSync(
+      'git',
+      ['show', `${revision}:scripts/client-boundary-allowlist.json`],
+      { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recupera la allowlist anterior que actua como techo historico.
+ *
+ * - Con cambios sin commit, compara contra HEAD.
+ * - En CI o sobre un commit limpio, compara contra el primer padre de HEAD.
+ * - En el commit que introduce el mecanismo no hay baseline y se acepta el
+ *   inventario inicial.
+ */
+export function loadBaselineAllowlist(currentAllowlist = loadAllowlist()) {
+  const head = loadAllowlistFromGit('HEAD');
+  if (!head) {
+    return null;
+  }
+  if (JSON.stringify(head) !== JSON.stringify(currentAllowlist)) {
+    return head;
+  }
+  return loadAllowlistFromGit('HEAD^');
+}
+
+function sortedUnique(values) {
+  return [...new Set(Array.isArray(values) ? values : [])].sort();
+}
+
 /**
  * Compara el estado real con la allowlist. Devuelve los problemas que deben romper el build.
  *
@@ -251,11 +288,12 @@ export function loadAllowlist(allowlistPath = ALLOWLIST_PATH) {
  * - `missing_file`: entrada que apunta a un fichero inexistente.
  * - `budget_exceeded`: la allowlist ha crecido por encima del presupuesto declarado.
  */
-export function evaluateClientBoundaries({ rootDir = REPO_ROOT, files, allowlist } = {}) {
+export function evaluateClientBoundaries({ rootDir = REPO_ROOT, files, allowlist, baselineAllowlist } = {}) {
   const records = files ?? loadScannableSourceFiles(rootDir);
   const list = allowlist ?? loadAllowlist();
   const entries = list.entries ?? [];
   const budget = list.budget ?? { max_entries: 0, max_occurrences: 0 };
+  const baseline = baselineAllowlist === undefined ? loadBaselineAllowlist(list) : baselineAllowlist;
 
   const violations = scanClientReferences(records);
   const byPath = new Map(violations.map((violation) => [violation.path, violation]));
@@ -272,11 +310,26 @@ export function evaluateClientBoundaries({ rootDir = REPO_ROOT, files, allowlist
       });
       continue;
     }
+    const actualClients = sortedUnique(violation.clients);
+    const declaredClients = sortedUnique(entry.clients);
+    if (JSON.stringify(actualClients) !== JSON.stringify(declaredClients)) {
+      problems.push({
+        kind: 'client_mismatch',
+        path: violation.path,
+        detail: `los clientes reales (${actualClients.join(', ')}) no coinciden con la allowlist (${declaredClients.join(', ')})`
+      });
+    }
     if (violation.occurrences > (entry.allowed_occurrences ?? 0)) {
       problems.push({
         kind: 'grown_violation',
         path: violation.path,
         detail: `la deuda ha crecido: ${violation.occurrences} ocurrencias frente a ${entry.allowed_occurrences} registradas`
+      });
+    } else if (violation.occurrences < (entry.allowed_occurrences ?? 0)) {
+      problems.push({
+        kind: 'shrunk_violation',
+        path: violation.path,
+        detail: `la deuda ha bajado a ${violation.occurrences} ocurrencias: actualiza allowed_occurrences y reduce el presupuesto en el mismo cambio`
       });
     }
   }
@@ -308,12 +361,53 @@ export function evaluateClientBoundaries({ rootDir = REPO_ROOT, files, allowlist
   }
 
   const declaredOccurrences = entries.reduce((total, entry) => total + (entry.allowed_occurrences ?? 0), 0);
-  if (declaredOccurrences > budget.max_occurrences) {
+  if (declaredOccurrences !== budget.max_occurrences) {
     problems.push({
       kind: 'budget_exceeded',
       path: 'scripts/client-boundary-allowlist.json',
-      detail: `las ocurrencias declaradas (${declaredOccurrences}) superan budget.max_occurrences (${budget.max_occurrences}); este numero solo puede bajar`
+      detail: `budget.max_occurrences es ${budget.max_occurrences} y hay ${declaredOccurrences} ocurrencias declaradas; deben coincidir exactamente`
     });
+  }
+
+  if (baseline) {
+    const baselineEntries = new Map((baseline.entries ?? []).map((entry) => [entry.path, entry]));
+    const baselineBudget = baseline.budget ?? { max_entries: 0, max_occurrences: 0 };
+
+    if (budget.max_entries > baselineBudget.max_entries || budget.max_occurrences > baselineBudget.max_occurrences) {
+      problems.push({
+        kind: 'allowlist_growth',
+        path: 'scripts/client-boundary-allowlist.json',
+        detail: `el presupuesto sube respecto al baseline (${baselineBudget.max_entries}/${baselineBudget.max_occurrences} -> ${budget.max_entries}/${budget.max_occurrences})`
+      });
+    }
+
+    for (const entry of entries) {
+      const previous = baselineEntries.get(entry.path);
+      if (!previous) {
+        problems.push({
+          kind: 'allowlist_growth',
+          path: entry.path,
+          detail: 'una ruta nueva no puede entrar en la allowlist historica'
+        });
+        continue;
+      }
+      if ((entry.allowed_occurrences ?? 0) > (previous.allowed_occurrences ?? 0)) {
+        problems.push({
+          kind: 'allowlist_growth',
+          path: entry.path,
+          detail: `allowed_occurrences sube de ${previous.allowed_occurrences} a ${entry.allowed_occurrences}`
+        });
+      }
+      const previousClients = new Set(sortedUnique(previous.clients));
+      const addedClients = sortedUnique(entry.clients).filter((client) => !previousClients.has(client));
+      if (addedClients.length > 0) {
+        problems.push({
+          kind: 'allowlist_growth',
+          path: entry.path,
+          detail: `la entrada incorpora clientes nuevos respecto al baseline: ${addedClients.join(', ')}`
+        });
+      }
+    }
   }
 
   return {
