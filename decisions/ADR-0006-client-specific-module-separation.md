@@ -1,6 +1,7 @@
 # ADR-0006 — Separacion de Core, integraciones reutilizables y modulos especificos de empresa
 
 - **Estado:** Proposed
+- **Pendiente:** aceptacion del decisor. El primer invariante de la seccion 7 ya esta implementado y en verde (ver seccion 11); al aceptar, cambiar el estado a `Accepted` y retirar esta linea.
 - **Fecha:** 2026-07-14
 - **Decisor:** Juan Luis, con ChatGPT como CTO/arquitecto
 - **Contexto:** Crecimiento multiempresa de Kern con PacoPrint, Numa, MiPC y futuras empresas
@@ -155,6 +156,13 @@ Excepciones conocidas al aprobar este ADR:
 - `packages/orchestration/src/numa-hr.ts`, `packages/capabilities/src/numa-capabilities.ts` y `packages/workflows/src/numa-hr-response-renderer.ts`: contienen comportamiento Numa en paquetes gobernados comunes. Deben migrarse al modulo de empresa `numa-hr` o quedar detras de contribuciones explicitas de ese modulo.
 
 Estas excepciones no bloquean el ADR porque su estado es `Proposed`, pero deben ser retiradas durante la migracion a modulos especificos de empresa.
+
+Desde M13 estas excepciones, y todas las demas detectadas al inventariar, estan registradas de forma legible por maquina en `scripts/client-boundary-allowlist.json`, con paquete afectado, motivo, destino, hito de retirada, responsable y fecha, tal y como exige esta seccion. El inventario narrado por tipo esta en `docs/implementation/m13-client-boundary-check.md`.
+
+La allowlist se contrasta con su version historica: no admite rutas o clientes nuevos,
+crecimiento de ocurrencias ni aumento de presupuesto. Los clientes detectados deben
+coincidir exactamente con los declarados por fichero, de modo que no se pueda sustituir
+deuda de una empresa por deuda de otra conservando el contador.
 
 ### 3.3 Integraciones compartidas no contienen negocio de cliente
 
@@ -353,7 +361,7 @@ Los siguientes invariantes deben convertirse progresivamente en checks automatiz
 
 | Invariante | Verificacion esperada |
 | --- | --- |
-| Core no menciona empresas | Busqueda estatica de nombres de cliente en paquetes core/gobernados, con allowlist de tests o migraciones explicitas. |
+| Core no menciona empresas | **Implementado**: `scripts/check-client-boundaries.mjs` + `scripts/client-boundary-allowlist.json`, encadenado en `npm test` y cubierto por M13. Ver seccion 11. |
 | Core no importa modulos de empresa | Extension de `check-boundaries.mjs` con categoria `customer-module`. |
 | Integraciones no importan modulos de empresa | Check de grafo de imports. |
 | Modulos de empresa no se importan entre si | Check de grafo de imports. |
@@ -405,6 +413,7 @@ La migracion no debe bloquear fixes urgentes ni demos, pero cualquier trabajo nu
 - Facilita backups, restores y rollbacks por empresa.
 - Refuerza fail-closed y multi-tenant.
 - Hace mas facil incorporar una tercera empresa que use Holded sin heredar reglas PacoPrint.
+- Con el mecanismo de la seccion 11, la mezcla existente deja de crecer sin necesidad de parar produccion ni de refactorizar a lo bruto.
 
 ### 9.2 Costes y trade-offs
 
@@ -443,3 +452,60 @@ No permite ejecutar varias empresas en el mismo proceso productivo.
 No decide nombres finales de todos los paquetes futuros.
 
 Este ADR fija la direccion arquitectonica y los invariantes que deben guiar los siguientes PRs.
+
+## 11. Mecanismo de control implementado (M13)
+
+Este ADR seguia siendo texto mientras la contaminacion podia crecer sin que nada la
+detectase. M13 cierra esa brecha implementando el primer invariante de la seccion 7.
+
+### 11.1 La regla
+
+Un paquete comun de Kern no puede nombrar una empresa concreta. Se consideran comunes
+todos los paquetes bajo `packages/` salvo:
+
+- los que declaran una empresa en su propia ruta (`packages/adapters/pacoprint-catalog`,
+  `packages/adapters/numa-postgres`, futuro `packages/customer-modules/<empresa>`), que
+  pueden nombrar unicamente a esa empresa y nunca a otra;
+- `packages/compliance-tests`, y en general los tests, porque los tests de comportamiento
+  de un cliente forman parte de su modulo (seccion 2.3).
+
+La busqueda es estatica y lexica sobre `packages/**/src/**`: cubre identificadores, rutas
+de import, claves de configuracion, nombres de secreto, ids de organizacion, prompts
+embebidos y comentarios. Detecta nombres, no semantica: un mapeo de cliente que no se
+nombra a si mismo no se detecta, y esa clase de mezcla sigue dependiendo de revision.
+
+### 11.2 Piezas
+
+- `scripts/check-client-boundaries.mjs`, disponible como `npm run check:client-boundaries`
+  y encadenado en `npm test`.
+- `scripts/client-boundary-allowlist.json`, la deuda registrada con motivo, destino, hito
+  de retirada, responsable y fecha.
+- `packages/compliance-tests/test/m13-client-boundary.test.ts` (M13).
+- `docs/implementation/m13-client-boundary-check.md`, con el inventario por tipo y el plan
+  de limpieza.
+
+Se mantiene separado de `check-boundaries.mjs`, que verifica el grafo de imports y debe
+estar siempre en cero. El check de menciones arrastra allowlist, y a diferencia del de
+imports **no exime al paquete `runtime`**: `packages/runtime/src/slice.ts` es hoy el mayor
+foco de mezcla y queda contabilizado.
+
+### 11.3 La allowlist solo puede decrecer
+
+Rompen el build una violacion nueva, el crecimiento de una ya registrada, una entrada
+obsoleta cuyo fichero ya esta limpio, una entrada que apunta a un fichero inexistente y
+cualquier descuadre del presupuesto declarado. Limpiar obliga a bajar el contador y
+ensuciar obliga a subirlo en un diff visible.
+
+Estado al implantar el mecanismo: **21 ficheros y 477 menciones** de cliente en paquetes
+comunes. Ese es el numero que la migracion debe llevar a cero.
+
+### 11.4 Consecuencias
+
+- La direccion del ADR pasa de ser una intencion a ser una condicion de merge.
+- Trabajo nuevo especifico de empresa que aumente la mezcla falla en `npm test`, que es
+  exactamente lo que pide la seccion 8.
+- La deuda existente no bloquea produccion ni obliga a un refactor grande de golpe, pero
+  deja de ser invisible: es contable y tiene destino asignado por fichero.
+- Coste asumido: al limpiar un fichero hay que borrar su entrada y bajar el presupuesto en
+  el mismo PR, y dar de alta una empresa nueva incluye anadir su nombre al checker.
+- Los demas invariantes de la tabla de la seccion 7 siguen pendientes.

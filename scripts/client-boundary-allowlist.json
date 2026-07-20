@@ -1,0 +1,242 @@
+{
+  "$schema_note": "Deuda tecnica de ADR-0006 (separacion Core / integraciones reutilizables / modulos de empresa). Cada entrada documenta un fichero de un paquete comun que hoy nombra a una empresa concreta. La lista solo puede DECRECER: 'budget.max_entries' debe coincidir exactamente con el numero de entradas y 'allowed_occurrences' es un techo por fichero. Anadir una violacion nueva rompe el check; limpiar un fichero obliga a borrar su entrada y bajar el presupuesto.",
+  "adr": "decisions/ADR-0006-client-specific-module-separation.md",
+  "check": "scripts/check-client-boundaries.mjs",
+  "budget": {
+    "max_entries": 21,
+    "max_occurrences": 477
+  },
+  "entries": [
+    {
+      "path": "packages/capabilities/src/index.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 1,
+      "category": "domain-capability",
+      "reason": "El barrel comun de capabilities re-exporta './numa-capabilities'.",
+      "target": "Desaparece al mover numa-capabilities al modulo de empresa numa-hr.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/capabilities/src/numa-capabilities.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 58,
+      "category": "domain-capability",
+      "reason": "Set completo de capabilities de RRHH Numa (fichajes, ausencias, presencia) dentro del paquete gobernado comun. Excepcion nombrada en ADR-0006 seccion 3.2.",
+      "target": "packages/customer-modules/numa-hr: capabilities aportadas por el modulo de empresa.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/channels/openwebui/src/index.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 2,
+      "category": "channel-rendering",
+      "reason": "El canal reutilizable expone y asume por defecto el id de modelo 'kern-numa'.",
+      "target": "Id de modelo declarado en el manifest de instalacion; el canal no debe conocer la empresa (ADR-0006 seccion 3.3).",
+      "retire_with": "installation-manifest-model-id",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/channels/telegram/src/index.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 2,
+      "category": "channel-rendering",
+      "reason": "El canal reutilizable renderiza la etiqueta de linea de PacoPrint y parsea motivos de rechazo con el prefijo 'PacoPrint alto/ancho'.",
+      "target": "Renderer de respuesta del modulo pacoprint-pricing; el canal solo transporta (ADR-0006 seccion 3.3).",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 109,
+      "category": "domain-contract",
+      "reason": "Tipos de dominio de cliente (NumaHr*, PacoPrintCatalog*, PacoPrintQuoteLineInput) y la clave de capability 'numa.hr.read' viven en los contratos comunes.",
+      "target": "Contratos de dominio dentro de cada modulo de empresa; packages/contracts conserva solo puertos y tipos comunes (ADR-0006 seccion 3.7).",
+      "retire_with": "migration-domain-contracts",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/core/src/hr.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 33,
+      "category": "domain-contract",
+      "reason": "Core define CoreNumaHrReadPort y reexpone los tipos de RRHH Numa. Core no debe conocer empresas (ADR-0006 seccion 2.1).",
+      "target": "packages/customer-modules/numa-hr, o un puerto de lectura de RRHH sin marca si aparece un segundo caso real.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/orchestration/src/index.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 54,
+      "category": "domain-mapping",
+      "reason": "La orquestacion comun valida propuestas Numa HR, deriva routing override y transporta numaHrConfig (time types, cupos anuales).",
+      "target": "Contribucion registrada por el modulo numa-hr; la orquestacion comun no debe crecer con ramas por empresa (ADR-0006 seccion 3.4).",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/orchestration/src/numa-hr.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 7,
+      "category": "domain-mapping",
+      "reason": "Mapeo de tools y de etiquetas de tipo de ausencia de Numa dentro de la orquestacion comun. Excepcion nombrada en ADR-0006 seccion 3.2.",
+      "target": "packages/customer-modules/numa-hr.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/orchestrators/qwen/src/index.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 9,
+      "category": "customer-prompt",
+      "reason": "El prompt de sistema del orquestador reutilizable incluye instrucciones y ejemplos de RRHH Numa y de pricing PacoPrint.",
+      "target": "Fragmentos de prompt aportados por el modulo de empresa activo; el orquestador solo compone (ADR-0006 seccion 3.3).",
+      "retire_with": "customer-prompt-contributions",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/runtime/src/config.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 48,
+      "category": "installation-config",
+      "reason": "El schema de configuracion comun tipa y valida runtime_options.numa_hr, el secreto PACOPRINT_API_TOKEN y defaults como 'org-pacoprint', 'company-pacoprint' y 'telegram-chat-pacoprint'.",
+      "target": "Bloque de configuracion tipado y validado por cada modulo de empresa; Core solo valida el envelope comun (ADR-0006 seccion 5).",
+      "retire_with": "installation-manifest-typed-blocks",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/runtime/src/slice.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 72,
+      "category": "installation-bootstrap",
+      "reason": "El slice de runtime comun importa y cablea directamente los adaptadores numa-postgres y pacoprint-catalog y resuelve la company de Numa.",
+      "target": "Bootstrap de instalacion por empresa: es el unico punto que puede conocer modulo e integraciones a la vez, pero debe ser por instalacion y no runtime comun (ADR-0006 secciones 3.4 y 3.7).",
+      "retire_with": "installation-bootstrap",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/runtime/src/transports.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 7,
+      "category": "provider-endpoint",
+      "reason": "Transporte HTTP nombrado y apuntado al endpoint de PacoPrint dentro del runtime comun.",
+      "target": "Transporte generico parametrizado por config + integracion concreta del modulo pacoprint-pricing.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/hr-workflow.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 10,
+      "category": "domain-workflow",
+      "reason": "Workflow gobernado de lectura de RRHH Numa ('numa.hr.read') en el paquete comun de workflows.",
+      "target": "packages/customer-modules/numa-hr.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/mock-capabilities.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 8,
+      "category": "domain-capability",
+      "reason": "Capabilities de prueba de pricing PacoPrint y organizacion por defecto 'org-pacoprint' en fixtures comunes.",
+      "target": "Fixtures del modulo pacoprint-pricing; los mocks comunes deben usar una organizacion neutra.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/numa-hr-response-renderer.ts",
+      "clients": ["numa"],
+      "allowed_occurrences": 7,
+      "category": "domain-workflow",
+      "reason": "Renderizado de respuestas de RRHH Numa en el paquete comun de workflows. Excepcion nombrada en ADR-0006 seccion 3.2.",
+      "target": "packages/customer-modules/numa-hr.",
+      "retire_with": "migration-numa-hr",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/pricing-draft-workflow.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 3,
+      "category": "domain-workflow",
+      "reason": "Borrador de presupuesto multi-linea de PacoPrint: cabecera de dominio y literales de proposito y mensaje.",
+      "target": "packages/customer-modules/pacoprint-pricing.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/pricing-line.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 5,
+      "category": "domain-workflow",
+      "reason": "Logica de linea de presupuesto acoplada a los candidatos de catalogo de PacoPrint.",
+      "target": "packages/customer-modules/pacoprint-pricing.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/pricing-parse.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 2,
+      "category": "domain-workflow",
+      "reason": "Parser determinista del mensaje de pricing con la regla de negocio de PacoPrint documentada en cabecera.",
+      "target": "packages/customer-modules/pacoprint-pricing.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/pricing-workflow.ts",
+      "clients": ["pacoprint"],
+      "allowed_occurrences": 18,
+      "category": "domain-workflow",
+      "reason": "Workflow de pricing construido sobre el puerto de catalogo de PacoPrint dentro del paquete comun.",
+      "target": "packages/customer-modules/pacoprint-pricing.",
+      "retire_with": "migration-pacoprint-pricing",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/runtime.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 17,
+      "category": "domain-workflow",
+      "reason": "El runtime comun de workflows recibe y despacha puertos de cliente (pacoPrintCatalogAdapter, NumaHrReadPort) y enruta 'numa.hr.read'.",
+      "target": "Registro de workflows y capabilities aportados por el modulo de empresa activo (ADR-0006 seccion 3.4).",
+      "retire_with": "customer-module-registry",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    },
+    {
+      "path": "packages/workflows/src/workflow-runtime-context.ts",
+      "clients": ["numa", "pacoprint"],
+      "allowed_occurrences": 5,
+      "category": "domain-contract",
+      "reason": "El contexto de ejecucion comun tipa puertos con nombre de cliente.",
+      "target": "Contexto generico mas extension tipada aportada por el modulo de empresa.",
+      "retire_with": "customer-module-registry",
+      "owner": "Juan Luis",
+      "recorded_on": "2026-07-20"
+    }
+  ]
+}
